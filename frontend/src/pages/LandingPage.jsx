@@ -56,7 +56,7 @@ const Header = () => {
     { label: "How It Works", href: "#how-it-works" },
     { label: "For Employers", href: "#employers" },
     { label: "For Candidates", href: "#candidates" },
-    { label: "Get Started", href: "#final-cta" },
+    { label: "Get Started", href: "/sign-up" },
   ];
 
   const closeMobile = () => setMobileOpen(false);
@@ -87,13 +87,13 @@ const Header = () => {
         </nav>
         <div className="hidden md:flex items-center gap-3">
           <a
-            href="#final-cta"
+            href="/sign-in"
             className="hidden sm:inline-flex rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Login
           </a>
           <a
-            href="#final-cta"
+            href="/sign-up"
             className="inline-flex rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Get Started
@@ -140,7 +140,7 @@ const Header = () => {
                 </motion.a>
               ))}
               <motion.a
-                href="#final-cta"
+                href="/sign-in"
                 variants={fadeUp}
                 className="mt-2 inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 onClick={closeMobile}
@@ -148,7 +148,7 @@ const Header = () => {
                 Login
               </motion.a>
               <motion.a
-                href="#final-cta"
+                href="/sign-up"
                 variants={fadeUp}
                 className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 onClick={closeMobile}
@@ -197,7 +197,7 @@ const Hero = () => (
         </div>
         <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
           <motion.a
-            href="#final-cta"
+            href="/sign-up"
             className="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:w-auto"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
@@ -205,7 +205,7 @@ const Hero = () => (
             Sign Up as Employer
           </motion.a>
           <motion.a
-            href="#final-cta"
+            href="/sign-up"
             className="inline-flex w-full items-center justify-center rounded-full border border-slate-900 px-6 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:w-auto"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
@@ -783,7 +783,7 @@ const EmployersSection = () => {
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <motion.a
-              href="#final-cta"
+              href="/sign-up"
               className="inline-flex items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -901,7 +901,7 @@ const CandidatesSection = () => {
           </p>
           <div className="mt-6">
             <motion.a
-              href="#final-cta"
+              href="/sign-up"
               className="inline-flex w-full items-center justify-center rounded-full border border-slate-900 px-6 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:w-auto"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -1008,7 +1008,7 @@ const FinalCTA = () => (
       </p>
       <div className="mt-8 flex w-full flex-col items-stretch justify-center gap-3 sm:w-auto sm:flex-row sm:items-center">
         <motion.a
-          href="#final-cta"
+          href="/sign-up"
           className="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:w-auto"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -1016,7 +1016,7 @@ const FinalCTA = () => (
           Get Started as Employer
         </motion.a>
         <motion.a
-          href="#final-cta"
+          href="/sign-up"
           className="inline-flex w-full items-center justify-center rounded-full border border-slate-900 px-6 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:w-auto"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}

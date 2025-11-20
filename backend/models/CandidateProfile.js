@@ -43,6 +43,7 @@ const CandidateProfileSchema = new Schema(
     location: { type: String, trim: true },
     professionalTitle: { type: String, trim: true },
     headline: { type: String, trim: true },
+    professionalHeadline: { type: String, trim: true }, // Alias for headline
     summary: { type: String, maxlength: 500 },
     linkedinUrl: { type: String, trim: true },
     portfolioUrl: { type: String, trim: true },

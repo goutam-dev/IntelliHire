@@ -22,7 +22,7 @@ const UserSchema = new Schema(
     role: { type: String, enum: USER_ROLES, required: true },
     status: { type: String, enum: USER_STATUSES, default: 'pending' },
     fullName: { type: String, trim: true },
-    authProvider: { type: String, enum: ['clerk', 'local'], default: 'clerk' },
+    authProvider: { type: [String], enum: ['clerk', 'local', 'google', 'oauth'], default: ['clerk'] },
     emailVerifiedAt: { type: Date },
     lastLoginAt: { type: Date },
     profileCompletion: { type: ProfileCompletionSchema, default: () => ({}) },
