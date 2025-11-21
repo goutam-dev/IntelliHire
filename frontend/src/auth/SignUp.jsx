@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useSignUp, useSignIn } from '@clerk/clerk-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import 'react-phone-number-input/style.css';
+import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 
 const LogoMark = ({ className }) => (
   <svg
@@ -26,6 +28,7 @@ export function SignUp() {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
+    phoneNumber: '',
     password: '',
     confirmPassword: '',
     companyName: '',
@@ -106,6 +109,13 @@ export function SignUp() {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Invalid email format';
     }
+
+    if (!formData.phoneNumber) {
+      newErrors.phoneNumber = 'Phone number is required';
+    } else if (!isValidPhoneNumber(formData.phoneNumber)) {
+      newErrors.phoneNumber = 'Invalid phone number format';
+    }
+
     if (!formData.password) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
@@ -194,6 +204,7 @@ export function SignUp() {
               clerkUserId: completeSignUp.createdUserId,
               role,
               email: formData.email,
+              phoneNumber: formData.phoneNumber,
               fullName: formData.fullName,
               ...(role === 'employer' && {
                 companyName: formData.companyName,
@@ -447,6 +458,22 @@ export function SignUp() {
                   placeholder="john@example.com"
                 />
                 {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Phone Number <span className="text-red-500">*</span>
+                </label>
+                <PhoneInput
+                  international
+                  defaultCountry="US"
+                  value={formData.phoneNumber}
+                  onChange={(value) => setFormData(prev => ({ ...prev, phoneNumber: value || '' }))}
+                  className={`w-full px-4 py-2 border rounded-lg focus-within:ring-2 focus-within:ring-slate-900 focus-within:border-transparent [&_input]:!border-none [&_input]:!outline-none [&_input]:!shadow-none ${
+                    errors.phoneNumber ? 'border-red-500' : 'border-slate-300'
+                  }`}
+                />
+                {errors.phoneNumber && <p className="mt-1 text-sm text-red-600">{errors.phoneNumber}</p>}
               </div>
 
               <div>

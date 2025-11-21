@@ -31,10 +31,10 @@ async function syncPrimaryEmailAddress(clerkUserId) {
 // Complete signup - called after Clerk email verification or OAuth sign-up
 async function completeSignup(req, res) {
   try {
-    const { clerkUserId, role, email, fullName, companyName, industry, companyWebsite, professionalHeadline } = req.body;
+    const { clerkUserId, role, email, fullName, phoneNumber, companyName, industry, companyWebsite, professionalHeadline } = req.body;
 
     // Validate required fields
-    if (!clerkUserId || !role || !email || !fullName) {
+    if (!clerkUserId || !role || !email || !fullName || !phoneNumber) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -58,6 +58,12 @@ async function completeSignup(req, res) {
       // Update email if changed
       if (user.email !== email.toLowerCase()) {
         user.email = email.toLowerCase();
+        updated = true;
+      }
+
+      // Update phone number if changed
+      if (user.phoneNumber !== phoneNumber) {
+        user.phoneNumber = phoneNumber;
         updated = true;
       }
 
@@ -152,6 +158,7 @@ async function completeSignup(req, res) {
     user = new User({
       clerkUserId,
       email: email.toLowerCase(),
+      phoneNumber,
       fullName,
       role,
       status: 'active',

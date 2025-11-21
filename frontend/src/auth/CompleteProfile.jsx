@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useUser } from '@clerk/clerk-react';
 import { motion } from 'framer-motion';
+import 'react-phone-number-input/style.css';
+import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 
 const LogoMark = ({ className }) => (
   <svg
@@ -26,6 +28,7 @@ export function CompleteProfile() {
     companyName: '',
     industry: '',
     companyWebsite: '',
+    phoneNumber: '',
     professionalHeadline: '',
   });
   const [errors, setErrors] = useState({});
@@ -107,6 +110,12 @@ export function CompleteProfile() {
         newErrors.industry = 'Industry is required';
       }
     }
+    if (!formData.phoneNumber) {
+      newErrors.phoneNumber = 'Phone number is required';
+    } else if (!isValidPhoneNumber(formData.phoneNumber)) {
+      newErrors.phoneNumber = 'Invalid phone number format';
+    }
+
     // Professional headline is optional for candidates
 
     setErrors(newErrors);
@@ -138,6 +147,7 @@ export function CompleteProfile() {
           role,
           email,
           fullName,
+          phoneNumber: formData.phoneNumber,
           ...(role === 'employer' && {
             companyName: formData.companyName,
             industry: formData.industry,
@@ -280,6 +290,22 @@ export function CompleteProfile() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Phone Number <span className="text-red-500">*</span>
+                </label>
+                <PhoneInput
+                  international
+                  defaultCountry="US"
+                  value={formData.phoneNumber}
+                  onChange={(value) => setFormData(prev => ({ ...prev, phoneNumber: value || '' }))}
+                  className={`w-full px-4 py-2 border rounded-lg focus-within:ring-2 focus-within:ring-slate-900 focus-within:border-transparent [&_input]:!border-none [&_input]:!outline-none [&_input]:!shadow-none ${
+                    errors.phoneNumber ? 'border-red-500' : 'border-slate-300'
+                  }`}
+                />
+                {errors.phoneNumber && <p className="mt-1 text-sm text-red-600">{errors.phoneNumber}</p>}
+              </div>
+
               {role === 'employer' ? (
                 <>
                   <div>

@@ -45,6 +45,9 @@ export function PublicOnlyRoute({ children }) {
   }
 
   if (isSignedIn) {
+    if (!role) {
+      return <Navigate to="/complete-profile" replace />;
+    }
     const redirectPath = role === 'employer' ? '/employer/dashboard' : '/candidate/dashboard';
     return <Navigate to={redirectPath} replace />;
   }
