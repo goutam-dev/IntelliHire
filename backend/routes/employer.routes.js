@@ -77,33 +77,70 @@ router.put('/profile', async (req, res) => {
 // Get employer dashboard stats
 router.get('/dashboard/stats', async (req, res) => {
   try {
+    const mongoose = require('mongoose');
     const User = require('../models/User');
     const Job = require('../models/Job');
     const JobApplication = require('../models/JobApplication');
+    const EmployerProfile = require('../models/EmployerProfile');
     
     const user = await User.findOne({ clerkUserId: req.auth.userId });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const totalJobs = await Job.countDocuments({ employerId: user._id });
-    const activeJobs = await Job.countDocuments({ employerId: user._id, status: 'active' });
+    const employerProfile = await EmployerProfile.findOne({ user: user._id });
+    if (!employerProfile) {
+      return res.status(404).json({ error: 'Employer profile not found' });
+    }
+
+    const totalJobs = await Job.countDocuments({ employer: employerProfile._id });
+    const activeJobs = await Job.countDocuments({ employer: employerProfile._id, status: 'active' });
+    
+    const draftJobs = await Job.countDocuments({ employer: employerProfile._id, status: 'draft' });
+    const closedJobs = await Job.countDocuments({ employer: employerProfile._id, status: 'closed' });
+    const archivedJobs = await Job.countDocuments({ employer: employerProfile._id, status: 'archived' });
     
     // Get all job IDs for this employer
-    const jobs = await Job.find({ employerId: user._id }).select('_id');
+    const jobs = await Job.find({ employer: employerProfile._id }).select('_id');
     const jobIds = jobs.map(job => job._id);
     
-    const totalApplications = await JobApplication.countDocuments({ jobId: { $in: jobIds } });
+    const totalApplications = await JobApplication.countDocuments({ job: { $in: jobIds } });
     const pendingApplications = await JobApplication.countDocuments({ 
-      jobId: { $in: jobIds }, 
+      job: { $in: jobIds }, 
       status: 'applied' 
     });
+
+    // New applications (last 24 hours)
+    // Use _id for timestamp check as it's more reliable if createdAt is missing
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const hexSeconds = Math.floor(oneDayAgo.getTime() / 1000).toString(16).padStart(8, '0');
+    const minId = new mongoose.Types.ObjectId(hexSeconds + "0000000000000000");
+
+    const newApplications = await JobApplication.countDocuments({
+      job: { $in: jobIds },
+      _id: { $gte: minId }
+    });
+
+    // Recent applications (top 5)
+    const recentApplications = await JobApplication.find({ job: { $in: jobIds } })
+      .sort({ _id: -1 }) // Sort by _id (creation time)
+      .limit(5)
+      .populate({
+        path: 'candidate',
+        populate: { path: 'user', select: 'fullName email' }
+      })
+      .populate('job', 'title');
 
     res.json({
       totalJobs,
       activeJobs,
+      draftJobs,
+      closedJobs,
+      archivedJobs,
       totalApplications,
       pendingReviews: pendingApplications,
+      newApplications,
+      recentApplications
     });
   } catch (error) {
     console.error('Get dashboard stats error:', error);

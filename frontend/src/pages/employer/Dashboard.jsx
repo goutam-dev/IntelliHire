@@ -86,70 +86,57 @@ const Dashboard = () => {
   const { jobs, jobsLoading } = useAppSelector((state) => state.job);
   const { profile, loading: profileLoading } = useAppSelector((state) => state.employer);
 
+  const [stats, setStats] = useState({
+    activeJobs: 0,
+    draftJobs: 0,
+    closedJobs: 0,
+    archivedJobs: 0,
+    totalJobs: 0,
+    totalApplications: 0,
+    newApplications: 0
+  });
   const [recentApplications, setRecentApplications] = useState([]);
-  const [appsLoading, setAppsLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
-      const token = await getToken();
-      dispatch(fetchEmployerProfile({ token }));
-      dispatch(fetchEmployerJobs({ token }));
-    };
-    loadData();
-  }, [dispatch, getToken]);
-
-  useEffect(() => {
-    const loadRecent = async () => {
+    const loadDashboardData = async () => {
       try {
-        setAppsLoading(true);
+        setLoading(true);
         const token = await getToken();
         
-        // Get all jobs to find the most recent active one
-        const sorted = [...jobs].sort((a, b) => {
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return dateB - dateA;
+        // Fetch jobs for the recent jobs list
+        dispatch(fetchEmployerJobs({ token }));
+        dispatch(fetchEmployerProfile({ token }));
+
+        // Fetch dashboard stats
+        const res = await fetch(`${API_BASE}/employer/dashboard/stats`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
         });
-        const firstActive = sorted.find((j) => j.status === 'active') || sorted[0];
-
-        if (!firstActive?._id) {
-          setRecentApplications([]);
-          return;
-        }
-
-        const url = `${API_BASE}/employer/jobs/${firstActive._id}/applications?status=all&sort=newest`;
         
-        const res = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        if (!res.ok) throw new Error('Failed to load applications');
+        if (!res.ok) throw new Error('Failed to load dashboard stats');
+        
         const data = await res.json();
-        setRecentApplications(data.slice(0, 5));
+        setStats({
+          activeJobs: data.activeJobs,
+          draftJobs: data.draftJobs,
+          closedJobs: data.closedJobs,
+          archivedJobs: data.archivedJobs,
+          totalJobs: data.totalJobs,
+          totalApplications: data.totalApplications,
+          newApplications: data.newApplications
+        });
+        setRecentApplications(data.recentApplications || []);
       } catch (err) {
-        console.error('Error loading applications:', err);
-        setRecentApplications([]);
+        console.error('Error loading dashboard data:', err);
       } finally {
-        setAppsLoading(false);
+        setLoading(false);
       }
     };
-    if (jobs?.length) loadRecent();
-  }, [jobs, getToken]);
 
-  const stats = useMemo(() => {
-    const total = jobs.length;
-    const active = jobs.filter((j) => j.status === 'active').length;
-    const totalApplications = jobs.reduce((sum, j) => sum + (j.applicationsCount || 0), 0);
-    const newApplications = recentApplications.filter(a => {
-      if (!a.createdAt) return false;
-      const date = new Date(a.createdAt);
-      const now = new Date();
-      return (now - date) < (24 * 60 * 60 * 1000); // 24 hours
-    }).length;
-
-    return { total, active, totalApplications, newApplications };
-  }, [jobs, recentApplications]);
+    loadDashboardData();
+  }, [dispatch, getToken]);
 
   const recentJobs = useMemo(() => {
     return [...jobs]
@@ -236,8 +223,8 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
             <StatCard
               label="Active Jobs"
-              value={stats.active}
-              subtext={`${stats.total} total jobs posted`}
+              value={stats.activeJobs}
+              subtext={`${stats.totalJobs} total jobs posted`}
               color="bg-emerald-500"
             />
             <StatCard
@@ -324,7 +311,7 @@ const Dashboard = () => {
                 </div>
 
                 <div className="rounded-xl border border-slate-100 bg-white shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-                  {appsLoading ? (
+                  {loading ? (
                     <div className="py-12 text-center text-sm text-slate-400 font-light">Loading...</div>
                   ) : recentApplications.length === 0 ? (
                     <div className="py-12 text-center text-sm text-slate-400 font-light">No recent applications found.</div>
@@ -386,11 +373,13 @@ const Dashboard = () => {
               </motion.div>
 
               <motion.div variants={itemVariants} className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-900">Pipeline Health</h3>
+                <h3 className="text-sm font-medium text-slate-900">Job Status Overview</h3>
                 <div className="mt-6 space-y-6">
                   {[
-                    { label: 'Active', value: stats.active, total: stats.total, color: 'bg-emerald-500' },
-                    { label: 'Drafts', value: stats.total - stats.active, total: stats.total, color: 'bg-slate-300' },
+                    { label: 'Active', value: stats.activeJobs, total: stats.totalJobs, color: 'bg-emerald-500' },
+                    { label: 'Drafts', value: stats.draftJobs, total: stats.totalJobs, color: 'bg-slate-300' },
+                    ...(stats.closedJobs > 0 ? [{ label: 'Closed', value: stats.closedJobs, total: stats.totalJobs, color: 'bg-rose-500' }] : []),
+                    ...(stats.archivedJobs > 0 ? [{ label: 'Archived', value: stats.archivedJobs, total: stats.totalJobs, color: 'bg-slate-400' }] : []),
                   ].map((item) => (
                     <div key={item.label} className="space-y-2">
                       <div className="flex justify-between text-xs">

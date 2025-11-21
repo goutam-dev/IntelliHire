@@ -3,6 +3,7 @@ import { Provider } from 'react-redux';
 import { store } from './store/store';
 import { ClerkProvider } from './contexts/ClerkProvider';
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
+import ScrollToTop from './components/ScrollToTop';
 
 // Pages
 import LandingPage from './pages/LandingPage';
@@ -25,6 +26,7 @@ function App() {
     <Provider store={store}>
       <ClerkProvider>
         <BrowserRouter>
+        <ScrollToTop />
           <Routes>
             {/* Public Routes */}
             <Route
