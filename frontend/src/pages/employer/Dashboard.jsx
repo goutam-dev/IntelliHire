@@ -1,217 +1,418 @@
-import { useUser, UserButton } from '@clerk/clerk-react';
-import { Link } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Briefcase,
+  Plus,
+  ArrowUpRight,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  CalendarClock,
+  Handshake
+} from 'lucide-react';
 import { motion } from 'framer-motion';
+import EmployerHeader from '../../components/layout/EmployerHeader';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { fetchEmployerJobs } from '../../store/slices/jobSlice';
+import { fetchEmployerProfile } from '../../store/slices/employerSlice';
+import { useAuth, useClerk } from '@clerk/clerk-react';
 
-const LogoMark = ({ className }) => (
-  <svg
-    className={className}
-    viewBox="0 0 32 32"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+      delayChildren: 0.1
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } }
+};
+
+const StatCard = ({ label, value, subtext, color = "bg-blue-500" }) => (
+  <motion.div
+    variants={itemVariants}
+    whileHover={{ y: -5, transition: { duration: 0.2 } }}
+    className="group relative flex flex-col justify-between rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md overflow-hidden"
   >
-    <rect x="3" y="5" width="26" height="22" rx="6" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M9 11H16.5C19.5376 11 22 13.4624 22 16.5C22 19.5376 19.5376 22 16.5 22H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M9 16H19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
+    <div className={`absolute top-0 left-0 h-full w-1 ${color} opacity-80`} />
+    <div className="relative z-10">
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">{label}</p>
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-4xl font-light text-slate-900 tracking-tight">{value}</h3>
+      </div>
+    </div>
+    {subtext && (
+      <div className="mt-4 flex items-center gap-2">
+        <div className={`h-1.5 w-1.5 rounded-full ${color}`} />
+        <p className="text-xs font-medium text-slate-500">
+          {subtext}
+        </p>
+      </div>
+    )}
+
+    {/* Decorative background element */}
+    <div className={`absolute -right-6 -bottom-6 h-24 w-24 rounded-full ${color} opacity-5 blur-2xl transition-opacity group-hover:opacity-10`} />
+  </motion.div>
 );
 
-const StatCard = ({ title, value, icon, color = 'blue' }) => {
-  const colorClasses = {
-    blue: 'bg-blue-100 text-blue-700',
-    green: 'bg-green-100 text-green-700',
-    orange: 'bg-orange-100 text-orange-700',
-    purple: 'bg-purple-100 text-purple-700',
+const ActionButton = ({ icon: Icon, label, onClick, primary = false }) => (
+  <motion.button
+    whileHover={{ y: -1 }}
+    whileTap={{ y: 0 }}
+    onClick={onClick}
+    className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition-all
+      ${primary
+        ? 'bg-slate-900 text-white shadow-md hover:bg-slate-800 hover:shadow-lg'
+        : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300 hover:text-slate-900'
+      }`}
+  >
+    <Icon className="h-4 w-4" />
+    {label}
+  </motion.button>
+);
+
+const Dashboard = () => {
+  const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const { getToken } = useAuth();
+  const { signOut } = useClerk();
+  const { jobs, jobsLoading } = useAppSelector((state) => state.job);
+  const { profile, loading: profileLoading } = useAppSelector((state) => state.employer);
+
+  const [recentApplications, setRecentApplications] = useState([]);
+  const [appsLoading, setAppsLoading] = useState(false);
+
+  useEffect(() => {
+    const loadData = async () => {
+      const token = await getToken();
+      dispatch(fetchEmployerProfile({ token }));
+      dispatch(fetchEmployerJobs({ token }));
+    };
+    loadData();
+  }, [dispatch, getToken]);
+
+  useEffect(() => {
+    const loadRecent = async () => {
+      try {
+        setAppsLoading(true);
+        const token = await getToken();
+        
+        // Get all jobs to find the most recent active one
+        const sorted = [...jobs].sort((a, b) => {
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateB - dateA;
+        });
+        const firstActive = sorted.find((j) => j.status === 'active') || sorted[0];
+
+        if (!firstActive?._id) {
+          setRecentApplications([]);
+          return;
+        }
+
+        const url = `${API_BASE}/employer/jobs/${firstActive._id}/applications?status=all&sort=newest`;
+        
+        const res = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        if (!res.ok) throw new Error('Failed to load applications');
+        const data = await res.json();
+        setRecentApplications(data.slice(0, 5));
+      } catch (err) {
+        console.error('Error loading applications:', err);
+        setRecentApplications([]);
+      } finally {
+        setAppsLoading(false);
+      }
+    };
+    if (jobs?.length) loadRecent();
+  }, [jobs, getToken]);
+
+  const stats = useMemo(() => {
+    const total = jobs.length;
+    const active = jobs.filter((j) => j.status === 'active').length;
+    const totalApplications = jobs.reduce((sum, j) => sum + (j.applicationsCount || 0), 0);
+    const newApplications = recentApplications.filter(a => {
+      if (!a.createdAt) return false;
+      const date = new Date(a.createdAt);
+      const now = new Date();
+      return (now - date) < (24 * 60 * 60 * 1000); // 24 hours
+    }).length;
+
+    return { total, active, totalApplications, newApplications };
+  }, [jobs, recentApplications]);
+
+  const recentJobs = useMemo(() => {
+    return [...jobs]
+      .sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      })
+      .slice(0, 4);
+  }, [jobs]);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  // Safely access user name
+  const firstName = profile?.user?.fullName?.split(' ')[0] || 'Employer';
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  const getApplicationDate = (app) => {
+    if (app.createdAt) {
+      const date = new Date(app.createdAt);
+      if (!isNaN(date.getTime())) return date.toLocaleDateString();
+    }
+    // Fallback to _id timestamp if available
+    if (app._id) {
+      try {
+        const timestamp = parseInt(app._id.substring(0, 8), 16) * 1000;
+        return new Date(timestamp).toLocaleDateString();
+      } catch (e) {
+        return 'N/A';
+      }
+    }
+    return 'N/A';
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-slate-600 mb-1">{title}</p>
-          <p className="text-3xl font-bold text-slate-900">{value}</p>
-        </div>
-        <div className={`p-3 rounded-lg ${colorClasses[color]}`}>
-          {icon}
-        </div>
-      </div>
-    </motion.div>
-  );
-};
+    <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans selection:bg-slate-100 selection:text-slate-900">
+      <EmployerHeader 
+        userName={profile?.user?.fullName}
+        companyName={profile?.companyName}
+        onLogout={handleLogout}
+      />
 
-export function EmployerDashboard() {
-  const { user } = useUser();
-  const { profileCompletion } = useSelector((state) => state.profile);
-
-  const companyName = user?.unsafeMetadata?.companyName || 'Your Company';
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-8">
-              <Link to="/" className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900">
-                  <LogoMark className="h-6 w-6" />
-                </span>
-                <span>IntelliHire</span>
-              </Link>
-              <nav className="hidden md:flex items-center gap-6">
-                <Link to="/employer/dashboard" className="text-slate-900 font-medium">
-                  Dashboard
-                </Link>
-                <Link to="/employer/jobs" className="text-slate-600 hover:text-slate-900">
-                  My Jobs
-                </Link>
-                <Link to="/employer/profile" className="text-slate-600 hover:text-slate-900">
-                  Profile
-                </Link>
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <button className="p-2 text-slate-600 hover:text-slate-900 relative">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              </button>
-              <UserButton afterSignOutUrl="/" />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Welcome back, {companyName}!</h1>
-          <p className="text-slate-600">Here's what's happening with your job postings today.</p>
-        </div>
-
-        {/* Statistics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            title="Total Jobs Posted"
-            value="0"
-            color="blue"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            }
-          />
-          <StatCard
-            title="Active Jobs"
-            value="0"
-            color="green"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-          <StatCard
-            title="Total Applications"
-            value="0"
-            color="orange"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            }
-          />
-          <StatCard
-            title="Pending Reviews"
-            value="0"
-            color="purple"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm"
-          >
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Quick Actions</h2>
-            <div className="space-y-3">
-              <Link
-                to="/employer/jobs/create"
-                className="flex items-center justify-between p-4 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <span className="font-medium">Post New Job</span>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </Link>
-              <Link
-                to="/employer/jobs"
-                className="flex items-center justify-between p-4 border border-slate-300 rounded-lg hover:border-slate-400 transition-colors"
-              >
-                <span className="font-medium text-slate-900">View All Jobs</span>
-                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm"
-          >
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Recent Applications</h2>
-            <div className="text-center py-8 text-slate-500">
-              <svg className="w-12 h-12 mx-auto mb-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-              </svg>
-              <p className="text-sm">No applications yet</p>
-              <p className="text-xs text-slate-400 mt-1">Post a job to start receiving applications</p>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Active Jobs */}
+      <main className="mx-auto max-w-6xl px-6 py-12">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="space-y-12"
         >
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-slate-900">Active Jobs</h2>
-            <Link to="/employer/jobs" className="text-sm text-slate-900 font-medium hover:underline">
-              View All
-            </Link>
+          {/* Header Section */}
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+            <div className="space-y-1">
+              <motion.p variants={itemVariants} className="text-sm font-medium uppercase tracking-widest text-slate-400">
+                Overview
+              </motion.p>
+              <motion.h1 variants={itemVariants} className="text-3xl font-light tracking-tight text-slate-900 sm:text-4xl">
+                {getGreeting()}, <span className="font-medium">{firstName}</span>
+              </motion.h1>
+            </div>
+            <motion.div variants={itemVariants} className="flex gap-3">
+              <ActionButton
+                icon={Plus}
+                label="Post Job"
+                primary
+                onClick={() => navigate('/employer/jobs/create')}
+              />
+            </motion.div>
           </div>
-          <div className="text-center py-12 text-slate-500">
-            <svg className="w-16 h-16 mx-auto mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-            <p className="text-sm mb-3">You haven't posted any jobs yet</p>
-            <Link
-              to="/employer/jobs/create"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Post Your First Job
-            </Link>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+            <StatCard
+              label="Active Jobs"
+              value={stats.active}
+              subtext={`${stats.total} total jobs posted`}
+              color="bg-emerald-500"
+            />
+            <StatCard
+              label="Total Candidates"
+              value={stats.totalApplications}
+              subtext="Across all active listings"
+              color="bg-blue-500"
+            />
+            <StatCard
+              label="New Applications"
+              value={stats.newApplications}
+              subtext="Received in the last 24 hours"
+              color="bg-indigo-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-3">
+            {/* Main Content Column */}
+            <div className="lg:col-span-2 space-y-10">
+
+              {/* Recent Jobs Section */}
+              <section>
+                <div className="mb-6 flex items-center justify-between">
+                  <h2 className="text-lg font-medium text-slate-900">Recent Postings</h2>
+                  <button
+                    onClick={() => navigate('/employer/jobs')}
+                    className="group flex items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900"
+                  >
+                    View all <ArrowUpRight className="h-3 w-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {jobsLoading ? (
+                    <div className="col-span-full py-12 text-center text-sm text-slate-400 font-light">Loading...</div>
+                  ) : recentJobs.length === 0 ? (
+                    <div className="col-span-full rounded-xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
+                      <p className="text-sm text-slate-500">No jobs posted yet.</p>
+                      <button onClick={() => navigate('/employer/jobs/create')} className="mt-2 text-sm font-medium text-slate-900 underline underline-offset-4">Create your first job</button>
+                    </div>
+                  ) : (
+                    recentJobs.map((job) => (
+                      <div
+                        key={job._id}
+                        onClick={() => navigate(`/employer/jobs/${job._id}/applications`)}
+                        className="group relative flex cursor-pointer flex-col justify-between rounded-xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:border-slate-200 hover:shadow-md"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-500 transition-colors group-hover:bg-slate-900 group-hover:text-white">
+                            <Briefcase className="h-5 w-5" />
+                          </div>
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium tracking-wide
+                            ${job.status === 'active' ? 'bg-emerald-50 text-emerald-700' :
+                              job.status === 'draft' ? 'bg-slate-100 text-slate-600' :
+                                'bg-rose-50 text-rose-700'}`}>
+                            {job.status}
+                          </span>
+                        </div>
+
+                        <div className="mt-4">
+                          <h3 className="font-medium text-slate-900 group-hover:text-blue-600 transition-colors">{job.title}</h3>
+                          <p className="mt-1 text-sm text-slate-500 font-light">{job.department || 'General'}</p>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between border-t border-slate-50 pt-4 text-xs text-slate-400">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : 'N/A'}
+                          </span>
+                          <span className="font-medium text-slate-600 group-hover:text-slate-900">
+                            {job.applicationsCount || 0} Applicants
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              {/* Recent Applications Section */}
+              <section>
+                <div className="mb-6 flex items-center justify-between">
+                  <h2 className="text-lg font-medium text-slate-900">Latest Candidates</h2>
+                </div>
+
+                <div className="rounded-xl border border-slate-100 bg-white shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
+                  {appsLoading ? (
+                    <div className="py-12 text-center text-sm text-slate-400 font-light">Loading...</div>
+                  ) : recentApplications.length === 0 ? (
+                    <div className="py-12 text-center text-sm text-slate-400 font-light">No recent applications found.</div>
+                  ) : (
+                    <div className="divide-y divide-slate-50">
+                      {recentApplications.map((app) => (
+                        <div
+                          key={app._id}
+                          className="flex items-center justify-between p-5 transition-colors hover:bg-slate-50/50"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-sm font-medium text-slate-600">
+                              {app?.candidate?.user?.fullName?.charAt(0) || 'C'}
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-slate-900">{app?.candidate?.user?.fullName || 'Candidate'}</h3>
+                              <p className="text-xs text-slate-500 font-light">Applied for <span className="text-slate-700 font-medium">{app?.job?.title}</span></p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-xs text-slate-400 font-light">
+                              {getApplicationDate(app)}
+                            </span>
+                            <button
+                              onClick={() => navigate(`/employer/jobs/${app?.job?._id}/applications`)}
+                              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                            >
+                              Review
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            {/* Sidebar Column */}
+            <div className="space-y-8">
+              <motion.div variants={itemVariants} className="rounded-xl bg-slate-900 p-6 text-white shadow-lg">
+                <h3 className="text-lg font-light">Quick Actions</h3>
+                <div className="mt-6 space-y-3">
+                  <button
+                    onClick={() => navigate('/employer/jobs/create')}
+                    className="flex w-full items-center justify-between rounded-lg bg-white/10 px-4 py-3 text-sm font-medium transition-colors hover:bg-white/20"
+                  >
+                    <span>Post a Job</span>
+                    <Plus className="h-4 w-4 opacity-70" />
+                  </button>
+                  <button
+                    onClick={() => navigate('/employer/jobs')}
+                    className="flex w-full items-center justify-between rounded-lg bg-white/10 px-4 py-3 text-sm font-medium transition-colors hover:bg-white/20"
+                  >
+                    <span>Manage Listings</span>
+                    <Briefcase className="h-4 w-4 opacity-70" />
+                  </button>
+                </div>
+              </motion.div>
+
+              <motion.div variants={itemVariants} className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
+                <h3 className="text-sm font-medium text-slate-900">Pipeline Health</h3>
+                <div className="mt-6 space-y-6">
+                  {[
+                    { label: 'Active', value: stats.active, total: stats.total, color: 'bg-emerald-500' },
+                    { label: 'Drafts', value: stats.total - stats.active, total: stats.total, color: 'bg-slate-300' },
+                  ].map((item) => (
+                    <div key={item.label} className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">{item.label}</span>
+                        <span className="font-medium text-slate-900">{Math.round((item.value / (item.total || 1)) * 100)}%</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-slate-100">
+                        <div
+                          className={`h-1.5 rounded-full ${item.color}`}
+                          style={{ width: `${(item.value / (item.total || 1)) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
           </div>
         </motion.div>
       </main>
     </div>
   );
-}
+};
+
+export default Dashboard;

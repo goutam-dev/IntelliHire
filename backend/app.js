@@ -2,21 +2,22 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const mongoose = require('mongoose');
+const morgan = require('morgan');
 
 const authRoutes = require('./routes/auth.routes');
 const employerRoutes = require('./routes/employer.routes');
 const candidateRoutes = require('./routes/candidate.routes');
+const jobRoutes = require('./routes/jobRoutes');
 
 const app = express();
 
-// Trust proxy - needed for rate limiting behind proxies (ngrok, nginx, etc.)
-app.set('trust proxy', 1);
-
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+app.use(morgan('dev'));
 app.use(cookieParser());
 
 // CORS configuration
@@ -24,14 +25,6 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   credentials: true,
 }));
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/', limiter);
 
 // Body parsing middleware
 app.use(express.json());
@@ -44,10 +37,15 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/intellihi
 .then(() => console.log('✅ Connected to MongoDB'))
 .catch((err) => console.error('❌ MongoDB connection error:', err));
 
+// Serve uploaded files
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/employer', employerRoutes);
 app.use('/api/candidate', candidateRoutes);
+app.use('/api/jobs', jobRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

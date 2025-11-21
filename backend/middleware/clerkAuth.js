@@ -35,6 +35,44 @@ async function requireAuth(req, res, next) {
   }
 }
 
+// Optional auth middleware - populates req.auth if token exists, but doesn't block if missing
+async function optionalAuth(req, res, next) {
+  try {
+    const sessionToken = req.cookies.__session || req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!sessionToken) {
+      // No token provided, continue without auth
+      return next();
+    }
+
+    // Verify the JWT token
+    const payload = await verifyToken(sessionToken, {
+      secretKey: process.env.CLERK_SECRET_KEY,
+    });
+    
+    if (!payload || !payload.sub) {
+      // Invalid token, continue without auth
+      return next();
+    }
+
+    // Get user information from Clerk
+    const user = await clerkClient.users.getUser(payload.sub);
+    
+    req.auth = {
+      userId: payload.sub,
+      sessionId: payload.sid,
+      user: user,
+      role: user.publicMetadata?.role || null,
+    };
+
+    next();
+  } catch (error) {
+    // Auth failed, but continue anyway (optional auth)
+    console.error('Optional auth middleware error:', error);
+    next();
+  }
+}
+
 // Middleware to check user role
 function requireRole(...allowedRoles) {
   return (req, res, next) => {
@@ -52,4 +90,4 @@ function requireRole(...allowedRoles) {
   };
 }
 
-module.exports = { requireAuth, requireRole };
+module.exports = { requireAuth, optionalAuth, requireRole };

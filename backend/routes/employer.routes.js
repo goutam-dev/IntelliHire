@@ -17,12 +17,13 @@ router.get('/profile', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const profile = await EmployerProfile.findOne({ userId: user._id });
+    const profile = await EmployerProfile.findOne({ user: user._id }).populate('user', 'fullName email role phoneNumber');
     
-    res.json({
-      ...user.toObject(),
-      employerProfile: profile,
-    });
+    if (!profile) {
+      return res.status(404).json({ error: 'Employer profile not found' });
+    }
+    
+    res.json(profile);
   } catch (error) {
     console.error('Get employer profile error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });
@@ -41,13 +42,14 @@ router.put('/profile', async (req, res) => {
     }
 
     // Update user fields
-    const { fullName, phoneNumber, location } = req.body;
+    const { fullName, phoneNumber } = req.body;
     if (fullName) user.fullName = fullName;
+    if (phoneNumber) user.phoneNumber = phoneNumber;
     await user.save();
 
     // Update employer profile
     const profileUpdate = {};
-    const allowedFields = ['companyName', 'industry', 'companyWebsite', 'companySize', 'companyDescription', 'contactEmail', 'phoneNumber'];
+    const allowedFields = ['companyName', 'industry', 'companyWebsite', 'companySize', 'companyDescription', 'contactEmail', 'location', 'phoneNumber'];
     
     allowedFields.forEach(field => {
       if (req.body[field] !== undefined) {
@@ -56,15 +58,16 @@ router.put('/profile', async (req, res) => {
     });
 
     const profile = await EmployerProfile.findOneAndUpdate(
-      { userId: user._id },
+      { user: user._id },
       { $set: profileUpdate },
       { new: true, upsert: true }
-    );
+    ).populate('user', 'fullName email role phoneNumber');
 
-    res.json({
-      ...user.toObject(),
-      employerProfile: profile,
-    });
+    if (!profile) {
+      return res.status(404).json({ error: 'Employer profile not found' });
+    }
+
+    res.json(profile);
   } catch (error) {
     console.error('Update employer profile error:', error);
     res.status(500).json({ error: 'Failed to update profile' });
@@ -107,5 +110,28 @@ router.get('/dashboard/stats', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch dashboard stats' });
   }
 });
+
+// Application Management Routes
+const {
+  listApplicationsByJob,
+  updateApplicationStatus,
+  bulkUpdateStatus,
+  scheduleInterview,
+} = require('../controllers/applicationController');
+
+const {
+  uploadLogoMiddleware,
+  uploadLogo,
+  changePassword,
+} = require('../controllers/employerController');
+
+router.get('/jobs/:jobId/applications', listApplicationsByJob);
+router.patch('/applications/bulk/status', bulkUpdateStatus);
+router.patch('/applications/:id/status', updateApplicationStatus);
+router.post('/applications/:id/interview', scheduleInterview);
+
+// Employer Profile Extras
+router.post('/profile/logo', uploadLogoMiddleware, uploadLogo);
+// router.put('/profile/password', changePassword); // Not needed for Clerk
 
 module.exports = router;

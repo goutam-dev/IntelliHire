@@ -12,8 +12,13 @@ import { ForgotPassword } from './auth/ForgotPassword';
 import { SSOCallback } from './auth/SSOCallback';
 import { CompleteProfile } from './auth/CompleteProfile';
 import { VerifyRole } from './auth/VerifyRole';
-import { EmployerDashboard } from './pages/employer/Dashboard';
+import EmployerDashboard from './pages/employer/Dashboard';
 import { CandidateDashboard } from './pages/candidate/Dashboard';
+import CreateJobPage from './pages/CreateJobPage';
+import MyJobsPage from './pages/MyJobsPage';
+import EditJobPage from './pages/EditJobPage';
+import JobApplicationsPage from './pages/employer/JobApplicationsPage';
+import EmployerProfilePage from './pages/employer/EmployerProfilePage';
 
 function App() {
   return (
@@ -68,6 +73,46 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['employer']}>
                   <EmployerDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/employer/jobs"
+              element={
+                <ProtectedRoute allowedRoles={['employer']}>
+                  <MyJobsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/employer/jobs/create"
+              element={
+                <ProtectedRoute allowedRoles={['employer']}>
+                  <CreateJobPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/employer/jobs/:jobId/edit"
+              element={
+                <ProtectedRoute allowedRoles={['employer']}>
+                  <EditJobPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/employer/jobs/:jobId/applications"
+              element={
+                <ProtectedRoute allowedRoles={['employer']}>
+                  <JobApplicationsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/employer/profile"
+              element={
+                <ProtectedRoute allowedRoles={['employer']}>
+                  <EmployerProfilePage />
                 </ProtectedRoute>
               }
             />
