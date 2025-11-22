@@ -108,7 +108,7 @@ const JobApplicationsPage = () => {
         });
         if (!res.ok) throw new Error('Failed to schedule interview');
       } else {
-        const map = { shortlist: 'shortlisted', reject: 'rejected', accept: 'accepted' };
+        const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired' };
         const status = map[type];
         const res = await fetch(`${API_BASE}/employer/applications/${id}/status`, {
           method: 'PATCH',
@@ -130,7 +130,7 @@ const JobApplicationsPage = () => {
   const bulkAction = async (type, payload = {}) => {
     try {
       const token = await getToken();
-      const map = { shortlist: 'shortlisted', reject: 'rejected', accept: 'accepted', interview: 'interview' };
+      const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired', interview: 'Interview Scheduled' };
       const status = map[type];
       const res = await fetch(`${API_BASE}/employer/applications/bulk/status`, {
         method: 'PATCH',
@@ -201,10 +201,10 @@ const JobApplicationsPage = () => {
 
   const stats = useMemo(() => {
     const total = applications.length;
-    const shortlisted = applications.filter(a => a.status === 'shortlisted').length;
-    const interviewed = applications.filter(a => a.status === 'interview').length;
-    const accepted = applications.filter(a => a.status === 'accepted').length;
-    const rejected = applications.filter(a => a.status === 'rejected').length;
+    const shortlisted = applications.filter(a => a.status === 'Shortlisted').length;
+    const interviewed = applications.filter(a => a.status === 'Interview Scheduled').length;
+    const accepted = applications.filter(a => a.status === 'Hired').length;
+    const rejected = applications.filter(a => a.status === 'Rejected').length;
     return { total, shortlisted, interviewed, accepted, rejected };
   }, [applications]);
 

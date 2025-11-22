@@ -1,142 +1,54 @@
 const express = require('express');
 const router = express.Router();
-const { requireAuth, requireRole } = require('../middleware/clerkAuth');
+const candidateController = require('../controllers/candidateController');
+const auth = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
-// All candidate routes require authentication and candidate role
-router.use(requireAuth);
-router.use(requireRole('candidate'));
+// All routes require authentication
+router.use(auth);
 
-// Get candidate profile
-router.get('/profile', async (req, res) => {
-  try {
-    const User = require('../models/User');
-    const CandidateProfile = require('../models/CandidateProfile');
-    
-    const user = await User.findOne({ clerkUserId: req.auth.userId });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+// ==========================================
+// Profile Routes
+// ==========================================
+router.get('/profile', candidateController.getCandidateProfile);
+router.put('/profile', candidateController.updateBasicInfo);
 
-    const profile = await CandidateProfile.findOne({ userId: user._id });
-    
-    res.json({
-      ...user.toObject(),
-      candidateProfile: profile,
-      profileCompletion: user.profileCompletion,
-    });
-  } catch (error) {
-    console.error('Get candidate profile error:', error);
-    res.status(500).json({ error: 'Failed to fetch profile' });
-  }
-});
+// ==========================================
+// Resume Routes
+// ==========================================
+router.post('/resume', upload.single('resume'), candidateController.uploadResume);
+router.delete('/resume', candidateController.deleteResume);
 
-// Update candidate profile
-router.put('/profile', async (req, res) => {
-  try {
-    const User = require('../models/User');
-    const CandidateProfile = require('../models/CandidateProfile');
-    
-    const user = await User.findOne({ clerkUserId: req.auth.userId });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+// ==========================================
+// Photo Routes
+// ==========================================
+router.post('/photo', upload.single('profilePhoto'), candidateController.uploadPhoto);
+router.delete('/photo', candidateController.deletePhoto);
 
-    // Update user fields
-    const { fullName, phoneNumber, location } = req.body;
-    if (fullName) user.fullName = fullName;
-    
-    // Update candidate profile
-    const profileUpdate = {};
-    const allowedFields = [
-      'professionalHeadline',
-      'phoneNumber',
-      'currentLocation',
-      'linkedInProfile',
-      'portfolioWebsite',
-      'resumeUrl',
-      'education',
-      'workExperience',
-      'skills',
-      'professionalSummary'
-    ];
-    
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        profileUpdate[field] = req.body[field];
-      }
-    });
+// ==========================================
+// Education Routes
+// ==========================================
+router.post('/education', candidateController.addEducation);
+router.put('/education/:educationId', candidateController.updateEducation);
+router.delete('/education/:educationId', candidateController.deleteEducation);
 
-    const profile = await CandidateProfile.findOneAndUpdate(
-      { userId: user._id },
-      { $set: profileUpdate },
-      { new: true, upsert: true }
-    );
+// ==========================================
+// Experience Routes
+// ==========================================
+router.post('/experience', candidateController.addExperience);
+router.put('/experience/:experienceId', candidateController.updateExperience);
+router.delete('/experience/:experienceId', candidateController.deleteExperience);
 
-    // Recalculate profile completion
-    const completion = {
-      basicInfo: true, // Already complete after signup
-      resume: !!profile.resumeUrl,
-      education: profile.education && profile.education.length > 0,
-      experience: profile.workExperience && profile.workExperience.length > 0,
-      skills: profile.skills && profile.skills.length >= 3,
-    };
+// ==========================================
+// Skills Routes
+// ==========================================
+router.put('/skills', candidateController.updateSkills);
 
-    const completionCount = Object.values(completion).filter(Boolean).length;
-    const percentage = (completionCount / 5) * 100;
-
-    user.profileCompletion = {
-      ...completion,
-      percentage,
-    };
-    
-    await user.save();
-
-    res.json({
-      ...user.toObject(),
-      candidateProfile: profile,
-      profileCompletion: user.profileCompletion,
-    });
-  } catch (error) {
-    console.error('Update candidate profile error:', error);
-    res.status(500).json({ error: 'Failed to update profile' });
-  }
-});
-
-// Get candidate dashboard stats
-router.get('/dashboard/stats', async (req, res) => {
-  try {
-    const User = require('../models/User');
-    const JobApplication = require('../models/JobApplication');
-    
-    const user = await User.findOne({ clerkUserId: req.auth.userId });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const totalApplications = await JobApplication.countDocuments({ candidateId: user._id });
-    const pendingApplications = await JobApplication.countDocuments({ 
-      candidateId: user._id, 
-      status: 'applied' 
-    });
-    const shortlistedApplications = await JobApplication.countDocuments({ 
-      candidateId: user._id, 
-      status: 'shortlisted' 
-    });
-    const rejectedApplications = await JobApplication.countDocuments({ 
-      candidateId: user._id, 
-      status: 'rejected' 
-    });
-
-    res.json({
-      totalApplications,
-      pending: pendingApplications,
-      shortlisted: shortlistedApplications,
-      rejected: rejectedApplications,
-    });
-  } catch (error) {
-    console.error('Get dashboard stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
-  }
-});
+// ==========================================
+// Settings & Stats Routes
+// ==========================================
+router.put('/preferences', candidateController.updateNotificationPreferences);
+router.get('/completion', candidateController.getProfileCompletion);
+router.get('/dashboard/stats', candidateController.getDashboardStats);
 
 module.exports = router;

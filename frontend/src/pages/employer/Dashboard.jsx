@@ -83,7 +83,7 @@ const Dashboard = () => {
   const dispatch = useAppDispatch();
   const { getToken } = useAuth();
   const { signOut } = useClerk();
-  const { jobs, jobsLoading } = useAppSelector((state) => state.job);
+  const { jobs, jobsLoading } = useAppSelector((state) => state.jobs);
   const { profile, loading: profileLoading } = useAppSelector((state) => state.employer);
 
   const [stats, setStats] = useState({

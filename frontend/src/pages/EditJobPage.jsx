@@ -66,7 +66,7 @@ const EditJobPage = () => {
     currentJobError,
     loading,
     validationErrors,
-  } = useAppSelector((state) => state.job);
+  } = useAppSelector((state) => state.jobs);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -91,7 +91,7 @@ const EditJobPage = () => {
     const loadJob = async () => {
       const token = await getToken();
       dispatch(fetchEmployerProfile({ token }));
-      dispatch(fetchJobById({ jobId, token }));
+      dispatch(fetchJobById(jobId));
     };
     loadJob();
     return () => {

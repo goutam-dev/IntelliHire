@@ -59,7 +59,7 @@ const MyJobsPage = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { getToken } = useAuth();
-  const { jobs, jobsLoading, jobsError } = useAppSelector((state) => state.job);
+  const { jobs, jobsLoading, jobsError } = useAppSelector((state) => state.jobs);
   const { profile: employerProfile } = useAppSelector((state) => state.employer);
 
   const [searchTerm, setSearchTerm] = useState('');

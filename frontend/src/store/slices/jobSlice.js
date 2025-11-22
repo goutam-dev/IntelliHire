@@ -1,126 +1,111 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import jobApi from '../../services/api/jobApi';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+/**
+ * Job Redux Slice - manages job state
+ * Uses centralized API service for all HTTP requests
+ */
 
-const handleResponse = async (response, fallbackMessage) => {
-  if (!response.ok) {
-    let message = fallbackMessage;
-    try {
-      const error = await response.json();
-      message = error?.message || message;
-    } catch {
-      // ignore
-    }
-    throw new Error(message);
-  }
-  return response.status === 204 ? null : response.json();
-};
+// ==========================================
+// Async Thunks
+// ==========================================
 
-// Async thunks for API calls
 export const fetchEmployerJobs = createAsyncThunk(
   'job/fetchEmployerJobs',
-  async ({ token }, { rejectWithValue }) => {
+  async (filters = {}, { rejectWithValue }) => {
     try {
-      const url = new URL(`${API_BASE_URL}/jobs`);
-      const response = await fetch(url.toString(), {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      return await handleResponse(response, 'Failed to fetch jobs');
+      return await jobApi.getJobs(filters);
     } catch (error) {
-      return rejectWithValue(error.message || 'Failed to fetch jobs');
+      return rejectWithValue(error.response?.data?.error || error.message);
     }
   }
 );
 
-export const createJob = createAsyncThunk(
-  'job/createJob',
-  async ({ jobData, token }, { rejectWithValue }) => {
+export const fetchJobs = createAsyncThunk(
+  'job/fetchJobs',
+  async (filters = {}, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/jobs`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(jobData),
-      });
-      return await handleResponse(response, 'Failed to create job');
+      return await jobApi.getJobs(filters);
     } catch (error) {
-      return rejectWithValue(error.message || 'Failed to create job');
-    }
-  }
-);
-
-export const updateJob = createAsyncThunk(
-  'job/updateJob',
-  async ({ jobId, jobData, token }, { rejectWithValue }) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(jobData),
-      });
-      return await handleResponse(response, 'Failed to update job');
-    } catch (error) {
-      return rejectWithValue(error.message || 'Failed to update job');
+      return rejectWithValue(error.response?.data?.error || error.message);
     }
   }
 );
 
 export const fetchJobById = createAsyncThunk(
   'job/fetchJobById',
-  async ({ jobId, token }, { rejectWithValue }) => {
+  async (jobId, { rejectWithValue }) => {
     try {
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`, { headers });
-      return await handleResponse(response, 'Failed to load job');
+      return await jobApi.getJobById(jobId);
     } catch (error) {
-      return rejectWithValue(error.message || 'Failed to load job');
+      return rejectWithValue(error.response?.data?.error || error.message);
+    }
+  }
+);
+
+export const createJob = createAsyncThunk(
+  'job/createJob',
+  async (jobData, { rejectWithValue }) => {
+    try {
+      return await jobApi.createJob(jobData);
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || error.message);
+    }
+  }
+);
+
+export const updateJob = createAsyncThunk(
+  'job/updateJob',
+  async ({ jobId, jobData }, { rejectWithValue }) => {
+    try {
+      return await jobApi.updateJob(jobId, jobData);
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || error.message);
     }
   }
 );
 
 export const updateJobStatus = createAsyncThunk(
   'job/updateJobStatus',
-  async ({ jobId, status, token }, { rejectWithValue }) => {
+  async ({ jobId, status }, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status }),
-      });
-      return await handleResponse(response, 'Failed to update job status');
+      return await jobApi.updateJobStatus(jobId, status);
     } catch (error) {
-      return rejectWithValue(error.message || 'Failed to update job status');
+      return rejectWithValue(error.response?.data?.error || error.message);
     }
   }
 );
 
 export const deleteJob = createAsyncThunk(
   'job/deleteJob',
-  async ({ jobId, token }, { rejectWithValue }) => {
+  async (jobId, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      await handleResponse(response, 'Failed to delete job');
+      await jobApi.deleteJob(jobId);
       return { id: jobId };
     } catch (error) {
-      return rejectWithValue(error.message || 'Failed to delete job');
+      return rejectWithValue(error.response?.data?.error || error.message);
     }
   }
 );
+
+// ==========================================
+// Slice
+// ==========================================
+
+export const fetchFilterOptions = createAsyncThunk(
+  'job/fetchFilterOptions',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await jobApi.getFilterOptions();
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || error.message);
+    }
+  }
+);
+
+// ==========================================
+// Slice
+// ==========================================
 
 const initialState = {
   currentJob: null,
@@ -132,6 +117,34 @@ const initialState = {
   jobsError: null,
   currentJobLoading: false,
   currentJobError: null,
+  
+  // Filter state
+  filterOptions: {
+    locations: [],
+    departments: [],
+    experienceLevels: [],
+    employmentTypes: []
+  },
+  pagination: {
+    currentPage: 1,
+    totalPages: 1,
+    totalJobs: 0,
+    hasNextPage: false,
+    hasPrevPage: false
+  },
+  filters: {
+    search: '',
+    location: '',
+    department: '',
+    experienceLevel: '',
+    employmentType: '',
+    salaryMin: '',
+    salaryMax: '',
+    postedDate: '',
+    sortBy: 'createdAt',
+    sortOrder: 'desc'
+  },
+  filtersLoading: false
 };
 
 const jobSlice = createSlice({
@@ -152,9 +165,34 @@ const jobSlice = createSlice({
     clearValidationErrors: (state) => {
       state.validationErrors = {};
     },
+    // Filter reducers
+    setFilters: (state, action) => {
+      state.filters = { ...state.filters, ...action.payload };
+    },
+    resetFilters: (state) => {
+      state.filters = {
+        search: '',
+        location: '',
+        department: '',
+        experienceLevel: '',
+        employmentType: '',
+        salaryMin: '',
+        salaryMax: '',
+        postedDate: '',
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
+      };
+    },
+    setCurrentPage: (state, action) => {
+      state.pagination.currentPage = action.payload;
+    },
+    setSearchTerm: (state, action) => {
+      state.filters.search = action.payload;
+    }
   },
   extraReducers: (builder) => {
     builder
+      // Fetch job by ID
       .addCase(fetchJobById.pending, (state) => {
         state.currentJobLoading = true;
         state.currentJobError = null;
@@ -167,7 +205,7 @@ const jobSlice = createSlice({
         state.currentJobLoading = false;
         state.currentJobError = action.payload || 'Failed to load job';
       })
-      // Fetch jobs
+      // Fetch employer jobs
       .addCase(fetchEmployerJobs.pending, (state) => {
         state.jobsLoading = true;
         state.jobsError = null;
@@ -180,6 +218,42 @@ const jobSlice = createSlice({
       .addCase(fetchEmployerJobs.rejected, (state, action) => {
         state.jobsLoading = false;
         state.jobsError = action.payload || 'Failed to fetch jobs';
+      })
+      // Fetch public jobs
+      .addCase(fetchJobs.pending, (state) => {
+        state.jobsLoading = true;
+        state.jobsError = null;
+      })
+      .addCase(fetchJobs.fulfilled, (state, action) => {
+        state.jobsLoading = false;
+        // Handle pagination response structure if present, otherwise assume array
+        if (action.payload.jobs) {
+            state.jobs = action.payload.jobs;
+            state.pagination = action.payload.pagination;
+            // Merge filters if returned
+            if (action.payload.filters) {
+                state.filters = { ...state.filters, ...action.payload.filters };
+            }
+        } else {
+            state.jobs = action.payload || [];
+        }
+        state.jobsError = null;
+      })
+      .addCase(fetchJobs.rejected, (state, action) => {
+        state.jobsLoading = false;
+        state.jobsError = action.payload || 'Failed to fetch jobs';
+      })
+      // Fetch filter options
+      .addCase(fetchFilterOptions.pending, (state) => {
+        state.filtersLoading = true;
+      })
+      .addCase(fetchFilterOptions.fulfilled, (state, action) => {
+        state.filtersLoading = false;
+        state.filterOptions = action.payload;
+      })
+      .addCase(fetchFilterOptions.rejected, (state, action) => {
+        state.filtersLoading = false;
+        // Don't set global error for filter options failure
       })
       // Create job
       .addCase(createJob.pending, (state) => {
@@ -209,6 +283,11 @@ const jobSlice = createSlice({
         state.currentJob = action.payload;
         state.error = null;
         state.validationErrors = {};
+        // Update in jobs list if present
+        const index = state.jobs.findIndex(job => job._id === action.payload._id);
+        if (index !== -1) {
+          state.jobs[index] = action.payload;
+        }
       })
       .addCase(updateJob.rejected, (state, action) => {
         state.loading = false;
@@ -219,12 +298,23 @@ const jobSlice = createSlice({
         const updatedJob = action.payload;
         const updatedJobId = updatedJob?._id || action.meta.arg.jobId;
         state.jobs = state.jobs.map((job) =>
-          job._id === updatedJobId ? { ...job, status: updatedJob?.status ?? action.meta.arg.status } : job
+          job._id === updatedJobId 
+            ? { ...job, status: updatedJob?.status ?? action.meta.arg.status } 
+            : job
         );
+        // Update current job if it's the same
+        if (state.currentJob?._id === updatedJobId) {
+          state.currentJob.status = updatedJob?.status ?? action.meta.arg.status;
+        }
       })
+      // Delete job
       .addCase(deleteJob.fulfilled, (state, action) => {
-        const deletedJobId = action.payload.id || action.meta.arg;
-        state.jobs = state.jobs.filter((job) => job._id !== deletedJobId && job.id !== deletedJobId);
+        const deletedJobId = action.payload.id;
+        state.jobs = state.jobs.filter((job) => job._id !== deletedJobId);
+        // Clear current job if it was deleted
+        if (state.currentJob?._id === deletedJobId) {
+          state.currentJob = null;
+        }
       });
   },
 });
@@ -234,7 +324,10 @@ export const {
   clearJobData,
   setValidationErrors,
   clearValidationErrors,
+  setFilters,
+  resetFilters,
+  setCurrentPage,
+  setSearchTerm
 } = jobSlice.actions;
 
 export default jobSlice.reducer;
-

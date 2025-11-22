@@ -1,11 +1,16 @@
 require('dotenv').config();
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const helmet = require('helmet');
-const cookieParser = require('cookie-parser');
-const mongoose = require('mongoose');
-const morgan = require('morgan');
 
+// Import configuration and utilities
+const config = require('./config');
+const { connectDatabase } = require('./config/database');
+const { errorHandler } = require('./utils/errorHandler');
+const logger = require('./utils/logger');
+
+// Import routes
 const authRoutes = require('./routes/auth.routes');
 const employerRoutes = require('./routes/employer.routes');
 const candidateRoutes = require('./routes/candidate.routes');
@@ -13,64 +18,70 @@ const jobRoutes = require('./routes/jobRoutes');
 
 const app = express();
 
-// Security middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-app.use(morgan('dev'));
-app.use(cookieParser());
+// ======================
+// Database Connection
+// ======================
+connectDatabase();
 
-// CORS configuration
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true,
-}));
-
-// Body parsing middleware
+// ======================
+// Middleware
+// ======================
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
+app.use(
+  cors({
+    origin: config.corsOrigin,
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/intellihire', {
-  // useNewUrlParser and useUnifiedTopology are no longer needed in Mongoose 6+
-})
-.then(() => console.log('✅ Connected to MongoDB'))
-.catch((err) => console.error('❌ MongoDB connection error:', err));
+// ======================
+// Health Check
+// ======================
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ======================
+// API Routes
+// ======================
+app.use('/api/auth', authRoutes);
+app.use('/api/employer', employerRoutes);
+app.use('/api/candidate', candidateRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/job-applications', require('./routes/jobApplication.routes'));
 
 // Serve uploaded files
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/employer', employerRoutes);
-app.use('/api/candidate', candidateRoutes);
-app.use('/api/jobs', jobRoutes);
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// 404 handler
+// ======================
+// 404 Handler
+// ======================
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
+// ======================
+// Error Handling
+// ======================
+app.use(errorHandler);
 
-const PORT = process.env.PORT || 4000;
+// ======================
+// Start Server
+// ======================
+const PORT = config.port;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`🚀 Server running on port ${PORT}`);
+  logger.info(`📍 Environment: ${config.nodeEnv}`);
+  logger.info(`🌐 CORS origin: ${config.corsOrigin}`);
 });
 
 module.exports = app;

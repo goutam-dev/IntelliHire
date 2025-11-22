@@ -13,6 +13,15 @@ const CandidateModal = ({ open, onClose, application }) => {
   const candidate = application?.candidate;
   const user = candidate?.user;
 
+  // Construct resume URL
+  const resumePath = candidate?.resume?.filePath || candidate?.resume?.fileUrl || 
+                      application?.resume?.filePath || application?.resume?.fileUrl;
+  const resumeUrl = resumePath && !resumePath.startsWith('http') 
+    ? `http://localhost:4000/${resumePath}` 
+    : resumePath || '#';
+  const resumeName = candidate?.resume?.fileName || application?.resume?.fileName || 
+                     application?.resume?.originalName || 'View resume';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-2xl rounded-xl bg-white border border-slate-200 shadow-xl flex flex-col max-h-[90vh]">
@@ -36,11 +45,11 @@ const CandidateModal = ({ open, onClose, application }) => {
 
           <Section title="Resume">
             <a
-              href={candidate?.resume?.fileUrl || application?.resume?.fileUrl || '#'}
+              href={resumeUrl}
               target="_blank"
               className="text-sm text-blue-700 hover:text-blue-900"
             >
-              {candidate?.resume?.fileName || application?.resume?.fileName || 'View resume'}
+              {resumeName}
             </a>
           </Section>
 

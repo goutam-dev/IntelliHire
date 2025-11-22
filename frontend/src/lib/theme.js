@@ -105,11 +105,14 @@ export const theme = {
   },
   // Badge/Status colors
   status: {
-    applied: 'bg-blue-100 text-blue-700',
-    shortlisted: 'bg-orange-100 text-orange-700',
-    interview: 'bg-purple-100 text-purple-700',
-    accepted: 'bg-green-100 text-green-700',
-    rejected: 'bg-red-100 text-red-700',
+    'Applied': 'bg-blue-100 text-blue-700',
+    'Under Review': 'bg-yellow-100 text-yellow-700',
+    'Shortlisted': 'bg-orange-100 text-orange-700',
+    'Interview Scheduled': 'bg-purple-100 text-purple-700',
+    'Hired': 'bg-green-100 text-green-700',
+    'Rejected': 'bg-red-100 text-red-700',
+    'Withdrawn': 'bg-gray-100 text-gray-700',
+    // Job statuses
     active: 'bg-green-100 text-green-700',
     pending: 'bg-orange-100 text-orange-700',
     closed: 'bg-slate-100 text-slate-700',

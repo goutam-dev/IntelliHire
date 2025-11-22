@@ -1,4 +1,5 @@
 const { clerkClient, verifyToken } = require('@clerk/clerk-sdk-node');
+const logger = require('../utils/logger');
 
 // Middleware to verify Clerk authentication
 async function requireAuth(req, res, next) {
@@ -30,7 +31,7 @@ async function requireAuth(req, res, next) {
 
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    logger.error('Auth middleware error:', error);
     return res.status(401).json({ error: 'Unauthorized - Authentication failed' });
   }
 }
@@ -68,7 +69,7 @@ async function optionalAuth(req, res, next) {
     next();
   } catch (error) {
     // Auth failed, but continue anyway (optional auth)
-    console.error('Optional auth middleware error:', error);
+    logger.error('Optional auth middleware error:', error);
     next();
   }
 }

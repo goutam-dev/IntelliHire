@@ -14,7 +14,14 @@ import { SSOCallback } from './auth/SSOCallback';
 import { CompleteProfile } from './auth/CompleteProfile';
 import { VerifyRole } from './auth/VerifyRole';
 import EmployerDashboard from './pages/employer/Dashboard';
-import { CandidateDashboard } from './pages/candidate/Dashboard';
+import CandidateDashboard from './pages/candidate/Dashboard';
+import BrowseJobs from './pages/candidate/BrowseJobs';
+import MyApplications from './pages/candidate/MyApplications';
+import Profile from './pages/candidate/Profile';
+import JobApplication from './pages/candidate/JobApplication';
+import ApplicationDetails from './pages/candidate/ApplicationDetails';
+import JobDetails from './pages/candidate/JobDetails';
+import CandidateLayout from './components/layout/CandidateLayout';
 import CreateJobPage from './pages/CreateJobPage';
 import MyJobsPage from './pages/MyJobsPage';
 import EditJobPage from './pages/EditJobPage';
@@ -121,13 +128,24 @@ function App() {
 
             {/* Candidate Routes */}
             <Route
-              path="/candidate/dashboard"
+              path="/candidate"
               element={
                 <ProtectedRoute allowedRoles={['candidate']}>
-                  <CandidateDashboard />
+                  <CandidateLayout />
                 </ProtectedRoute>
               }
-            />
+            >
+              <Route path="dashboard" element={<CandidateDashboard />} />
+              <Route path="jobs" element={<BrowseJobs />} />
+              <Route path="jobs/:jobId" element={<JobDetails />} />
+              <Route path="applications" element={<MyApplications />} />
+              <Route path="applications/:applicationId" element={<ApplicationDetails />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="apply/:jobId" element={<JobApplication />} />
+              
+              {/* Redirect /candidate to /candidate/dashboard */}
+              <Route index element={<Navigate to="dashboard" replace />} />
+            </Route>
 
             {/* Catch all - redirect to home */}
             <Route path="*" element={<Navigate to="/" replace />} />

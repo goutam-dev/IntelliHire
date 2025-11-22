@@ -3,13 +3,19 @@ import authReducer from './slices/authSlice';
 import profileReducer from './slices/profileSlice';
 import employerReducer from './slices/employerSlice';
 import jobReducer from './slices/jobSlice';
+import candidateReducer from './slices/candidateSlice';
+import jobApplicationsReducer from './slices/jobApplicationsSlice';
+import profileCompletionReducer from './slices/profileCompletionSlice';
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
     profile: profileReducer,
     employer: employerReducer,
-    job: jobReducer,
+    jobs: jobReducer,
+    candidate: candidateReducer,
+    jobApplications: jobApplicationsReducer,
+    profileCompletion: profileCompletionReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

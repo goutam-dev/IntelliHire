@@ -1,97 +1,20 @@
+const employerService = require('../services/employerService');
+const {
+  asyncHandler,
+  NotFoundError,
+  ValidationError,
+} = require('../utils/errorHandler');
 const path = require('path');
 const fs = require('fs');
-const mongoose = require('mongoose');
 const multer = require('multer');
-const EmployerProfile = require('../models/EmployerProfile');
-const User = require('../models/User');
 
-const DEFAULT_EMPLOYER_ID = process.env.DEFAULT_EMPLOYER_ID || '000000000000000000000000';
+/**
+ * Employer controller - thin controller that delegates to service layer
+ */
 
-const resolveEmployerId = (value) => {
-  const candidate = value || DEFAULT_EMPLOYER_ID;
-  if (!candidate || !mongoose.Types.ObjectId.isValid(candidate)) {
-    return null;
-  }
-  return candidate;
-};
-
-exports.getEmployerProfile = async (req, res, next) => {
-  try {
-    const employerId = resolveEmployerId(req.params.employerId || req.query.employerId);
-    if (!employerId) {
-      return res.status(400).json({ message: 'A valid employer identifier is required' });
-    }
-
-    const profile = await EmployerProfile.findById(employerId).populate('user', 'fullName email role');
-    if (!profile) {
-      return res.status(404).json({ message: 'Employer profile not found' });
-    }
-    res.json(profile);
-  } catch (error) {
-    next(error);
-  }
-};
-
-exports.updateEmployerProfile = async (req, res, next) => {
-  try {
-    const employerId = resolveEmployerId(req.params.employerId || req.body.employerId);
-    if (!employerId) {
-      return res.status(400).json({ message: 'A valid employer identifier is required' });
-    }
-
-    const update = {
-      companyName: req.body.companyName,
-      industry: req.body.industry,
-      companyDescription: req.body.companyDescription,
-      companyWebsite: req.body.companyWebsite,
-      companySize: req.body.companySize,
-      contactEmail: req.body.contactEmail,
-      phoneNumber: req.body.phoneNumber,
-      location: req.body.location,
-      socialLinks: req.body.socialLinks,
-      logoUrl: req.body.logoUrl,
-      notificationSettings: req.body.notificationSettings,
-    };
-
-    const profile = await EmployerProfile.findByIdAndUpdate(employerId, update, {
-      new: true,
-      runValidators: true,
-    }).populate('user', 'fullName email role');
-
-    if (!profile) {
-      return res.status(404).json({ message: 'Employer profile not found' });
-    }
-
-    res.json(profile);
-  } catch (error) {
-    next(error);
-  }
-};
-
-exports.updateNotificationSettings = async (req, res, next) => {
-  try {
-    const employerId = resolveEmployerId(req.params.employerId || req.body.employerId);
-    if (!employerId) {
-      return res.status(400).json({ message: 'A valid employer identifier is required' });
-    }
-
-    const profile = await EmployerProfile.findByIdAndUpdate(
-      employerId,
-      { notificationSettings: req.body.notificationSettings },
-      { new: true, runValidators: true }
-    );
-
-    if (!profile) {
-      return res.status(404).json({ message: 'Employer profile not found' });
-    }
-
-    res.json(profile.notificationSettings);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Multer setup for logo uploads
+// ========================================
+// Multer Setup for Logo Uploads
+// ========================================
 const uploadDir = path.join(__dirname, '..', 'uploads', 'logos');
 fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -101,7 +24,9 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const ext = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9-_]/g, '');
+    const base = path
+      .basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9-_]/g, '');
     cb(null, `${base}-${Date.now()}${ext}`);
   },
 });
@@ -113,36 +38,79 @@ const fileFilter = (req, file, cb) => {
 
 exports.uploadLogoMiddleware = multer({ storage, fileFilter }).single('logo');
 
-exports.uploadLogo = async (req, res, next) => {
-  try {
-    // Find user from Clerk authentication
-    const user = await User.findOne({ clerkUserId: req.auth.userId });
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+// ========================================
+// Controller Methods
+// ========================================
 
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
-    }
+/**
+ * Get employer profile
+ */
+exports.getEmployerProfile = asyncHandler(async (req, res) => {
+  const profile = await employerService.getEmployerProfileByClerkId(
+    req.auth.userId
+  );
+  res.json(profile);
+});
 
-    const relativeUrl = `/uploads/logos/${req.file.filename}`;
+/**
+ * Update employer profile
+ */
+exports.updateEmployerProfile = asyncHandler(async (req, res) => {
+  const profile = await employerService.updateEmployerProfile(
+    req.auth.userId,
+    req.body
+  );
+  res.json(profile);
+});
 
-    // Find and update the employer profile
-    const profile = await EmployerProfile.findOneAndUpdate(
-      { user: user._id },
-      { logoUrl: relativeUrl },
-      { new: true, runValidators: true, upsert: true }
-    );
+/**
+ * Get dashboard statistics
+ */
+exports.getDashboardStats = asyncHandler(async (req, res) => {
+  const stats = await employerService.getDashboardStats(req.auth.userId);
+  res.json(stats);
+});
 
-    if (!profile) {
-      return res.status(404).json({ message: 'Employer profile not found' });
-    }
+/**
+ * Update notification settings
+ */
+exports.updateNotificationSettings = asyncHandler(async (req, res) => {
+  const EmployerProfile = require('../models/EmployerProfile');
+  const User = require('../models/User');
 
-    res.status(201).json({ logoUrl: relativeUrl });
-  } catch (error) {
-    next(error);
+  const user = await User.findOne({ clerkUserId: req.auth.userId });
+  if (!user) {
+    throw new NotFoundError('User not found');
   }
-};
+
+  const profile = await EmployerProfile.findOneAndUpdate(
+    { user: user._id },
+    { notificationSettings: req.body.notificationSettings },
+    { new: true, runValidators: true }
+  );
+
+  if (!profile) {
+    throw new NotFoundError('Employer profile not found');
+  }
+
+  res.json(profile.notificationSettings);
+});
+
+/**
+ * Upload employer logo
+ */
+exports.uploadLogo = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new ValidationError('No file uploaded');
+  }
+
+  const result = await employerService.uploadEmployerLogo(
+    req.auth.userId,
+    req.file.filename
+  );
+
+  res.status(201).json(result);
+});
 
 exports.changePassword = async (req, res, next) => {
   try {

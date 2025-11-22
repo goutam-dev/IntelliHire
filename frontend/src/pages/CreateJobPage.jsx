@@ -54,7 +54,7 @@ const CreateJobPage = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { getToken } = useAuth();
-  const { loading, error, validationErrors } = useAppSelector((state) => state.job);
+  const { loading, error, validationErrors } = useAppSelector((state) => state.jobs);
   const { profile: employerProfile } = useAppSelector((state) => state.employer);
 
   const [formData, setFormData] = useState({
@@ -312,8 +312,7 @@ const CreateJobPage = () => {
     };
 
     try {
-      const token = await getToken();
-      const result = await dispatch(createJob({ jobData, token })).unwrap();
+      const result = await dispatch(createJob(jobData)).unwrap();
       // Navigate to jobs list or job detail page
       navigate('/employer/jobs');
     } catch (err) {
@@ -346,8 +345,7 @@ const CreateJobPage = () => {
     };
 
     try {
-      const token = await getToken();
-      const result = await dispatch(createJob({ jobData, token })).unwrap();
+      const result = await dispatch(createJob(jobData)).unwrap();
       // Navigate to jobs list or job detail page
       navigate('/employer/jobs');
     } catch (err) {
@@ -359,12 +357,6 @@ const CreateJobPage = () => {
   const handleCancel = () => {
     dispatch(clearJobData());
     navigate(-1);
-  };
-
-  const handleLogout = () => {
-    // TODO: Implement logout logic (clear auth state, etc.)
-    console.log('Logout clicked');
-    navigate('/');
   };
 
   return (

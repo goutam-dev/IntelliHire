@@ -11,7 +11,7 @@ const EducationSchema = new Schema(
     grade: { type: String },
     description: { type: String }
   },
-  { _id: false }
+  { _id: true }
 );
 
 const ExperienceSchema = new Schema(
@@ -19,12 +19,14 @@ const ExperienceSchema = new Schema(
     title: { type: String, required: true },
     companyName: { type: String, required: true },
     location: { type: String },
-    startDate: { type: Date, required: true },
+    startDate: { type: Date },
     endDate: { type: Date },
     currentlyWorking: { type: Boolean, default: false },
-    description: { type: String }
+    description: { type: String },
+    experienceType: { type: String, enum: ['specific', 'years'], default: 'specific' },
+    yearsOfExperience: { type: Number }
   },
-  { _id: false }
+  { _id: true }
 );
 
 const ResumeSchema = new Schema(
@@ -32,6 +34,27 @@ const ResumeSchema = new Schema(
     fileName: { type: String },
     fileUrl: { type: String },
     uploadedAt: { type: Date }
+  },
+  { _id: false }
+);
+
+const ProfileCompletionSchema = new Schema(
+  {
+    basicInfo: { type: Boolean, default: false },
+    resume: { type: Boolean, default: false },
+    education: { type: Boolean, default: false },
+    experience: { type: Boolean, default: false },
+    skills: { type: Boolean, default: false },
+    percentage: { type: Number, default: 0 }
+  },
+  { _id: false }
+);
+
+const NotificationPreferencesSchema = new Schema(
+  {
+    applicationUpdates: { type: Boolean, default: true },
+    jobRecommendations: { type: Boolean, default: true },
+    marketingEmails: { type: Boolean, default: false }
   },
   { _id: false }
 );
@@ -52,8 +75,33 @@ const CandidateProfileSchema = new Schema(
     experience: { type: [ExperienceSchema], default: [] },
     skills: { type: [String], default: [] },
     profilePhotoUrl: { type: String },
+    
+    // Notification Preferences
+    notificationPreferences: {
+      type: NotificationPreferencesSchema,
+      default: () => ({
+        applicationUpdates: true,
+        jobRecommendations: true,
+        marketingEmails: false
+      })
+    },
+    
+    // Profile Completion Tracking
+    profileCompletion: { 
+      type: ProfileCompletionSchema, 
+      default: () => ({
+        basicInfo: false,
+        resume: false,
+        education: false,
+        experience: false,
+        skills: false,
+        percentage: 0
+      })
+    },
+    
     stats: {
       totalApplications: { type: Number, default: 0 },
+      pending: { type: Number, default: 0 },
       shortlisted: { type: Number, default: 0 },
       rejected: { type: Number, default: 0 }
     },
@@ -61,5 +109,56 @@ const CandidateProfileSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// Calculate completion percentage method
+CandidateProfileSchema.methods.calculateCompletion = function() {
+  // Section 1: Basic info (auto 20% after registration)
+  const basicInfoComplete = !!this.user;
+
+  // Section 2: Resume upload
+  const resumeComplete = Boolean(this.resume && this.resume.fileUrl);
+
+  // Section 3: Education entries
+  const educationComplete = Array.isArray(this.education) && this.education.length > 0;
+
+  // Section 4: Work experience
+  const experienceComplete = Array.isArray(this.experience) && this.experience.length > 0;
+
+  // Section 5: Minimum of 3 skills
+  const normalizedSkills = Array.isArray(this.skills)
+    ? this.skills.filter(skill => typeof skill === 'string' && skill.trim().length > 0)
+    : [];
+  const skillsComplete = normalizedSkills.length >= 3;
+
+  const sections = [
+    basicInfoComplete,
+    resumeComplete,
+    educationComplete,
+    experienceComplete,
+    skillsComplete
+  ];
+
+  const completedSections = sections.filter(Boolean).length;
+  const percentage = completedSections * 20; // Five sections, 20% each
+
+  this.profileCompletion = {
+    basicInfo: basicInfoComplete,
+    resume: resumeComplete,
+    education: educationComplete,
+    experience: experienceComplete,
+    skills: skillsComplete,
+    percentage
+  };
+
+  this.lastProfileUpdateAt = new Date();
+  
+  return this.profileCompletion;
+};
+
+// Pre-save middleware to calculate completion
+CandidateProfileSchema.pre('save', function(next) {
+  this.calculateCompletion();
+  next();
+});
 
 module.exports = model('CandidateProfile', CandidateProfileSchema);

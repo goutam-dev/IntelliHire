@@ -3,11 +3,13 @@ import { FileDown, Mail, Phone } from 'lucide-react';
 import StatusActionsMenu from './StatusActionsMenu';
 
 const statusColors = {
-  applied: 'bg-slate-100 text-slate-700',
-  shortlisted: 'bg-blue-100 text-blue-700',
-  interview: 'bg-amber-100 text-amber-700',
-  accepted: 'bg-emerald-100 text-emerald-700',
-  rejected: 'bg-rose-100 text-rose-700',
+  'Applied': 'bg-slate-100 text-slate-700',
+  'Under Review': 'bg-yellow-100 text-yellow-700',
+  'Shortlisted': 'bg-blue-100 text-blue-700',
+  'Interview Scheduled': 'bg-amber-100 text-amber-700',
+  'Hired': 'bg-emerald-100 text-emerald-700',
+  'Rejected': 'bg-rose-100 text-rose-700',
+  'Withdrawn': 'bg-gray-100 text-gray-700',
 };
 
 const StatusBadge = ({ status }) => (
@@ -50,8 +52,9 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
             const email = app?.candidate?.user?.email || '—';
             const phone = app?.candidate?.user?.phoneNumber || '—';
             const appliedDate = app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '—';
-            const resumeName = app?.resume?.fileName || app?.candidate?.resume?.fileName || 'Resume';
-            const resumeUrl = app?.resume?.fileUrl || app?.candidate?.resume?.fileUrl || '#';
+            const resumeName = app?.resume?.fileName || app?.resume?.originalName || app?.candidate?.resume?.fileName || 'Resume';
+            const resumePath = app?.resume?.filePath || app?.resume?.fileUrl || app?.candidate?.resume?.filePath || app?.candidate?.resume?.fileUrl;
+            const resumeUrl = resumePath ? `http://localhost:4000/${resumePath}` : '#';
 
             return (
               <tr key={app._id} className="hover:bg-slate-50">

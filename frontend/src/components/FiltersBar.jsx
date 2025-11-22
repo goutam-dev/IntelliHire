@@ -5,11 +5,11 @@ import { Search } from 'lucide-react';
 
 const statusOptions = [
   { value: 'all', label: 'All statuses' },
-  { value: 'applied', label: 'Applied' },
-  { value: 'shortlisted', label: 'Shortlisted' },
-  { value: 'interview', label: 'Interview' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: 'Applied', label: 'Applied' },
+  { value: 'Shortlisted', label: 'Shortlisted' },
+  { value: 'Interview Scheduled', label: 'Interview' },
+  { value: 'Hired', label: 'Accepted' },
+  { value: 'Rejected', label: 'Rejected' },
 ];
 
 const sortOptions = [

@@ -1,61 +1,125 @@
-const { Schema, model } = require('mongoose');
+const mongoose = require('mongoose');
 
-const APPLICATION_STATUSES = [
-  'applied',
-  'shortlisted',
-  'interview',
-  'accepted',
-  'rejected',
-  'withdrawn'
-];
-
-const StatusHistorySchema = new Schema(
-  {
-    status: { type: String, enum: APPLICATION_STATUSES, required: true },
-    notes: { type: String },
-    actorId: { type: Schema.Types.ObjectId },
-    actorType: { type: String, enum: ['employer', 'candidate', 'system'], default: 'system' },
-    interviewDetails: {
-      date: { type: Date },
-      location: { type: String },
-      instructions: { type: String }
+const jobApplicationSchema = new mongoose.Schema({
+  applicationId: {
+    type: String,
+    required: true,
+    default: () => 'APP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase()
+  },
+  jobId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Job',
+    required: true
+  },
+  candidateId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  status: {
+    type: String,
+    enum: ['Applied', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Rejected', 'Hired', 'Withdrawn'],
+    default: 'Applied'
+  },
+  // Application-specific profile data (can be different from main profile)
+  applicationProfile: {
+    personalInfo: {
+      name: { type: String, required: true },
+      email: { type: String, required: true },
+      phone: { type: String },
+      location: { type: String }
     },
-    createdAt: { type: Date, default: Date.now }
+    experience: [{
+      title: String,
+      companyName: String,
+      location: String,
+      startDate: Date,
+      endDate: Date,
+      isCurrentRole: Boolean,
+      description: String
+    }],
+    education: [{
+      degree: String,
+      institution: String,
+      fieldOfStudy: String,
+      startDate: Date,
+      endDate: Date,
+      gpa: String,
+      description: String
+    }],
+    skills: [String],
+    summary: String
   },
-  { _id: false }
-);
-
-const AttachmentSchema = new Schema(
-  {
-    fileName: { type: String },
-    fileUrl: { type: String },
-    uploadedAt: { type: Date, default: Date.now }
+  // Resume information
+  resume: {
+    filename: { type: String, required: true },
+    originalName: String,
+    uploadDate: { type: Date, default: Date.now },
+    fileSize: Number,
+    filePath: String,
+    isFromProfile: { type: Boolean, default: false } // true if using existing resume from profile
   },
-  { _id: false }
-);
-
-const JobApplicationSchema = new Schema(
-  {
-    job: { type: Schema.Types.ObjectId, ref: 'Job', required: true },
-    employer: { type: Schema.Types.ObjectId, ref: 'EmployerProfile', required: true },
-    candidate: { type: Schema.Types.ObjectId, ref: 'CandidateProfile', required: true },
-    status: { type: String, enum: APPLICATION_STATUSES, default: 'applied' },
-    resume: { type: AttachmentSchema },
-    coverLetter: { type: String, maxlength: 500 },
-    statusHistory: { type: [StatusHistorySchema], default: [] },
-    feedback: { type: String },
-    interview: {
-      scheduledAt: { type: Date },
-      instructions: { type: String }
-    },
-    lastUpdatedBy: { type: Schema.Types.ObjectId, refPath: 'lastUpdatedByModel' },
-    lastUpdatedByModel: { type: String, enum: ['EmployerProfile', 'CandidateProfile', 'User'] }
+  coverLetter: {
+    type: String,
+    maxlength: 500
   },
-  { timestamps: true }
-);
+  profileAccuracyConfirmed: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
+  // Employer actions
+  employerNotes: String,
+  reviewedAt: Date,
+  reviewedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  // Application metadata
+  appliedAt: {
+    type: Date,
+    default: Date.now
+  },
+  lastUpdated: {
+    type: Date,
+    default: Date.now
+  },
+  source: {
+    type: String,
+    default: 'web'
+  }
+}, {
+  timestamps: true
+});
 
-JobApplicationSchema.index({ job: 1, candidate: 1 }, { unique: true });
-JobApplicationSchema.index({ employer: 1 });
-JobApplicationSchema.index({ status: 1 });
+// Non-unique index for performance (duplicate prevention handled in application logic)
+jobApplicationSchema.index({ jobId: 1, candidateId: 1 });
 
-module.exports = model('JobApplication', JobApplicationSchema);
+// Indexes for efficient queries
+jobApplicationSchema.index({ candidateId: 1, appliedAt: -1 });
+jobApplicationSchema.index({ jobId: 1, appliedAt: -1 });
+jobApplicationSchema.index({ status: 1 });
+jobApplicationSchema.index({ applicationId: 1 });
+
+// Virtual for application age
+jobApplicationSchema.virtual('appliedAgo').get(function() {
+  const now = new Date();
+  const diffTime = Math.abs(now - this.appliedAt);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 1) return '1 day ago';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.ceil(diffDays / 7)} weeks ago`;
+  return `${Math.ceil(diffDays / 30)} months ago`;
+});
+
+// Ensure virtual fields are serialized
+jobApplicationSchema.set('toJSON', { virtuals: true });
+
+// Pre-save middleware to update lastUpdated
+jobApplicationSchema.pre('save', function(next) {
+  this.lastUpdated = new Date();
+  next();
+});
+
+module.exports = mongoose.model('JobApplication', jobApplicationSchema);
