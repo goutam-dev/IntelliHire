@@ -29,8 +29,7 @@ const EmployerProfilePage = () => {
 
     useEffect(() => {
         const loadProfile = async () => {
-            const token = await getToken();
-            dispatch(fetchEmployerProfile({ token }));
+            dispatch(fetchEmployerProfile());
         };
         loadProfile();
     }, [dispatch, getToken]);
@@ -79,15 +78,13 @@ const EmployerProfilePage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const token = await getToken();
-        dispatch(updateEmployerProfile({ data: formData, token }));
+        dispatch(updateEmployerProfile(formData));
     };
 
     const handleLogoUpload = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const token = await getToken();
-            dispatch(uploadEmployerLogo({ file, token }));
+            dispatch(uploadEmployerLogo(file));
         }
     };
 
@@ -258,7 +255,7 @@ const EmployerProfilePage = () => {
                                 <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
                                     <h3 className="text-lg font-bold text-slate-900 mb-4">About Company</h3>
                                     {profile?.companyDescription ? (
-                                        <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{profile.companyDescription}</p>
+                                        <p className="text-slate-600 leading-relaxed whitespace-pre-wrap break-words">{profile.companyDescription}</p>
                                     ) : (
                                         <div className="text-slate-400 italic flex flex-col items-center justify-center py-8 border-2 border-dashed border-slate-100 rounded-xl bg-slate-50/50">
                                             <p>No description added yet.</p>

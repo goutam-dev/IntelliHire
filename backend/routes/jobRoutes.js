@@ -13,7 +13,7 @@ const router = express.Router();
 
 // Public or Authenticated (Candidates)
 router.get('/', optionalAuth, listJobs);
-router.get('/:jobId', getJobById);
+router.get('/:jobId', optionalAuth, getJobById);
 
 // Employer only routes
 router.post('/', requireAuth, requireRole('employer'), createJob);

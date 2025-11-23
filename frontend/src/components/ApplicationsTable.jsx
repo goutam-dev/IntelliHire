@@ -54,7 +54,8 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
             const appliedDate = app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '—';
             const resumeName = app?.resume?.fileName || app?.resume?.originalName || app?.candidate?.resume?.fileName || 'Resume';
             const resumePath = app?.resume?.filePath || app?.resume?.fileUrl || app?.candidate?.resume?.filePath || app?.candidate?.resume?.fileUrl;
-            const resumeUrl = resumePath ? `http://localhost:4000/${resumePath}` : '#';
+            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+            const resumeUrl = resumePath ? (resumePath.startsWith('http') ? resumePath : `${API_BASE_URL}${resumePath.startsWith('/') ? '' : '/'}${resumePath}`) : '#';
 
             return (
               <tr key={app._id} className="hover:bg-slate-50">

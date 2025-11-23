@@ -92,8 +92,11 @@ const jobApplicationSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Non-unique index for performance (duplicate prevention handled in application logic)
-jobApplicationSchema.index({ jobId: 1, candidateId: 1 });
+// Unique index to prevent duplicate applications (unless withdrawn)
+jobApplicationSchema.index(
+  { jobId: 1, candidateId: 1 },
+  { unique: true, partialFilterExpression: { status: { $ne: 'Withdrawn' } } }
+);
 
 // Indexes for efficient queries
 jobApplicationSchema.index({ candidateId: 1, appliedAt: -1 });

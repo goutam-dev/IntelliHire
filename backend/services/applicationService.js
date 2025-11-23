@@ -3,7 +3,8 @@ const JobApplication = require('../models/JobApplication');
 const Job = require('../models/Job');
 const CandidateProfile = require('../models/CandidateProfile');
 const User = require('../models/User');
-const { NotFoundError, ValidationError } = require('../utils/errorHandler');
+const EmployerProfile = require('../models/EmployerProfile');
+const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errorHandler');
 const path = require('path');
 const fs = require('fs');
 
@@ -93,15 +94,29 @@ const filterBySearch = (applications, search) => {
 /**
  * Get applications by job ID with optional filters
  */
-const getApplicationsByJob = async (jobId, filters = {}) => {
+const getApplicationsByJob = async (jobId, filters = {}, userId) => {
   const { status = 'all', search = '', sort = 'newest' } = filters;
 
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
     throw new ValidationError('Invalid jobId');
   }
 
+  // Verify ownership
+  const user = await User.findOne({ clerkUserId: userId });
+  if (!user) throw new ForbiddenError('User not found');
+  
+  const employerProfile = await EmployerProfile.findOne({ user: user._id });
+  if (!employerProfile) throw new ForbiddenError('Employer profile not found');
+
+  const job = await Job.findById(jobId);
+  if (!job) throw new NotFoundError('Job not found');
+
+  if (job.employer.toString() !== employerProfile._id.toString()) {
+    throw new ForbiddenError('You do not have permission to view applications for this job');
+  }
+
   // Build base query
-  const query = { jobId: jobId }; // Changed from job to jobId to match model
+  const query = { jobId: jobId }; 
   if (status && status !== 'all') {
     query.status = status;
   }
@@ -109,24 +124,19 @@ const getApplicationsByJob = async (jobId, filters = {}) => {
   // Fetch all matching applications with full population
   let applications = await JobApplication.find(query)
     .populate({
-      path: 'candidateId', // Changed from candidate to candidateId
-      select: 'fullName email phoneNumber' // Assuming candidateId is User ref
+      path: 'candidateId', 
+      select: 'fullName email phoneNumber' 
     })
-    // We also need candidate profile data which is stored in applicationProfile in the new model
-    // But for backward compatibility or if we need more info, we might need to fetch CandidateProfile
     .populate({ path: 'jobId', select: 'title department' })
     .lean();
 
-  // Map to expected structure if needed, or adjust frontend to use new structure
-  // The new model stores profile snapshot in applicationProfile
+  // Map to expected structure
   applications = applications.map(app => {
-    // If we have candidateId populated (User), we can use it
-    // But applicationProfile has the snapshot
     return {
       ...app,
       candidate: {
         user: app.candidateId,
-        ...app.applicationProfile // Spread snapshot data
+        ...app.applicationProfile 
       },
       job: app.jobId
     };
@@ -144,7 +154,7 @@ const getApplicationsByJob = async (jobId, filters = {}) => {
 /**
  * Update application status
  */
-const updateApplicationStatus = async (applicationId, statusData) => {
+const updateApplicationStatus = async (applicationId, statusData, userId) => {
   const { status, notes, feedback } = statusData;
 
   if (!mongoose.Types.ObjectId.isValid(applicationId)) {
@@ -154,15 +164,25 @@ const updateApplicationStatus = async (applicationId, statusData) => {
     throw new ValidationError('Status is required');
   }
 
-  const application = await JobApplication.findById(applicationId);
+  const application = await JobApplication.findById(applicationId).populate('jobId');
   if (!application) {
     throw new NotFoundError('Application not found');
   }
 
+  // Verify ownership
+  const user = await User.findOne({ clerkUserId: userId });
+  if (!user) throw new ForbiddenError('User not found');
+  
+  const employerProfile = await EmployerProfile.findOne({ user: user._id });
+  if (!employerProfile) throw new ForbiddenError('Employer profile not found');
+
+  if (!application.jobId || application.jobId.employer.toString() !== employerProfile._id.toString()) {
+    throw new ForbiddenError('You do not have permission to update this application');
+  }
+
   application.status = status;
-  if (feedback) application.employerNotes = feedback; // Map feedback to employerNotes
-  // application.statusHistory.push({ status, notes, actorType: 'employer' }); // New model doesn't have statusHistory yet, maybe add it?
-  // For now, just update status
+  if (feedback) application.employerNotes = feedback;
+  else if (notes) application.employerNotes = notes; 
   
   await application.save();
 
@@ -177,7 +197,7 @@ const updateApplicationStatus = async (applicationId, statusData) => {
 /**
  * Bulk update application statuses
  */
-const bulkUpdateApplications = async (ids, statusData) => {
+const bulkUpdateApplications = async (ids, statusData, userId) => {
   const { status, notes, feedback } = statusData;
 
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -187,12 +207,28 @@ const bulkUpdateApplications = async (ids, statusData) => {
     throw new ValidationError('Status is required');
   }
 
+  // Verify ownership for ALL applications
+  const user = await User.findOne({ clerkUserId: userId });
+  if (!user) throw new ForbiddenError('User not found');
+  
+  const employerProfile = await EmployerProfile.findOne({ user: user._id });
+  if (!employerProfile) throw new ForbiddenError('Employer profile not found');
+
   const objectIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
-  const applications = await JobApplication.find({ _id: { $in: objectIds } });
+  const applications = await JobApplication.find({ _id: { $in: objectIds } }).populate('jobId');
+
+  for (const app of applications) {
+    if (!app.jobId || app.jobId.employer.toString() !== employerProfile._id.toString()) {
+       // Skip or throw? Let's skip to avoid breaking bulk op if one is bad, or throw to be strict.
+       // Strict is safer.
+       throw new ForbiddenError(`You do not have permission to update application ${app._id}`);
+    }
+  }
 
   for (const app of applications) {
     app.status = status;
     if (feedback) app.employerNotes = feedback;
+    else if (notes) app.employerNotes = notes;
     await app.save();
   }
 
@@ -202,26 +238,29 @@ const bulkUpdateApplications = async (ids, statusData) => {
 /**
  * Schedule interview for application
  */
-const scheduleInterview = async (applicationId, interviewData) => {
+const scheduleInterview = async (applicationId, interviewData, userId) => {
   const { scheduledAt, instructions } = interviewData;
 
   if (!mongoose.Types.ObjectId.isValid(applicationId)) {
     throw new ValidationError('Invalid applicationId');
   }
 
-  const application = await JobApplication.findById(applicationId);
+  const application = await JobApplication.findById(applicationId).populate('jobId');
   if (!application) {
     throw new NotFoundError('Application not found');
   }
 
-  // New model doesn't have interview field explicitly defined in the schema I created?
-  // Wait, I created the schema in Step 74. It does NOT have interview field.
-  // But backend-1 schema (Step 70) didn't have it either?
-  // Step 70 schema has status enum 'Interview Scheduled'.
-  // backend/services/applicationService.js (Step 80) had interview logic.
-  // I should probably add interview field to the model if I want to support this.
-  // For now, I'll just update status.
+  // Verify ownership
+  const user = await User.findOne({ clerkUserId: userId });
+  if (!user) throw new ForbiddenError('User not found');
   
+  const employerProfile = await EmployerProfile.findOne({ user: user._id });
+  if (!employerProfile) throw new ForbiddenError('Employer profile not found');
+
+  if (!application.jobId || application.jobId.employer.toString() !== employerProfile._id.toString()) {
+    throw new ForbiddenError('You do not have permission to schedule interview for this application');
+  }
+
   application.status = 'Interview Scheduled';
   application.employerNotes = `Interview scheduled for ${scheduledAt}. ${instructions}`;
   
@@ -324,10 +363,14 @@ const submitApplication = async (candidateId, applicationData, file) => {
     ? JSON.parse(applicationProfile) 
     : applicationProfile;
 
-  // Check if job exists
+  // Check if job exists and is active
   const job = await Job.findById(jobId);
   if (!job) {
     throw new NotFoundError('Job not found');
+  }
+  
+  if (job.status !== 'active') {
+    throw new ValidationError('This job is no longer accepting applications');
   }
 
   // Check if already applied
@@ -372,47 +415,61 @@ const submitApplication = async (candidateId, applicationData, file) => {
     };
   }
 
-  const jobApplication = new JobApplication({
-    jobId,
-    candidateId,
-    applicationProfile: parsedApplicationProfile,
-    resume: resumeData,
-    coverLetter: coverLetter || '',
-    profileAccuracyConfirmed: profileAccuracyConfirmed === 'true'
-  });
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  await jobApplication.save();
+  try {
+    const jobApplication = new JobApplication({
+      jobId,
+      candidateId,
+      applicationProfile: parsedApplicationProfile,
+      resume: resumeData,
+      coverLetter: coverLetter || '',
+      profileAccuracyConfirmed: profileAccuracyConfirmed === 'true'
+    });
 
-  // Update job applications count
-  await Job.findByIdAndUpdate(jobId, {
-    $inc: { applicationsCount: 1 }
-  });
+    await jobApplication.save({ session });
 
-  // Update candidate profile stats
-  await CandidateProfile.findOneAndUpdate(
-    { user: candidateId },
-    { 
-      $inc: { 'stats.totalApplications': 1 },
-      $set: { lastProfileUpdateAt: new Date() }
-    },
-    { upsert: true }
-  );
+    // Update job applications count
+    await Job.findByIdAndUpdate(jobId, {
+      $inc: { applicationsCount: 1 }
+    }, { session });
 
-  await jobApplication.populate({
-    path: 'jobId',
-    select: 'title location employer',
-    populate: {
-      path: 'employer',
-      select: 'companyName'
+    // Update candidate profile stats
+    await CandidateProfile.findOneAndUpdate(
+      { user: candidateId },
+      { 
+        $inc: { 'stats.totalApplications': 1 },
+        $set: { lastProfileUpdateAt: new Date() }
+      },
+      { upsert: true, session }
+    );
+
+    await session.commitTransaction();
+    
+    await jobApplication.populate({
+      path: 'jobId',
+      select: 'title location employer',
+      populate: {
+        path: 'employer',
+        select: 'companyName'
+      }
+    });
+
+    if (jobApplication.jobId && jobApplication.jobId.employer) {
+      jobApplication.jobId.company = jobApplication.jobId.employer.companyName;
+      delete jobApplication.jobId.employer;
     }
-  });
 
-  if (jobApplication.jobId && jobApplication.jobId.employer) {
-    jobApplication.jobId.company = jobApplication.jobId.employer.companyName;
-    delete jobApplication.jobId.employer;
+    return jobApplication;
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
   }
 
-  return jobApplication;
+
 };
 
 /**
@@ -511,43 +568,55 @@ const getApplicationById = async (candidateId, applicationId) => {
  * Withdraw application
  */
 const withdrawApplication = async (candidateId, applicationId) => {
-  const application = await JobApplication.findOneAndUpdate(
-    { applicationId, candidateId },
-    { status: 'Withdrawn' },
-    { new: true }
-  ).populate({
-    path: 'jobId',
-    select: 'title employer',
-    populate: {
-      path: 'employer',
-      select: 'companyName'
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const application = await JobApplication.findOneAndUpdate(
+      { applicationId, candidateId },
+      { status: 'Withdrawn' },
+      { new: true, session }
+    ).populate({
+      path: 'jobId',
+      select: 'title employer',
+      populate: {
+        path: 'employer',
+        select: 'companyName'
+      }
+    });
+
+    if (!application) {
+      throw new NotFoundError('Application not found');
     }
-  });
 
-  if (!application) {
-    throw new NotFoundError('Application not found');
-  }
-
-  if (application.jobId && application.jobId.employer) {
-    application.jobId.company = application.jobId.employer.companyName;
-    delete application.jobId.employer;
-  }
-
-  // Decrease job applications count
-  await Job.findByIdAndUpdate(application.jobId._id, {
-    $inc: { applicationsCount: -1 }
-  });
-
-  // Update candidate profile stats
-  await CandidateProfile.findOneAndUpdate(
-    { user: candidateId },
-    { 
-      $inc: { 'stats.totalApplications': -1 },
-      $set: { lastProfileUpdateAt: new Date() }
+    if (application.jobId && application.jobId.employer) {
+      application.jobId.company = application.jobId.employer.companyName;
+      delete application.jobId.employer;
     }
-  );
 
-  return application;
+    // Decrease job applications count
+    await Job.findByIdAndUpdate(application.jobId._id, {
+      $inc: { applicationsCount: -1 }
+    }, { session });
+
+    // Update candidate profile stats
+    await CandidateProfile.findOneAndUpdate(
+      { user: candidateId },
+      { 
+        $inc: { 'stats.totalApplications': -1 },
+        $set: { lastProfileUpdateAt: new Date() }
+      },
+      { session }
+    );
+
+    await session.commitTransaction();
+    return application;
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
 };
 
 module.exports = {

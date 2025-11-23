@@ -16,9 +16,8 @@ const CandidateModal = ({ open, onClose, application }) => {
   // Construct resume URL
   const resumePath = candidate?.resume?.filePath || candidate?.resume?.fileUrl || 
                       application?.resume?.filePath || application?.resume?.fileUrl;
-  const resumeUrl = resumePath && !resumePath.startsWith('http') 
-    ? `http://localhost:4000/${resumePath}` 
-    : resumePath || '#';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  const resumeUrl = resumePath ? (resumePath.startsWith('http') ? resumePath : `${API_BASE_URL}${resumePath.startsWith('/') ? '' : '/'}${resumePath}`) : '#';
   const resumeName = candidate?.resume?.fileName || application?.resume?.fileName || 
                      application?.resume?.originalName || 'View resume';
 
@@ -77,19 +76,15 @@ const CandidateModal = ({ open, onClose, application }) => {
           </Section>
 
           <Section title="History">
-            {(application?.statusHistory || []).length === 0 && (
-              <p className="text-sm text-slate-700">No status changes yet.</p>
-            )}
-            {(application?.statusHistory || []).map((h, idx) => (
-              <div key={idx} className="text-sm text-slate-700">
-                <p className="font-medium">{h.status} • {h.createdAt ? new Date(h.createdAt).toLocaleString() : 'Date N/A'}</p>
-                {h.notes && <p>{h.notes}</p>}
-              </div>
-            ))}
+            <div className="text-sm text-slate-700">
+              <p className="font-medium">Current Status: {application?.status}</p>
+              <p>Applied: {application?.createdAt ? new Date(application.createdAt).toLocaleString() : 'Date N/A'}</p>
+              {application?.reviewedAt && <p>Reviewed: {new Date(application.reviewedAt).toLocaleString()}</p>}
+            </div>
           </Section>
 
           <Section title="Notes">
-            <p className="text-sm text-slate-700">{application?.feedback || '—'}</p>
+            <p className="text-sm text-slate-700">{application?.employerNotes || application?.feedback || '—'}</p>
           </Section>
         </div>
 

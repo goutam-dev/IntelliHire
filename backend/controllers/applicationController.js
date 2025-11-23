@@ -14,7 +14,8 @@ exports.listApplicationsByJob = asyncHandler(async (req, res) => {
 
   const applications = await applicationService.getApplicationsByJob(
     jobId,
-    filters
+    filters,
+    req.auth.userId
   );
 
   res.json(applications);
@@ -29,7 +30,8 @@ exports.updateApplicationStatus = asyncHandler(async (req, res) => {
 
   const application = await applicationService.updateApplicationStatus(
     id,
-    statusData
+    statusData,
+    req.auth.userId
   );
 
   res.json(application);
@@ -45,7 +47,7 @@ exports.bulkUpdateStatus = asyncHandler(async (req, res) => {
     status,
     notes,
     feedback,
-  });
+  }, req.auth.userId);
 
   res.json(result);
 });
@@ -59,7 +61,8 @@ exports.scheduleInterview = asyncHandler(async (req, res) => {
 
   const application = await applicationService.scheduleInterview(
     id,
-    interviewData
+    interviewData,
+    req.auth.userId
   );
 
   res.json(application);

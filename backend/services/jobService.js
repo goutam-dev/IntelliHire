@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Job = require('../models/Job');
+const JobApplication = require('../models/JobApplication');
 const User = require('../models/User');
 const EmployerProfile = require('../models/EmployerProfile');
 const { NotFoundError, ValidationError } = require('../utils/errorHandler');
@@ -70,7 +71,7 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
         from: 'jobapplications',
         let: { jobId: '$_id' },
         pipeline: [
-          { $match: { $expr: { $eq: ['$job', '$$jobId'] } } },
+          { $match: { $expr: { $eq: ['$jobId', '$$jobId'] } } },
           { $count: 'count' },
         ],
         as: 'appCounts',
@@ -101,18 +102,38 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
 /**
  * Get job by ID
  */
-const getJobById = async (jobId) => {
+const getJobById = async (jobId, userId = null) => {
   const job = await Job.findById(jobId)
-    .populate('employer', 'companyName')
+    .populate('employer', 'companyName user') // Populate user to check ownership
     .lean();
   
   if (!job) {
     throw new NotFoundError('Job not found');
   }
+
+  // Visibility Check
+  if (job.status !== 'active') {
+    let canView = false;
+    
+    if (userId) {
+      const user = await User.findOne({ clerkUserId: userId });
+      if (user && job.employer && job.employer.user) {
+        if (job.employer.user.toString() === user._id.toString()) {
+          canView = true;
+        }
+      }
+    }
+
+    if (!canView) {
+      throw new NotFoundError('Job not found'); // Hide non-active jobs
+    }
+  }
   
   // Map employer.companyName to company for frontend compatibility
   if (job.employer) {
     job.company = job.employer.companyName;
+    // Remove sensitive/internal data
+    delete job.employer.user; 
     delete job.employer;
   }
   
@@ -229,6 +250,10 @@ const deleteJob = async (jobId) => {
   if (!job) {
     throw new NotFoundError('Job not found');
   }
+  
+  // Delete associated applications
+  await JobApplication.deleteMany({ jobId });
+  
   return job;
 };
 

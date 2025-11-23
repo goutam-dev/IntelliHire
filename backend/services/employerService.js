@@ -56,6 +56,7 @@ const updateEmployerProfile = async (clerkUserId, updateData) => {
     'contactEmail',
     'location',
     'phoneNumber',
+    'socialLinks',
   ];
 
   const profileUpdate = {};

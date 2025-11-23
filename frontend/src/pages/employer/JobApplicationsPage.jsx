@@ -5,13 +5,12 @@ import { Download, FileText, Handshake, CalendarClock, CheckCircle2, XCircle, Us
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchEmployerProfile } from '../../store/slices/employerSlice';
+import applicationApi from '../../services/api/applicationApi';
 import FiltersBar from '../../components/FiltersBar';
 import ApplicationsTable from '../../components/ApplicationsTable';
 import CandidateModal from '../../components/CandidateModal';
 import { mockApplications } from '../../data/mockApplications';
 import EmployerHeader from '../../components/layout/EmployerHeader';
-
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const StatCard = ({ title, value, icon: Icon, color, delay }) => (
   <motion.div
@@ -65,15 +64,8 @@ const JobApplicationsPage = () => {
     setLoading(true);
     setError('');
     try {
-      const token = await getToken();
-      const params = new URLSearchParams({ status, search, sort });
-      const res = await fetch(`${API_BASE}/employer/jobs/${jobId}/applications?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) throw new Error(`Failed to load applications (${res.status})`);
-      const data = await res.json();
+      const params = { status, search, sort };
+      const data = await applicationApi.getApplicationsByJob(jobId, params);
       setApplications(data);
     } catch (err) {
       console.warn('Falling back to mock applications:', err.message);
@@ -96,56 +88,42 @@ const JobApplicationsPage = () => {
 
   const singleAction = async (id, type, payload = {}) => {
     try {
-      const token = await getToken();
       if (type === 'interview') {
-        const res = await fetch(`${API_BASE}/employer/applications/${id}/interview`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ scheduledAt: payload.scheduledAt, instructions: payload.instructions }),
+        await applicationApi.scheduleInterview(id, {
+          scheduledAt: payload.scheduledAt,
+          instructions: payload.instructions
         });
-        if (!res.ok) throw new Error('Failed to schedule interview');
       } else {
         const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired' };
         const status = map[type];
-        const res = await fetch(`${API_BASE}/employer/applications/${id}/status`, {
-          method: 'PATCH',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status, feedback: payload.feedback }),
+        await applicationApi.updateApplicationStatus(id, {
+          status,
+          feedback: payload.feedback
         });
-        if (!res.ok) throw new Error('Failed to update status');
       }
       refresh();
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      alert(err.message || 'Action failed');
     }
   };
 
   const bulkAction = async (type, payload = {}) => {
     try {
-      const token = await getToken();
       const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired', interview: 'Interview Scheduled' };
       const status = map[type];
-      const res = await fetch(`${API_BASE}/employer/applications/bulk/status`, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ ids: selectedIds, status, feedback: payload.feedback, notes: payload.notes }),
+      
+      await applicationApi.bulkUpdateApplicationStatus(selectedIds, {
+        status,
+        feedback: payload.feedback,
+        notes: payload.notes
       });
-      if (!res.ok) throw new Error('Bulk update failed');
+      
       setSelectedIds([]);
       refresh();
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      alert(err.message || 'Bulk action failed');
     }
   };
 

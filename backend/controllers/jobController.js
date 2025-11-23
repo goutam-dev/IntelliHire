@@ -9,7 +9,7 @@ const { asyncHandler } = require('../utils/errorHandler');
  * List jobs with optional filters
  */
 exports.listJobs = asyncHandler(async (req, res) => {
-  const jobs = await jobService.getJobsByEmployer(req.auth.userId, req.query);
+  const jobs = await jobService.getJobsByEmployer(req.auth?.userId, req.query);
   res.json(jobs);
 });
 
@@ -17,7 +17,7 @@ exports.listJobs = asyncHandler(async (req, res) => {
  * Get job by ID
  */
 exports.getJobById = asyncHandler(async (req, res) => {
-  const job = await jobService.getJobById(req.params.jobId);
+  const job = await jobService.getJobById(req.params.jobId, req.auth?.userId);
   res.json(job);
 });
 
