@@ -1,7 +1,7 @@
 // Complete corrected EmployerProfilePage.jsx with proper tab structure - this will replace the buggy version
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { useAuth, useClerk } from '@clerk/clerk-react';
+import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
 import { fetchEmployerProfile, updateEmployerProfile, uploadEmployerLogo, resetUpdateSuccess } from '../../store/slices/employerSlice';
 import EmployerHeader from '../../components/layout/EmployerHeader';
 import EmployerAccountSettings from '../../components/employer/EmployerAccountSettings';
@@ -14,6 +14,7 @@ const EmployerProfilePage = () => {
     const dispatch = useAppDispatch();
     const { getToken } = useAuth();
     const { signOut } = useClerk();
+    const { user } = useUser();
     const { profile, loading, error, updateSuccess } = useAppSelector((state) => state.employer);
 
     const [isEditing, setIsEditing] = useState(false);
@@ -134,8 +135,9 @@ const EmployerProfilePage = () => {
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
             <EmployerHeader 
-                userName={profile?.user?.fullName} 
+                userName={user?.fullName || profile?.user?.fullName} 
                 companyName={profile?.companyName}
+                userImage={user?.imageUrl}
                 onLogout={handleLogout}
             />
 

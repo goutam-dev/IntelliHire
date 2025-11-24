@@ -15,7 +15,7 @@ import EmployerHeader from '../../components/layout/EmployerHeader';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchEmployerJobs } from '../../store/slices/jobSlice';
 import { fetchEmployerProfile } from '../../store/slices/employerSlice';
-import { useAuth, useClerk } from '@clerk/clerk-react';
+import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
@@ -83,6 +83,7 @@ const Dashboard = () => {
   const dispatch = useAppDispatch();
   const { getToken } = useAuth();
   const { signOut } = useClerk();
+  const { user } = useUser();
   const { jobs, jobsLoading } = useAppSelector((state) => state.jobs);
   const { profile, loading: profileLoading } = useAppSelector((state) => state.employer);
 
@@ -156,7 +157,7 @@ const Dashboard = () => {
   };
 
   // Safely access user name
-  const firstName = profile?.user?.fullName?.split(' ')[0] || 'Employer';
+  const firstName = user?.firstName || profile?.user?.fullName?.split(' ')[0] || 'Employer';
 
   const handleLogout = async () => {
     try {
@@ -187,8 +188,9 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans selection:bg-slate-100 selection:text-slate-900">
       <EmployerHeader 
-        userName={profile?.user?.fullName}
+        userName={user?.fullName || profile?.user?.fullName}
         companyName={profile?.companyName}
+        userImage={user?.imageUrl}
         onLogout={handleLogout}
       />
 

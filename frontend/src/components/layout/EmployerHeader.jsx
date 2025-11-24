@@ -109,7 +109,7 @@ const CloseIcon = ({ className }) => (
   </svg>
 );
 
-const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', onLogout }) => {
+const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', userImage, onLogout }) => {
   const navigate = useNavigate();
   const { signOut } = useClerk();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -195,9 +195,18 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', onLo
               onClick={handleProfileClick}
               className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
-              <div className="flex flex-col items-end">
-                <span className="font-medium text-slate-900">{userName}</span>
-                <span className="text-xs text-slate-500">{companyName}</span>
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col items-end">
+                  <span className="font-medium text-slate-900">{userName}</span>
+                  <span className="text-xs text-slate-500">{companyName}</span>
+                </div>
+                {userImage ? (
+                  <img src={userImage} alt={userName} className="h-8 w-8 rounded-full object-cover border border-slate-200" />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-medium text-xs border border-slate-200">
+                    {userName.charAt(0)}
+                  </div>
+                )}
               </div>
               <ChevronDown
                 className={`h-4 w-4 text-slate-400 transition-transform ${

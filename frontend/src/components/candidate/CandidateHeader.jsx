@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useClerk } from '@clerk/clerk-react';
+import { useClerk, useUser } from '@clerk/clerk-react';
 
 // Icons
 const LogoMark = ({ className = "h-6 w-6" }) => (
@@ -32,15 +32,15 @@ const CandidateHeader = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { signOut } = useClerk();
+  const { user: clerkUser } = useUser();
   const profile = useSelector(state => state.candidate.profile);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   
-  // Get user data with fallbacks
-  const user = profile?.user || {};
-  const fullName = user?.fullName || 'User';
+  // Get user data from Clerk (source of truth for auth data)
+  const fullName = clerkUser?.fullName || profile?.user?.fullName || 'User';
   const initials = fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  const profilePhotoUrl = profile?.profilePhotoUrl ? `http://localhost:4000${profile.profilePhotoUrl}` : null;
+  const profilePhotoUrl = clerkUser?.imageUrl || (profile?.profilePhotoUrl ? `http://localhost:4000${profile.profilePhotoUrl}` : null);
   
   const navLinks = [
     { label: "Dashboard", id: "dashboard", path: "/candidate/dashboard" },

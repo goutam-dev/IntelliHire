@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useAuth, useClerk } from '@clerk/clerk-react';
+import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
 import { Download, FileText, Handshake, CalendarClock, CheckCircle2, XCircle, Users, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -37,6 +37,7 @@ const JobApplicationsPage = () => {
   const { profile: employerProfile } = useAppSelector((state) => state.employer);
   const { getToken } = useAuth();
   const { signOut } = useClerk();
+  const { user } = useUser();
 
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -249,8 +250,9 @@ const JobApplicationsPage = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <EmployerHeader 
-        userName={employerProfile?.user?.fullName || 'User'}
+        userName={user?.fullName || employerProfile?.user?.fullName || 'User'}
         companyName={employerProfile?.companyName || 'Company'}
+        userImage={user?.imageUrl}
         onLogout={handleLogout}
       />
 

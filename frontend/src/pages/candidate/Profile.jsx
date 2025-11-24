@@ -13,7 +13,7 @@ import {
   deleteResume,
   clearError
 } from '../../store/slices/candidateSlice';
-import ProfilePhotoSection from '../../components/candidate/profile/ProfilePhotoSection';
+
 import PersonalInfoSection from '../../components/candidate/profile/PersonalInfoSection';
 import ResumeSection from '../../components/candidate/profile/ResumeSection';
 import EducationSection from '../../components/candidate/profile/EducationSection';
@@ -135,9 +135,6 @@ const Profile = () => {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               {activeSection === 'personal' && (
                 <div>
-                  <ProfilePhotoSection 
-                    profile={profile}
-                  />
                   <PersonalInfoSection 
                     profile={profile}
                     onUpdate={(data) => dispatch(updateBasicInfo(data))}
