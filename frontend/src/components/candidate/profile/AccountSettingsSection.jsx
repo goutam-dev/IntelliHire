@@ -2,11 +2,13 @@
 import React, { useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 import ProfileImageUpload from '../../common/ProfileImageUpload';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Trash2, AlertTriangle } from 'lucide-react';
 
 const AccountSettingsSection = ({ profile }) => {
   const { user } = useUser();
+  const navigate = useNavigate();
   
   // Check if user has password authentication (not OAuth-only)
   const hasPassword = user?.passwordEnabled || false;
@@ -41,6 +43,11 @@ const AccountSettingsSection = ({ profile }) => {
     marketingEmails: false
   });
   const [updatingNotifications, setUpdatingNotifications] = useState(false);
+
+  // Delete account state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const handleNameChange = (e) => {
     const { name, value } = e.target;
@@ -138,6 +145,25 @@ const AccountSettingsSection = ({ profile }) => {
       toast.error('Failed to update notification preferences');
     } finally {
       setUpdatingNotifications(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmation !== 'DELETE') {
+      toast.error('Please type DELETE to confirm');
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    try {
+      await user.delete();
+      toast.success('Account deleted successfully');
+      // Redirect to home page after deletion
+      navigate('/');
+    } catch (error) {
+      console.error('Account deletion error:', error);
+      toast.error(error.errors?.[0]?.message || 'Failed to delete account');
+      setIsDeletingAccount(false);
     }
   };
 
@@ -418,6 +444,83 @@ const AccountSettingsSection = ({ profile }) => {
           </div>
         </div>
       </div>
+
+      {/* Danger Zone - Delete Account */}
+      <div className="bg-white border border-red-200 rounded-lg p-6">
+        <div className="flex items-start">
+          <div className="flex-shrink-0">
+            <AlertTriangle className="h-6 w-6 text-red-600" />
+          </div>
+          <div className="ml-3 flex-1">
+            <h3 className="text-lg font-medium text-red-900 mb-2">Danger Zone</h3>
+            <p className="text-sm text-gray-700 mb-4">
+              Once you delete your account, there is no going back. This action will permanently delete your profile, applications, and all associated data.
+            </p>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center font-medium"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Account
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
+            <div className="flex items-start mb-4">
+              <div className="flex-shrink-0">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-lg font-semibold text-gray-900">Delete Account</h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  This action cannot be undone. This will permanently delete your account and remove all your data from our servers.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Type <span className="font-bold text-red-600">DELETE</span> to confirm:
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                placeholder="DELETE"
+              />
+            </div>
+
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmation('');
+                }}
+                disabled={isDeletingAccount}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={isDeletingAccount || deleteConfirmation !== 'DELETE'}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+              >
+                {isDeletingAccount && (
+                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                )}
+                Delete Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

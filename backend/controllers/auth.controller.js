@@ -253,7 +253,13 @@ async function getUserRole(req, res) {
 // Webhook handler for Clerk events
 async function handleWebhook(req, res) {
   try {
-    const { type, data } = req.body;
+    // Parse the body (it may be raw if signature verification is enabled)
+    let body = req.body;
+    if (Buffer.isBuffer(body)) {
+      body = JSON.parse(body.toString());
+    }
+    
+    const { type, data } = body;
 
     switch (type) {
       case 'user.created':
@@ -262,21 +268,83 @@ async function handleWebhook(req, res) {
         break;
 
       case 'user.updated':
-        // Sync user updates
+        // Sync user updates from Clerk to database
         const user = await User.findOne({ clerkUserId: data.id });
         if (user) {
-          user.email = data.email_addresses[0]?.email_address || user.email;
-          user.fullName = `${data.first_name} ${data.last_name}`.trim() || user.fullName;
-          await user.save();
+          let updated = false;
+          
+          // Sync email if changed
+          const primaryEmail = data.email_addresses?.find(
+            email => email.id === data.primary_email_address_id
+          )?.email_address || data.email_addresses?.[0]?.email_address;
+          
+          if (primaryEmail && user.email !== primaryEmail.toLowerCase()) {
+            user.email = primaryEmail.toLowerCase();
+            updated = true;
+          }
+          
+          // Sync name if changed
+          const fullName = `${data.first_name || ''} ${data.last_name || ''}`.trim();
+          if (fullName && user.fullName !== fullName) {
+            user.fullName = fullName;
+            updated = true;
+          }
+          
+          if (updated) {
+            await user.save();
+            console.log(`User ${data.id} synced to database`);
+          }
         }
         break;
 
       case 'user.deleted':
-        // Handle user deletion
-        await User.updateOne(
-          { clerkUserId: data.id },
-          { status: 'deleted' }
-        );
+        // Handle complete user deletion - cascade delete all related data
+        const deletedUser = await User.findOne({ clerkUserId: data.id });
+        if (deletedUser) {
+          console.log(`Deleting user ${data.id} and all related data...`);
+          
+          // Delete based on user role
+          if (deletedUser.role === 'employer') {
+            // Find employer profile
+            const employerProfile = await EmployerProfile.findOne({ user: deletedUser._id });
+            if (employerProfile) {
+              // Delete all jobs posted by this employer
+              const Job = require('../models/Job');
+              const jobs = await Job.find({ employer: employerProfile._id });
+              const jobIds = jobs.map(job => job._id);
+              
+              // Delete all applications for these jobs
+              const JobApplication = require('../models/JobApplication');
+              await JobApplication.deleteMany({ jobId: { $in: jobIds } });
+              console.log(`Deleted applications for employer's jobs`);
+              
+              // Delete all jobs
+              await Job.deleteMany({ employer: employerProfile._id });
+              console.log(`Deleted ${jobs.length} jobs`);
+              
+              // Delete employer profile
+              await EmployerProfile.findByIdAndDelete(employerProfile._id);
+              console.log(`Deleted employer profile`);
+            }
+          } else if (deletedUser.role === 'candidate') {
+            // Find candidate profile
+            const candidateProfile = await CandidateProfile.findOne({ user: deletedUser._id });
+            if (candidateProfile) {
+              // Delete candidate profile
+              await CandidateProfile.findByIdAndDelete(candidateProfile._id);
+              console.log(`Deleted candidate profile`);
+            }
+            
+            // Delete all job applications by this candidate
+            const JobApplication = require('../models/JobApplication');
+            await JobApplication.deleteMany({ candidateId: deletedUser._id });
+            console.log(`Deleted candidate's applications`);
+          }
+          
+          // Finally, delete the user record
+          await User.findByIdAndDelete(deletedUser._id);
+          console.log(`User ${data.id} and all related data deleted successfully`);
+        }
         break;
 
       case 'session.created':
