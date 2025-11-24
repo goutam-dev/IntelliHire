@@ -32,6 +32,8 @@ const EmployerProfileSchema = new Schema(
   { timestamps: true }
 );
 
-EmployerProfileSchema.index({ companyName: 1, user: 1 }, { unique: true });
+EmployerProfileSchema.index({ user: 1 }, { unique: true }); // One profile per user
+EmployerProfileSchema.index({ companyName: 1 }); // For company name search
+EmployerProfileSchema.index({ industry: 1 }); // For filtering by industry
 
 module.exports = model('EmployerProfile', EmployerProfileSchema);

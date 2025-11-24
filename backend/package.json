@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "reconcile-stats": "node scripts/reconcile-stats.js"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"
@@ -25,6 +26,7 @@
     "mongoose": "^8.20.0",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
+    "svix": "^1.40.0",
     "winston": "^3.18.3"
   }
 }

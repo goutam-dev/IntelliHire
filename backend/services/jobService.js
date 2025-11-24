@@ -130,11 +130,13 @@ const getJobById = async (jobId, userId = null) => {
   }
   
   // Map employer.companyName to company for frontend compatibility
-  if (job.employer) {
+  if (job.employer && job.employer.companyName) {
     job.company = job.employer.companyName;
     // Remove sensitive/internal data
-    delete job.employer.user; 
+    if (job.employer.user) delete job.employer.user;
     delete job.employer;
+  } else {
+    job.company = 'Company Name Unavailable';
   }
   
   return job;
@@ -157,6 +159,9 @@ const createJob = async (clerkUserId, jobData) => {
     applicationDeadline,
     status = 'draft',
   } = jobData;
+  
+  const { sanitizeString, isValidStringArray, isValidEnum, isValidDate } = require('../utils/validators');
+  const { EXPERIENCE_LEVELS, EMPLOYMENT_TYPES, JOB_STATUS } = require('../config/constants');
 
   // Validate required fields
   const validation = validateRequiredFields(jobData, [
@@ -171,6 +176,54 @@ const createJob = async (clerkUserId, jobData) => {
   if (!validation.valid) {
     throw new ValidationError(validation.message);
   }
+  
+  // Validate skills array
+  if (!Array.isArray(requiredSkills) || requiredSkills.length === 0) {
+    throw new ValidationError('Required skills must be a non-empty array');
+  }
+  
+  if (!isValidStringArray(requiredSkills, 1, 50)) {
+    throw new ValidationError('Required skills must contain 1-50 valid skill names');
+  }
+  
+  // Validate experience level
+  const experienceLevels = ['entry', 'mid', 'senior', 'expert'];
+  if (!experienceLevels.includes(experienceLevel)) {
+    throw new ValidationError(`Experience level must be one of: ${experienceLevels.join(', ')}`);
+  }
+  
+  // Validate employment type
+  const employmentTypes = ['full-time', 'part-time', 'contract', 'remote'];
+  if (!employmentTypes.includes(employmentType)) {
+    throw new ValidationError(`Employment type must be one of: ${employmentTypes.join(', ')}`);
+  }
+  
+  // Validate job status
+  const jobStatuses = ['draft', 'active', 'closed', 'archived'];
+  if (status && !jobStatuses.includes(status)) {
+    throw new ValidationError(`Status must be one of: ${jobStatuses.join(', ')}`);
+  }
+  
+  // Validate salary range if provided
+  if (salaryRange) {
+    if (salaryRange.min && salaryRange.max && salaryRange.min > salaryRange.max) {
+      throw new ValidationError('Minimum salary cannot be greater than maximum salary');
+    }
+    if (salaryRange.min && salaryRange.min < 0) {
+      throw new ValidationError('Salary cannot be negative');
+    }
+  }
+  
+  // Validate application deadline if provided
+  if (applicationDeadline) {
+    if (!isValidDate(applicationDeadline)) {
+      throw new ValidationError('Invalid application deadline date');
+    }
+    const deadlineDate = new Date(applicationDeadline);
+    if (deadlineDate < new Date()) {
+      throw new ValidationError('Application deadline cannot be in the past');
+    }
+  }
 
   // Get employer profile ID from authenticated user
   const user = await User.findOne({ clerkUserId });
@@ -183,15 +236,23 @@ const createJob = async (clerkUserId, jobData) => {
     throw new NotFoundError('Employer profile not found');
   }
 
+  // Sanitize text inputs
+  const sanitizedTitle = sanitizeString(title, 200);
+  const sanitizedDepartment = department ? sanitizeString(department, 100) : undefined;
+  const sanitizedDescription = sanitizeString(description, 5000);
+  const sanitizedLocation = sanitizeString(location, 200);
+  const sanitizedEducationReqs = educationRequirements ? sanitizeString(educationRequirements, 500) : undefined;
+  const sanitizedSkills = requiredSkills.map(skill => sanitizeString(skill, 50)).filter(s => s.length > 0);
+
   const job = await Job.create({
     employer: employerProfile._id,
-    title,
-    department,
-    description,
-    requiredSkills,
+    title: sanitizedTitle,
+    department: sanitizedDepartment,
+    description: sanitizedDescription,
+    requiredSkills: sanitizedSkills,
     experienceLevel,
-    educationRequirements,
-    location,
+    educationRequirements: sanitizedEducationReqs,
+    location: sanitizedLocation,
     employmentType,
     salaryRange,
     applicationDeadline,
@@ -257,6 +318,32 @@ const deleteJob = async (jobId) => {
   return job;
 };
 
+/**
+ * Get filter options for job browsing
+ * Returns distinct values for locations, departments, experience levels, and employment types
+ */
+const getFilterOptions = async () => {
+  // Only get options from active jobs
+  const activeJobsFilter = { status: 'active' };
+
+  const [locations, departments, experienceLevels, employmentTypes] = await Promise.all([
+    Job.distinct('location', activeJobsFilter),
+    Job.distinct('department', activeJobsFilter),
+    Job.distinct('experienceLevel', activeJobsFilter),
+    Job.distinct('employmentType', activeJobsFilter),
+  ]);
+
+  // Filter out null/undefined/empty values and sort
+  const cleanAndSort = (arr) => arr.filter(val => val && val.trim()).sort();
+
+  return {
+    locations: cleanAndSort(locations),
+    departments: cleanAndSort(departments),
+    experienceLevels: cleanAndSort(experienceLevels),
+    employmentTypes: cleanAndSort(employmentTypes),
+  };
+};
+
 module.exports = {
   getJobsByEmployer,
   getJobById,
@@ -264,4 +351,5 @@ module.exports = {
   updateJob,
   updateJobStatus,
   deleteJob,
+  getFilterOptions,
 };

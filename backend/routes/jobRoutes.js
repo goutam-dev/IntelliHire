@@ -6,6 +6,7 @@ const {
   updateJob,
   updateJobStatus,
   deleteJob,
+  getFilterOptions,
 } = require('../controllers/jobController');
 const { requireAuth, optionalAuth, requireRole } = require('../middleware/clerkAuth');
 
@@ -13,6 +14,7 @@ const router = express.Router();
 
 // Public or Authenticated (Candidates)
 router.get('/', optionalAuth, listJobs);
+router.get('/filters/options', getFilterOptions);
 router.get('/:jobId', optionalAuth, getJobById);
 
 // Employer only routes

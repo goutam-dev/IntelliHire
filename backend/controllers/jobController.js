@@ -53,3 +53,11 @@ exports.deleteJob = asyncHandler(async (req, res) => {
   await jobService.deleteJob(req.params.jobId);
   res.status(204).send();
 });
+
+/**
+ * Get filter options (locations, departments, experience levels, etc.)
+ */
+exports.getFilterOptions = asyncHandler(async (req, res) => {
+  const filterOptions = await jobService.getFilterOptions();
+  res.json(filterOptions);
+});

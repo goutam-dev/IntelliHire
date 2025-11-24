@@ -23,7 +23,8 @@ const UserSchema = new Schema(
     role: { type: String, enum: USER_ROLES, required: true },
     status: { type: String, enum: USER_STATUSES, default: 'pending' },
     fullName: { type: String, trim: true },
-    authProvider: { type: [String], enum: ['clerk', 'local', 'google', 'oauth'], default: ['clerk'] },
+    // Auth providers: 'clerk' for password, or actual OAuth provider names (google, github, oauth_google, etc.)
+    authProvider: { type: [String], default: ['clerk'] },
     emailVerifiedAt: { type: Date },
     lastLoginAt: { type: Date },
     profileCompletion: { type: ProfileCompletionSchema, default: () => ({}) },
@@ -36,7 +37,10 @@ const UserSchema = new Schema(
   { timestamps: true }
 );
 
-// Fast lookup by role/status in dashboards.
+// Fast lookup by role/status in dashboards
 UserSchema.index({ role: 1, status: 1 });
+UserSchema.index({ email: 1 }, { unique: true }); // Ensure unique email and fast lookup
+UserSchema.index({ clerkUserId: 1 }, { unique: true, sparse: true }); // Already defined but ensure it's there
+UserSchema.index({ lastLoginAt: -1 }); // For tracking recent logins
 
 module.exports = model('User', UserSchema);

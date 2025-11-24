@@ -161,4 +161,11 @@ CandidateProfileSchema.pre('save', function(next) {
   next();
 });
 
+// Indexes for efficient queries
+CandidateProfileSchema.index({ user: 1 }, { unique: true }); // One profile per user
+CandidateProfileSchema.index({ skills: 1 }); // For skill-based search
+CandidateProfileSchema.index({ location: 1 }); // For location-based search
+CandidateProfileSchema.index({ 'profileCompletion.percentage': 1 }); // For completion tracking
+CandidateProfileSchema.index({ lastProfileUpdateAt: -1 }); // For recent updates
+
 module.exports = model('CandidateProfile', CandidateProfileSchema);

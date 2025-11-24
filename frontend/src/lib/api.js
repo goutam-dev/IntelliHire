@@ -4,7 +4,16 @@ import axios from 'axios';
  * Centralized Axios instance with interceptors for authentication and error handling
  */
 
+// Validate environment variables
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+// Warn in development if critical env vars are missing
+if (import.meta.env.MODE === 'development') {
+  if (!CLERK_KEY) {
+    console.warn('⚠️  VITE_CLERK_PUBLISHABLE_KEY is not set. Authentication may not work.');
+  }
+}
 
 // Create Axios instance
 const api = axios.create({
@@ -13,6 +22,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true, // Important for cookies
+  timeout: 30000, // 30 second timeout for requests
 });
 
 /**
@@ -20,10 +30,27 @@ const api = axios.create({
  */
 api.interceptors.request.use(
   async (config) => {
-    // Get Clerk token from window
+    // Get Clerk token from window with proper error handling
     if (window.Clerk) {
       try {
-        const session = await window.Clerk.session;
+        // Wait for Clerk to be loaded
+        if (!window.Clerk.loaded) {
+          await new Promise(resolve => {
+            const checkLoaded = setInterval(() => {
+              if (window.Clerk.loaded) {
+                clearInterval(checkLoaded);
+                resolve();
+              }
+            }, 100);
+            // Timeout after 5 seconds
+            setTimeout(() => {
+              clearInterval(checkLoaded);
+              resolve();
+            }, 5000);
+          });
+        }
+
+        const session = window.Clerk.session;
         if (session) {
           const token = await session.getToken();
           if (token) {
@@ -32,11 +59,14 @@ api.interceptors.request.use(
         }
       } catch (error) {
         console.error('Error getting Clerk token:', error);
+        // Don't fail the request, continue without token
+        // Backend will reject if auth is required
       }
     }
     return config;
   },
   (error) => {
+    console.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );

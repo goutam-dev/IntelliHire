@@ -32,15 +32,37 @@ async function syncPrimaryEmailAddress(clerkUserId) {
 async function completeSignup(req, res) {
   try {
     const { clerkUserId, role, email, fullName, phoneNumber, companyName, industry, companyWebsite, professionalHeadline } = req.body;
+    const { isValidEmail, isValidPhoneNumber, isValidUrl, sanitizeString } = require('../utils/validators');
 
     // Validate required fields
     if (!clerkUserId || !role || !email || !fullName || !phoneNumber) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: 'Missing required fields: clerkUserId, role, email, fullName, phoneNumber' });
     }
 
     if (!['employer', 'candidate'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role' });
+      return res.status(400).json({ error: 'Invalid role. Must be either "employer" or "candidate"' });
     }
+
+    // Validate email format
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    // Validate phone number format
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+
+    // Validate company website URL if provided
+    if (companyWebsite && !isValidUrl(companyWebsite)) {
+      return res.status(400).json({ error: 'Invalid company website URL' });
+    }
+
+    // Sanitize text inputs
+    const sanitizedFullName = sanitizeString(fullName, 100);
+    const sanitizedCompanyName = companyName ? sanitizeString(companyName, 200) : '';
+    const sanitizedIndustry = industry ? sanitizeString(industry, 100) : '';
+    const sanitizedHeadline = professionalHeadline ? sanitizeString(professionalHeadline, 200) : '';
 
     // Check if user already exists
     let user = await User.findOne({ clerkUserId });
@@ -56,48 +78,60 @@ async function completeSignup(req, res) {
       }
       
       // Update email if changed
-      if (user.email !== email.toLowerCase()) {
-        user.email = email.toLowerCase();
+      const normalizedEmail = email.toLowerCase().trim();
+      if (user.email !== normalizedEmail) {
+        user.email = normalizedEmail;
         updated = true;
       }
 
       // Update phone number if changed
-      if (user.phoneNumber !== phoneNumber) {
-        user.phoneNumber = phoneNumber;
+      const normalizedPhone = phoneNumber.trim();
+      if (user.phoneNumber !== normalizedPhone) {
+        user.phoneNumber = normalizedPhone;
+        updated = true;
+      }
+      
+      // Update full name if changed
+      if (user.fullName !== sanitizedFullName) {
+        user.fullName = sanitizedFullName;
         updated = true;
       }
 
-      // Get Clerk user to check auth method
-      const clerkUser = await clerkClient.users.getUser(clerkUserId);
-      const hasOAuth = clerkUser.externalAccounts && clerkUser.externalAccounts.length > 0;
-      const hasPassword = clerkUser.passwordEnabled || false;
-      
-      // Update auth providers array based on what's actually enabled
-      let newAuthProviders = [];
-      if (hasOAuth) {
-        newAuthProviders.push('google');
-      }
-      if (hasPassword) {
-        newAuthProviders.push('clerk');
-      }
-      
-      // Update if changed
-      const currentProviders = Array.isArray(user.authProvider) ? user.authProvider : [user.authProvider];
-      const providersChanged = newAuthProviders.length !== currentProviders.length || 
-                               !newAuthProviders.every(p => currentProviders.includes(p));
-      
-      if (providersChanged && newAuthProviders.length > 0) {
-        user.authProvider = newAuthProviders;
-        updated = true;
-      }
+    // Get Clerk user to check auth method
+    const clerkUser = await clerkClient.users.getUser(clerkUserId);
+    const hasOAuth = clerkUser.externalAccounts && clerkUser.externalAccounts.length > 0;
+    const hasPassword = clerkUser.passwordEnabled || false;
+    
+    // Update auth providers array based on what's actually enabled
+    let newAuthProviders = [];
+    if (hasOAuth) {
+      // Get actual OAuth provider names
+      clerkUser.externalAccounts.forEach(account => {
+        if (account.provider && !newAuthProviders.includes(account.provider)) {
+          newAuthProviders.push(account.provider);
+        }
+      });
+    }
+    if (hasPassword) {
+      newAuthProviders.push('clerk');
+    }
+    
+    // Update if changed
+    const currentProviders = Array.isArray(user.authProvider) ? user.authProvider : (user.authProvider ? [user.authProvider] : []);
+    const providersChanged = newAuthProviders.length !== currentProviders.length || 
+                             !newAuthProviders.every(p => currentProviders.includes(p));
+    
+    if (providersChanged && newAuthProviders.length > 0) {
+      user.authProvider = newAuthProviders;
+      updated = true;
+    }
 
-      // Ensure email is verified for OAuth users
-      if (hasOAuth && !user.emailVerifiedAt) {
-        user.emailVerifiedAt = new Date();
-        updated = true;
-      }
-
-      if (updated) {
+    // Ensure email is verified for OAuth users or password users with verified email
+    const emailVerified = clerkUser.emailAddresses?.some(email => email.verification?.status === 'verified');
+    if (emailVerified && !user.emailVerifiedAt) {
+      user.emailVerifiedAt = new Date();
+      updated = true;
+    }      if (updated) {
         await user.save();
       }
 
@@ -106,27 +140,31 @@ async function completeSignup(req, res) {
         publicMetadata: { role },
       });
 
-      // Check if role-specific profile exists, create if not
+      // Check if role-specific profile exists, create if not (using upsert to avoid race conditions)
       if (role === 'employer') {
-        const existingProfile = await EmployerProfile.findOne({ user: user._id });
-        if (!existingProfile) {
-          const employerProfile = new EmployerProfile({
-            user: user._id,
-            companyName: companyName || '',
-            industry: industry || '',
-            companyWebsite: companyWebsite || '',
-          });
-          await employerProfile.save();
-        }
+        await EmployerProfile.findOneAndUpdate(
+          { user: user._id },
+          {
+            $setOnInsert: {
+              user: user._id,
+              companyName: sanitizedCompanyName,
+              industry: sanitizedIndustry,
+              companyWebsite: companyWebsite ? companyWebsite.trim() : '',
+            }
+          },
+          { upsert: true, new: true }
+        );
       } else if (role === 'candidate') {
-        const existingProfile = await CandidateProfile.findOne({ user: user._id });
-        if (!existingProfile) {
-          const candidateProfile = new CandidateProfile({
-            user: user._id,
-            professionalHeadline: professionalHeadline || '',
-          });
-          await candidateProfile.save();
-        }
+        await CandidateProfile.findOneAndUpdate(
+          { user: user._id },
+          {
+            $setOnInsert: {
+              user: user._id,
+              professionalHeadline: sanitizedHeadline,
+            }
+          },
+          { upsert: true, new: true }
+        );
       }
 
       return res.status(200).json({ 
@@ -144,7 +182,12 @@ async function completeSignup(req, res) {
     // Determine auth providers based on what's actually enabled
     let authProviders = [];
     if (hasOAuth) {
-      authProviders.push('google');
+      // Get actual OAuth provider names
+      clerkUser.externalAccounts.forEach(account => {
+        if (account.provider && !authProviders.includes(account.provider)) {
+          authProviders.push(account.provider);
+        }
+      });
     }
     if (hasPassword) {
       authProviders.push('clerk');
@@ -157,9 +200,9 @@ async function completeSignup(req, res) {
     // Create new user in our database
     user = new User({
       clerkUserId,
-      email: email.toLowerCase(),
-      phoneNumber,
-      fullName,
+      email: email.toLowerCase().trim(),
+      phoneNumber: phoneNumber.trim(),
+      fullName: sanitizedFullName,
       role,
       status: 'active',
       emailVerifiedAt: new Date(), // OAuth users are pre-verified by Google
@@ -177,21 +220,31 @@ async function completeSignup(req, res) {
       publicMetadata: { role },
     });
 
-    // Create role-specific profile
+    // Create role-specific profile (using upsert to avoid race conditions)
     if (role === 'employer') {
-      const employerProfile = new EmployerProfile({
-        user: user._id,
-        companyName: companyName || '',
-        industry: industry || '',
-        companyWebsite: companyWebsite || '',
-      });
-      await employerProfile.save();
+      await EmployerProfile.findOneAndUpdate(
+        { user: user._id },
+        {
+          $setOnInsert: {
+            user: user._id,
+            companyName: sanitizedCompanyName,
+            industry: sanitizedIndustry,
+            companyWebsite: companyWebsite ? companyWebsite.trim() : '',
+          }
+        },
+        { upsert: true, new: true }
+      );
     } else if (role === 'candidate') {
-      const candidateProfile = new CandidateProfile({
-        user: user._id,
-        professionalHeadline: professionalHeadline || '',
-      });
-      await candidateProfile.save();
+      await CandidateProfile.findOneAndUpdate(
+        { user: user._id },
+        {
+          $setOnInsert: {
+            user: user._id,
+            professionalHeadline: sanitizedHeadline,
+          }
+        },
+        { upsert: true, new: true }
+      );
     }
 
     res.status(201).json({ 
@@ -253,6 +306,39 @@ async function getUserRole(req, res) {
 // Webhook handler for Clerk events
 async function handleWebhook(req, res) {
   try {
+    const { Webhook } = require('svix');
+    const config = require('../config');
+    
+    // Verify webhook signature if webhook secret is configured
+    if (config.clerkWebhookSecret) {
+      const svixId = req.headers['svix-id'];
+      const svixTimestamp = req.headers['svix-timestamp'];
+      const svixSignature = req.headers['svix-signature'];
+
+      if (!svixId || !svixTimestamp || !svixSignature) {
+        console.error('Missing Svix headers');
+        return res.status(400).json({ error: 'Missing webhook signature headers' });
+      }
+
+      // Get the raw body as string
+      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString() : JSON.stringify(req.body);
+
+      try {
+        const wh = new Webhook(config.clerkWebhookSecret);
+        // Verify the webhook signature
+        wh.verify(rawBody, {
+          'svix-id': svixId,
+          'svix-timestamp': svixTimestamp,
+          'svix-signature': svixSignature,
+        });
+      } catch (verifyError) {
+        console.error('Webhook signature verification failed:', verifyError);
+        return res.status(400).json({ error: 'Invalid webhook signature' });
+      }
+    } else {
+      console.warn('⚠️  Webhook secret not configured - webhook signatures are not being verified!');
+    }
+    
     // Parse the body (it may be raw if signature verification is enabled)
     let body = req.body;
     if (Buffer.isBuffer(body)) {
@@ -392,8 +478,10 @@ async function checkEmailExists(req, res) {
         const hasOAuth = clerkUser.externalAccounts && clerkUser.externalAccounts.length > 0;
         const isOAuthOnly = hasOAuth && !hasPassword;
         
-        // Get current auth providers from database
-        const authProviders = Array.isArray(user.authProvider) ? user.authProvider : [user.authProvider];
+        // Get current auth providers from database with null safety
+        const authProviders = Array.isArray(user.authProvider) 
+          ? user.authProvider 
+          : (user.authProvider ? [user.authProvider] : []);
         
         return res.json({ 
           exists: true,
@@ -403,8 +491,10 @@ async function checkEmailExists(req, res) {
         });
       } catch (clerkError) {
         console.error('Clerk user check error:', clerkError);
-        // Fallback to database check
-        const authProviders = Array.isArray(user.authProvider) ? user.authProvider : [user.authProvider];
+        // Fallback to database check with null safety
+        const authProviders = Array.isArray(user.authProvider) 
+          ? user.authProvider 
+          : (user.authProvider ? [user.authProvider] : ['clerk']);
         const isOAuthOnly = authProviders.includes('google') && !authProviders.includes('clerk') && !authProviders.includes('local');
         
         return res.json({ 

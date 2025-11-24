@@ -100,9 +100,12 @@ jobApplicationSchema.index(
 
 // Indexes for efficient queries
 jobApplicationSchema.index({ candidateId: 1, appliedAt: -1 });
+jobApplicationSchema.index({ candidateId: 1, status: 1 }); // For filtering by candidate and status
 jobApplicationSchema.index({ jobId: 1, appliedAt: -1 });
-jobApplicationSchema.index({ status: 1 });
-jobApplicationSchema.index({ applicationId: 1 });
+jobApplicationSchema.index({ jobId: 1, status: 1 }); // For filtering by job and status
+jobApplicationSchema.index({ status: 1, appliedAt: -1 }); // For status-based listings
+jobApplicationSchema.index({ applicationId: 1 }, { unique: true }); // Unique application ID lookup
+jobApplicationSchema.index({ 'applicationProfile.personalInfo.email': 1 }); // For email search
 
 // Virtual for application age
 jobApplicationSchema.virtual('appliedAgo').get(function() {

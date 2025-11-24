@@ -52,6 +52,14 @@ export const deleteJob = async (jobId) => {
   return response.data;
 };
 
+/**
+ * Get filter options (locations, departments, etc.)
+ */
+export const getFilterOptions = async () => {
+  const response = await api.get('/jobs/filters/options');
+  return response.data;
+};
+
 export default {
   getJobs,
   getJobById,
@@ -59,4 +67,5 @@ export default {
   updateJob,
   updateJobStatus,
   deleteJob,
+  getFilterOptions,
 };

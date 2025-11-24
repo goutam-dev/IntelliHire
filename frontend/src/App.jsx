@@ -4,6 +4,7 @@ import { store } from './store/store';
 import { ClerkProvider } from './contexts/ClerkProvider';
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
 import ScrollToTop from './components/ScrollToTop';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -32,12 +33,13 @@ import EmployerProfilePage from './pages/employer/EmployerProfilePage';
 
 function App() {
   return (
-    <Provider store={store}>
-      <ClerkProvider>
-        <BrowserRouter>
-        <ScrollToTop />
-        <ToastContainer position="top-right" autoClose={3000} />
-          <Routes>
+    <ErrorBoundary>
+      <Provider store={store}>
+        <ClerkProvider>
+          <BrowserRouter>
+          <ScrollToTop />
+          <ToastContainer position="top-right" autoClose={3000} />
+            <Routes>
             {/* Public Routes */}
             <Route
               path="/"
@@ -153,9 +155,10 @@ function App() {
             {/* Catch all - redirect to home */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
-      </ClerkProvider>
-    </Provider>
+          </BrowserRouter>
+        </ClerkProvider>
+      </Provider>
+    </ErrorBoundary>
   );
 }
 

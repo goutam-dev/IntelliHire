@@ -30,7 +30,11 @@ const validateRequiredFields = (body, requiredFields) => {
   const missing = [];
   
   for (const field of requiredFields) {
-    if (!body[field]) {
+    const value = body[field];
+    // Check for null, undefined, empty string, or whitespace-only string
+    if (value === null || value === undefined || 
+        (typeof value === 'string' && value.trim() === '') ||
+        (Array.isArray(value) && value.length === 0)) {
       missing.push(field);
     }
   }
@@ -61,9 +65,91 @@ const sanitizeUpdate = (body, allowedFields) => {
   return sanitized;
 };
 
+/**
+ * Validate email format
+ */
+const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+};
+
+/**
+ * Validate phone number format (basic validation)
+ */
+const isValidPhoneNumber = (phone) => {
+  if (!phone || typeof phone !== 'string') return false;
+  // Remove spaces, dashes, parentheses
+  const cleaned = phone.replace(/[\s\-()]/g, '');
+  // Check if it's a valid number between 10-15 digits, optionally starting with +
+  const phoneRegex = /^\+?\d{10,15}$/;
+  return phoneRegex.test(cleaned);
+};
+
+/**
+ * Validate URL format
+ */
+const isValidUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const urlObj = new URL(url);
+    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+  } catch (e) {
+    return false;
+  }
+};
+
+/**
+ * Sanitize string input - remove HTML tags and trim
+ */
+const sanitizeString = (str, maxLength = null) => {
+  if (!str || typeof str !== 'string') return '';
+  // Remove HTML tags
+  let sanitized = str.replace(/<[^>]*>/g, '');
+  // Trim whitespace
+  sanitized = sanitized.trim();
+  // Truncate if maxLength specified
+  if (maxLength && sanitized.length > maxLength) {
+    sanitized = sanitized.substring(0, maxLength);
+  }
+  return sanitized;
+};
+
+/**
+ * Validate array of strings
+ */
+const isValidStringArray = (arr, minLength = 0, maxLength = Infinity) => {
+  if (!Array.isArray(arr)) return false;
+  if (arr.length < minLength || arr.length > maxLength) return false;
+  return arr.every(item => typeof item === 'string' && item.trim().length > 0);
+};
+
+/**
+ * Validate date string or Date object
+ */
+const isValidDate = (date) => {
+  if (!date) return false;
+  const dateObj = date instanceof Date ? date : new Date(date);
+  return dateObj instanceof Date && !isNaN(dateObj.getTime());
+};
+
+/**
+ * Validate enum value
+ */
+const isValidEnum = (value, allowedValues) => {
+  return allowedValues.includes(value);
+};
+
 module.exports = {
   isValidObjectId,
   resolveEmployerId,
   validateRequiredFields,
   sanitizeUpdate,
+  isValidEmail,
+  isValidPhoneNumber,
+  isValidUrl,
+  sanitizeString,
+  isValidStringArray,
+  isValidDate,
+  isValidEnum,
 };

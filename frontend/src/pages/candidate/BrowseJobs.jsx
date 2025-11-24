@@ -545,22 +545,29 @@ const BrowseJobs = () => {
 
   // Check application statuses for all jobs when they're loaded
   useEffect(() => {
-    if (jobs && jobs.length > 0) {
-      jobs.forEach(job => {
-        if (job._id) {
-          dispatch(checkApplicationStatus(job._id));
-        }
-      });
-    }
+    if (!jobs || jobs.length === 0) return;
+
+    // Use abort controller to cancel pending requests on cleanup
+    const abortController = new AbortController();
+    
+    jobs.forEach(job => {
+      if (job?._id) {
+        dispatch(checkApplicationStatus(job._id));
+      }
+    });
+
+    return () => {
+      abortController.abort();
+    };
   }, [dispatch, jobs]);
 
   // Refresh application statuses when the page becomes visible (user returns from application page)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden && jobs && jobs.length > 0) {
+      if (!document.hidden && jobs?.length > 0) {
         // Re-check application statuses when page becomes visible
         jobs.forEach(job => {
-          if (job._id) {
+          if (job?._id) {
             // Force refresh by clearing cache first
             dispatch(forceRefreshApplicationStatus({ jobId: job._id }));
             dispatch(checkApplicationStatus(job._id));
@@ -570,7 +577,11 @@ const BrowseJobs = () => {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Cleanup event listener on unmount
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [dispatch, jobs]);
 
   // Handle force refresh when returning from application page
@@ -588,16 +599,17 @@ const BrowseJobs = () => {
     }
   }, [dispatch, location.state]);
 
-  // Live search effect
+  // Live search effect with abort controller
   useEffect(() => {
     if (debouncedSearchTerm !== filters.search) {
       setIsSearching(true);
       dispatch(setFilters({ search: debouncedSearchTerm }));
       
+      const abortController = new AbortController();
       const searchPromise = dispatch(fetchJobs({ ...filters, search: debouncedSearchTerm, page: 1 }));
       
       // Scroll to top when search results change
-      if (jobsContainerRef.current) {
+      if (jobsContainerRef?.current) {
         jobsContainerRef.current.scrollTop = 0;
       }
       
@@ -605,11 +617,21 @@ const BrowseJobs = () => {
       if (searchPromise && typeof searchPromise.then === 'function') {
         searchPromise.finally(() => {
           setTimeout(() => setIsSearching(false), 300);
+        }).catch((error) => {
+          if (error.name === 'AbortError') {
+            console.log('Search request aborted');
+          }
         });
       } else {
         // Fallback timeout
         setTimeout(() => setIsSearching(false), 800);
       }
+
+      // Cleanup: abort on unmount or search term change
+      return () => {
+        abortController.abort();
+        setIsSearching(false);
+      };
     }
   }, [debouncedSearchTerm, dispatch, filters]);
 

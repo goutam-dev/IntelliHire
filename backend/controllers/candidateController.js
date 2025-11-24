@@ -93,7 +93,14 @@ exports.deleteExperience = asyncHandler(async (req, res) => {
  * Update skills
  */
 exports.updateSkills = asyncHandler(async (req, res) => {
-  const result = await candidateService.updateSkills(req.user.id, req.body);
+  // Extract skills from body - handle both { skills: [...] } and direct array
+  const skills = Array.isArray(req.body) ? req.body : req.body.skills;
+  
+  if (!skills) {
+    return res.status(400).json({ error: 'Skills array is required' });
+  }
+  
+  const result = await candidateService.updateSkills(req.user.id, skills);
   res.json({
     success: true,
     message: 'Skills updated successfully',

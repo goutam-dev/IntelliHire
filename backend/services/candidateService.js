@@ -2,6 +2,7 @@ const User = require('../models/User');
 const CandidateProfile = require('../models/CandidateProfile');
 const JobApplication = require('../models/JobApplication');
 const { NotFoundError, ValidationError } = require('../utils/errorHandler');
+const logger = require('../utils/logger');
 const path = require('path');
 const fs = require('fs');
 
@@ -24,41 +25,45 @@ const ensureCandidateUser = async (userId) => {
 const getCandidateProfile = async (userId) => {
   await ensureCandidateUser(userId);
 
-  let profile = await CandidateProfile.findOne({ user: userId })
-    .populate('user', 'fullName email phoneNumber');
+  // Use findOneAndUpdate with upsert to avoid race condition
+  let profile = await CandidateProfile.findOneAndUpdate(
+    { user: userId },
+    {
+      $setOnInsert: {
+        user: userId,
+        skills: [],
+        phoneNumber: '',
+        location: '', 
+        professionalTitle: '',
+        education: [],
+        experience: [],
+        stats: {
+          totalApplications: 0,
+          pending: 0,
+          shortlisted: 0,
+          rejected: 0
+        }
+      }
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  ).populate('user', 'fullName email phoneNumber');
   
   if (!profile) {
-    // Create a new profile with safe default values
-    profile = new CandidateProfile({ 
-      user: userId,
-      skills: [],
-      phoneNumber: '',
-      location: '', 
-      professionalTitle: '',
-      education: [],
-      experience: [],
-      stats: {
-        totalApplications: 0,
-        pending: 0,
-        shortlisted: 0,
-        rejected: 0
-      }
-    });
-    
-    await profile.save();
-    
-    // Fetch the populated profile
-    profile = await CandidateProfile.findOne({ user: userId })
-      .populate('user', 'fullName email phoneNumber');
+    throw new NotFoundError('Failed to retrieve or create profile');
   }
 
   // Ensure user data exists
   if (!profile.user) {
     const user = await User.findById(userId);
-    profile.user = {
-      fullName: user.fullName || 'New Candidate',
-      email: user.email || 'user@example.com'
-    };
+    if (user) {
+      profile.user = {
+        fullName: user.fullName || 'New Candidate',
+        email: user.email || 'user@example.com',
+        phoneNumber: user.phoneNumber || ''
+      };
+    } else {
+      throw new NotFoundError('User data not found');
+    }
   }
 
   const profileResponse = profile.toObject();
@@ -75,6 +80,24 @@ const getCandidateProfile = async (userId) => {
  */
 const updateBasicInfo = async (userId, data) => {
   const { fullName, phoneNumber, location, professionalTitle, headline, summary, linkedinUrl, portfolioUrl } = data;
+  const { isValidPhoneNumber, isValidUrl, sanitizeString } = require('../utils/validators');
+  
+  // Validate inputs
+  if (phoneNumber && !isValidPhoneNumber(phoneNumber)) {
+    throw new ValidationError('Invalid phone number format');
+  }
+  
+  if (linkedinUrl && !isValidUrl(linkedinUrl)) {
+    throw new ValidationError('Invalid LinkedIn URL format');
+  }
+  
+  if (portfolioUrl && !isValidUrl(portfolioUrl)) {
+    throw new ValidationError('Invalid portfolio URL format');
+  }
+  
+  if (summary && summary.length > 500) {
+    throw new ValidationError('Summary must be 500 characters or less');
+  }
   
   let profile = await CandidateProfile.findOne({ user: userId });
   
@@ -82,20 +105,21 @@ const updateBasicInfo = async (userId, data) => {
     profile = new CandidateProfile({ user: userId });
   }
 
-  // Update profile fields
-  if (phoneNumber !== undefined) profile.phoneNumber = phoneNumber;
-  if (location !== undefined) profile.location = location;
-  if (professionalTitle !== undefined) profile.professionalTitle = professionalTitle;
-  if (headline !== undefined) profile.headline = headline;
-  if (summary !== undefined) profile.summary = summary;
-  if (linkedinUrl !== undefined) profile.linkedinUrl = linkedinUrl;
-  if (portfolioUrl !== undefined) profile.portfolioUrl = portfolioUrl;
+  // Update profile fields with sanitization
+  if (phoneNumber !== undefined) profile.phoneNumber = phoneNumber.trim();
+  if (location !== undefined) profile.location = sanitizeString(location, 100);
+  if (professionalTitle !== undefined) profile.professionalTitle = sanitizeString(professionalTitle, 100);
+  if (headline !== undefined) profile.headline = sanitizeString(headline, 200);
+  if (summary !== undefined) profile.summary = sanitizeString(summary, 500);
+  if (linkedinUrl !== undefined) profile.linkedinUrl = linkedinUrl.trim();
+  if (portfolioUrl !== undefined) profile.portfolioUrl = portfolioUrl.trim();
 
   await profile.save();
 
   // Update user's fullName if provided
   if (fullName) {
-    await User.findByIdAndUpdate(userId, { fullName });
+    const sanitizedFullName = sanitizeString(fullName, 100);
+    await User.findByIdAndUpdate(userId, { fullName: sanitizedFullName });
   }
   
   return await CandidateProfile.findOne({ user: userId }).populate('user', 'fullName email phoneNumber');
@@ -118,12 +142,18 @@ const uploadResume = async (userId, file) => {
   // Delete old resume file if exists
   if (profile.resume && profile.resume.fileUrl) {
     // Assuming uploads directory is at root/uploads
-    const oldFilePath = path.join(__dirname, '../../', profile.resume.fileUrl);
-    if (fs.existsSync(oldFilePath)) {
+    const oldFilePath = path.join(__dirname, '..', profile.resume.fileUrl);
+    // Validate path to prevent directory traversal
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    const resolvedPath = path.resolve(oldFilePath);
+    const resolvedUploadsDir = path.resolve(uploadsDir);
+    
+    if (resolvedPath.startsWith(resolvedUploadsDir) && fs.existsSync(oldFilePath)) {
       try {
         fs.unlinkSync(oldFilePath);
+        logger.info(`Deleted old resume file: ${oldFilePath}`);
       } catch (err) {
-        console.error('Error deleting old resume:', err);
+        logger.error('Error deleting old resume:', err);
       }
     }
   }
@@ -298,6 +328,8 @@ const deleteExperience = async (userId, experienceId) => {
  * Update skills
  */
 const updateSkills = async (userId, skills) => {
+  const { isValidStringArray, sanitizeString } = require('../utils/validators');
+  
   if (!Array.isArray(skills)) {
     throw new ValidationError('Skills must be an array');
   }
@@ -306,13 +338,26 @@ const updateSkills = async (userId, skills) => {
     throw new ValidationError('At least 3 skills are required');
   }
   
+  if (skills.length > 50) {
+    throw new ValidationError('Maximum 50 skills allowed');
+  }
+  
+  // Validate and sanitize each skill
+  const sanitizedSkills = skills
+    .map(skill => sanitizeString(skill, 50))
+    .filter(skill => skill.length > 0);
+  
+  if (sanitizedSkills.length < 3) {
+    throw new ValidationError('At least 3 valid skills are required after sanitization');
+  }
+  
   let profile = await CandidateProfile.findOne({ user: userId });
   
   if (!profile) {
     profile = new CandidateProfile({ user: userId });
   }
 
-  profile.skills = skills;
+  profile.skills = sanitizedSkills;
   await profile.save();
   
   const updatedProfile = await CandidateProfile.findOne({ user: userId }).populate('user', 'fullName email phoneNumber');
@@ -324,7 +369,10 @@ const updateSkills = async (userId, skills) => {
 };
 
 /**
- * Delete resume
+ * Delete resume from candidate profile
+ * NOTE: This only deletes the resume from the candidate's profile.
+ * Resumes submitted with job applications are stored separately in /uploads/applications/
+ * and are NOT affected by this deletion, so employers can still access them.
  */
 const deleteResume = async (userId) => {
   const profile = await CandidateProfile.findOne({ user: userId });
@@ -333,14 +381,24 @@ const deleteResume = async (userId) => {
     throw new NotFoundError('Profile not found');
   }
 
-  // Delete physical file if exists
+  // Delete physical file from profile resumes folder only
+  // Application resumes are stored separately and are not deleted
   if (profile.resume && profile.resume.fileUrl) {
-    const filePath = path.join(__dirname, '../../', profile.resume.fileUrl);
-    if (fs.existsSync(filePath)) {
+    const filePath = path.join(__dirname, '..', profile.resume.fileUrl);
+    // Validate path to prevent directory traversal
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    const resolvedPath = path.resolve(filePath);
+    const resolvedUploadsDir = path.resolve(uploadsDir);
+    
+    // Only delete if it's in the uploads directory and NOT in the applications subfolder
+    if (resolvedPath.startsWith(resolvedUploadsDir) && 
+        !resolvedPath.includes('applications') && 
+        fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
+        logger.info(`Deleted profile resume file: ${filePath}`);
       } catch (err) {
-        console.error('Error deleting resume file:', err);
+        logger.error('Error deleting profile resume file:', err);
       }
     }
   }
@@ -371,12 +429,18 @@ const uploadPhoto = async (userId, file) => {
 
   // Delete old photo file if exists
   if (profile.profilePhotoUrl) {
-    const oldFilePath = path.join(__dirname, '../../', profile.profilePhotoUrl);
-    if (fs.existsSync(oldFilePath)) {
+    const oldFilePath = path.join(__dirname, '..', profile.profilePhotoUrl);
+    // Validate path to prevent directory traversal
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    const resolvedPath = path.resolve(oldFilePath);
+    const resolvedUploadsDir = path.resolve(uploadsDir);
+    
+    if (resolvedPath.startsWith(resolvedUploadsDir) && fs.existsSync(oldFilePath)) {
       try {
         fs.unlinkSync(oldFilePath);
+        logger.info(`Deleted old photo file: ${oldFilePath}`);
       } catch (err) {
-        console.error('Error deleting old photo:', err);
+        logger.error('Error deleting old photo:', err);
       }
     }
   }
@@ -399,12 +463,18 @@ const deletePhoto = async (userId) => {
 
   // Delete physical file if exists
   if (profile.profilePhotoUrl) {
-    const filePath = path.join(__dirname, '../../', profile.profilePhotoUrl);
-    if (fs.existsSync(filePath)) {
+    const filePath = path.join(__dirname, '..', profile.profilePhotoUrl);
+    // Validate path to prevent directory traversal
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    const resolvedPath = path.resolve(filePath);
+    const resolvedUploadsDir = path.resolve(uploadsDir);
+    
+    if (resolvedPath.startsWith(resolvedUploadsDir) && fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
+        logger.info(`Deleted photo file: ${filePath}`);
       } catch (err) {
-        console.error('Error deleting photo file:', err);
+        logger.error('Error deleting photo file:', err);
       }
     }
   }

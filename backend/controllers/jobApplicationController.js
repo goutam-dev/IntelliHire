@@ -141,9 +141,19 @@ exports.downloadResume = asyncHandler(async (req, res) => {
     return res.redirect(resumeUrl);
   } else if (resumeUrl) {
     // Construct path to backend/uploads from backend/controllers
-    filePath = path.join(__dirname, '../', resumeUrl);
+    filePath = path.join(__dirname, '..', resumeUrl);
   } else {
     res.status(404).json({ success: false, message: 'Resume file path not found' });
+    return;
+  }
+
+  // Validate path to prevent directory traversal
+  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  const resolvedPath = path.resolve(filePath);
+  const resolvedUploadsDir = path.resolve(uploadsDir);
+  
+  if (!resolvedPath.startsWith(resolvedUploadsDir)) {
+    res.status(403).json({ success: false, message: 'Access denied' });
     return;
   }
 
@@ -153,10 +163,27 @@ exports.downloadResume = asyncHandler(async (req, res) => {
   }
 
   const fileName = resume.fileName || resume.originalName || resume.filename || 'resume.pdf';
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  // Sanitize filename for Content-Disposition header
+  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+  
+  res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFileName}"`);
   res.setHeader('Content-Type', 'application/pdf');
 
   const fileStream = fs.createReadStream(filePath);
+  
+  // Handle stream errors
+  fileStream.on('error', (error) => {
+    console.error('File stream error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Error reading file' });
+    }
+  });
+  
+  // Ensure stream is properly closed
+  res.on('close', () => {
+    fileStream.destroy();
+  });
+
   fileStream.pipe(res);
 });
 

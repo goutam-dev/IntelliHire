@@ -6,7 +6,7 @@ require('dotenv').config();
  */
 const config = {
   // Server
-  port: process.env.PORT || 4000,
+  port: parseInt(process.env.PORT, 10) || 4000,
   nodeEnv: process.env.NODE_ENV || 'development',
   
   // Database
@@ -18,9 +18,7 @@ const config = {
   // Clerk
   clerkSecretKey: process.env.CLERK_SECRET_KEY,
   clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY,
-  
-  // Default IDs (for development/testing)
-  defaultEmployerId: process.env.DEFAULT_EMPLOYER_ID || '000000000000000000000000',
+  clerkWebhookSecret: process.env.CLERK_WEBHOOK_SECRET,
   
   // File Upload
   uploadsDir: 'uploads',
@@ -32,12 +30,48 @@ const config = {
 };
 
 // Validate required environment variables
-const requiredEnvVars = ['CLERK_SECRET_KEY'];
+const requiredEnvVars = {
+  production: ['CLERK_SECRET_KEY', 'MONGODB_URI', 'CLERK_WEBHOOK_SECRET'],
+  development: ['CLERK_SECRET_KEY']
+};
 
-requiredEnvVars.forEach((envVar) => {
+const envVarsToCheck = config.isProduction() 
+  ? requiredEnvVars.production 
+  : requiredEnvVars.development;
+
+const missingVars = [];
+
+envVarsToCheck.forEach((envVar) => {
   if (!process.env[envVar]) {
-    console.warn(`⚠️  Warning: ${envVar} is not set in environment variables`);
+    missingVars.push(envVar);
   }
 });
+
+if (missingVars.length > 0) {
+  const errorMessage = `❌ Missing required environment variables: ${missingVars.join(', ')}`;
+  
+  if (config.isProduction()) {
+    // In production, fail fast
+    console.error(errorMessage);
+    console.error('Application cannot start without required environment variables in production.');
+    process.exit(1);
+  } else {
+    // In development, just warn
+    console.warn(`⚠️  Warning: ${errorMessage}`);
+    console.warn('Some features may not work properly without these variables.');
+  }
+}
+
+// Validate MongoDB URI format
+if (config.mongoUri && !config.mongoUri.startsWith('mongodb')) {
+  console.error('❌ Invalid MONGODB_URI format. Must start with "mongodb://" or "mongodb+srv://"');
+  process.exit(1);
+}
+
+// Validate port is a number
+if (isNaN(config.port) || config.port < 1 || config.port > 65535) {
+  console.error('❌ Invalid PORT. Must be a number between 1 and 65535');
+  process.exit(1);
+}
 
 module.exports = config;

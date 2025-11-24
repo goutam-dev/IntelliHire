@@ -5,6 +5,7 @@ const CandidateProfile = require('../models/CandidateProfile');
 const User = require('../models/User');
 const EmployerProfile = require('../models/EmployerProfile');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errorHandler');
+const logger = require('../utils/logger');
 const path = require('path');
 const fs = require('fs');
 
@@ -180,11 +181,45 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
     throw new ForbiddenError('You do not have permission to update this application');
   }
 
+  // Track old status for stats update
+  const oldStatus = application.status;
+  
   application.status = status;
   if (feedback) application.employerNotes = feedback;
   else if (notes) application.employerNotes = notes; 
   
   await application.save();
+
+  // Update candidate profile stats if status changed
+  if (oldStatus !== status) {
+    const statUpdates = {};
+    
+    // Decrement old status count
+    if (oldStatus === 'Applied') {
+      statUpdates['stats.pending'] = -1;
+    } else if (['Shortlisted', 'Interview Scheduled'].includes(oldStatus)) {
+      statUpdates['stats.shortlisted'] = -1;
+    } else if (oldStatus === 'Rejected') {
+      statUpdates['stats.rejected'] = -1;
+    }
+    
+    // Increment new status count
+    if (status === 'Applied') {
+      statUpdates['stats.pending'] = (statUpdates['stats.pending'] || 0) + 1;
+    } else if (['Shortlisted', 'Interview Scheduled'].includes(status)) {
+      statUpdates['stats.shortlisted'] = (statUpdates['stats.shortlisted'] || 0) + 1;
+    } else if (status === 'Rejected') {
+      statUpdates['stats.rejected'] = (statUpdates['stats.rejected'] || 0) + 1;
+    }
+    
+    if (Object.keys(statUpdates).length > 0) {
+      await CandidateProfile.findOneAndUpdate(
+        { user: application.candidateId },
+        { $inc: statUpdates },
+        { upsert: false }
+      );
+    }
+  }
 
   const populated = await application.populate([
     { path: 'candidateId', select: 'fullName email phoneNumber' },
@@ -393,30 +428,66 @@ const submitApplication = async (candidateId, applicationData, file) => {
       throw new ValidationError('No existing resume found in profile');
     }
     
+    // Copy the resume file to application-specific folder to ensure it persists
+    // even if candidate deletes their profile resume
+    const sourceFilePath = path.join(__dirname, '..', profile.resume.fileUrl);
+    const timestamp = Date.now();
+    const fileExtension = path.extname(profile.resume.fileName || 'resume.pdf');
+    const newFilename = `app-${candidateId}-${timestamp}${fileExtension}`;
+    const destPath = path.join(__dirname, '..', 'uploads', 'applications', newFilename);
+    
+    // Ensure applications directory exists
+    const appDir = path.join(__dirname, '..', 'uploads', 'applications');
+    if (!fs.existsSync(appDir)) {
+      fs.mkdirSync(appDir, { recursive: true });
+    }
+    
+    // Copy file if source exists
+    if (fs.existsSync(sourceFilePath)) {
+      fs.copyFileSync(sourceFilePath, destPath);
+    } else {
+      throw new ValidationError('Resume file not found in profile');
+    }
+    
     resumeData = {
-      filename: profile.resume.fileName || 'resume.pdf',
-      originalName: profile.resume.fileName,
-      uploadDate: profile.resume.uploadedAt || new Date(),
-      filePath: profile.resume.fileUrl,
+      filename: newFilename,
+      originalName: profile.resume.fileName || 'resume.pdf',
+      uploadDate: new Date(),
+      filePath: `/uploads/applications/${newFilename}`,
       isFromProfile: true
     };
   } else {
     if (!file) {
       throw new ValidationError('Resume file is required');
     }
+    
+    // Move uploaded file to application-specific folder for consistency
+    const timestamp = Date.now();
+    const fileExtension = path.extname(file.originalname);
+    const newFilename = `app-${candidateId}-${timestamp}${fileExtension}`;
+    const sourcePath = file.path;
+    const destPath = path.join(__dirname, '..', 'uploads', 'applications', newFilename);
+    
+    // Ensure applications directory exists
+    const appDir = path.join(__dirname, '..', 'uploads', 'applications');
+    if (!fs.existsSync(appDir)) {
+      fs.mkdirSync(appDir, { recursive: true });
+    }
+    
+    // Move file from temp location to applications folder
+    if (fs.existsSync(sourcePath)) {
+      fs.renameSync(sourcePath, destPath);
+    }
 
     resumeData = {
-      filename: file.filename,
+      filename: newFilename,
       originalName: file.originalname,
       uploadDate: new Date(),
       fileSize: file.size,
-      filePath: `/uploads/resumes/${file.filename}`,
+      filePath: `/uploads/applications/${newFilename}`,
       isFromProfile: false
     };
   }
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
     const jobApplication = new JobApplication({
@@ -428,24 +499,22 @@ const submitApplication = async (candidateId, applicationData, file) => {
       profileAccuracyConfirmed: profileAccuracyConfirmed === 'true'
     });
 
-    await jobApplication.save({ session });
+    await jobApplication.save();
 
     // Update job applications count
     await Job.findByIdAndUpdate(jobId, {
       $inc: { applicationsCount: 1 }
-    }, { session });
+    });
 
     // Update candidate profile stats
     await CandidateProfile.findOneAndUpdate(
       { user: candidateId },
       { 
-        $inc: { 'stats.totalApplications': 1 },
+        $inc: { 'stats.totalApplications': 1, 'stats.pending': 1 },
         $set: { lastProfileUpdateAt: new Date() }
       },
-      { upsert: true, session }
+      { upsert: true }
     );
-
-    await session.commitTransaction();
     
     await jobApplication.populate({
       path: 'jobId',
@@ -463,13 +532,20 @@ const submitApplication = async (candidateId, applicationData, file) => {
 
     return jobApplication;
   } catch (error) {
-    await session.abortTransaction();
+    // Delete uploaded/copied file if application submission failed
+    if (resumeData && resumeData.filePath) {
+      const filePath = path.join(__dirname, '..', resumeData.filePath);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          logger.info(`Deleted application resume after failed submission: ${filePath}`);
+        } catch (unlinkError) {
+          logger.error('Error deleting application resume after failed submission:', unlinkError);
+        }
+      }
+    }
     throw error;
-  } finally {
-    session.endSession();
   }
-
-
 };
 
 /**
@@ -568,14 +644,11 @@ const getApplicationById = async (candidateId, applicationId) => {
  * Withdraw application
  */
 const withdrawApplication = async (candidateId, applicationId) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const application = await JobApplication.findOneAndUpdate(
       { applicationId, candidateId },
       { status: 'Withdrawn' },
-      { new: true, session }
+      { new: true }
     ).populate({
       path: 'jobId',
       select: 'title employer',
@@ -597,25 +670,29 @@ const withdrawApplication = async (candidateId, applicationId) => {
     // Decrease job applications count
     await Job.findByIdAndUpdate(application.jobId._id, {
       $inc: { applicationsCount: -1 }
-    }, { session });
+    });
 
-    // Update candidate profile stats
+    // Update candidate profile stats based on current status
+    const statUpdates = { 'stats.totalApplications': -1 };
+    if (application.status === 'Applied') {
+      statUpdates['stats.pending'] = -1;
+    } else if (['Shortlisted', 'Interview Scheduled'].includes(application.status)) {
+      statUpdates['stats.shortlisted'] = -1;
+    } else if (application.status === 'Rejected') {
+      statUpdates['stats.rejected'] = -1;
+    }
+    
     await CandidateProfile.findOneAndUpdate(
       { user: candidateId },
       { 
-        $inc: { 'stats.totalApplications': -1 },
+        $inc: statUpdates,
         $set: { lastProfileUpdateAt: new Date() }
-      },
-      { session }
+      }
     );
 
-    await session.commitTransaction();
     return application;
   } catch (error) {
-    await session.abortTransaction();
     throw error;
-  } finally {
-    session.endSession();
   }
 };
 
