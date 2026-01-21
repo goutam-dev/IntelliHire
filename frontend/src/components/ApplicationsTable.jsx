@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { FileDown, Mail, Phone } from 'lucide-react';
+import { FileDown, Mail, Phone, Sparkles, Award, Zap, Loader2 } from 'lucide-react';
 import StatusActionsMenu from './StatusActionsMenu';
 
 const statusColors = {
@@ -18,7 +18,37 @@ const StatusBadge = ({ status }) => (
   </span>
 );
 
-const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds, onSingleAction, onCandidateClick }) => {
+const AIScoreBadge = ({ score, verdict }) => {
+  const getScoreStyle = (score) => {
+    if (score >= 80) return { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' };
+    if (score >= 60) return { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' };
+    if (score >= 40) return { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' };
+    return { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' };
+  };
+
+  if (!score && score !== 0) {
+    return (
+      <div className="text-xs text-slate-400 italic">Not analyzed</div>
+    );
+  }
+
+  const style = getScoreStyle(score);
+  
+  return (
+    <div className="flex flex-col gap-1">
+      <div className={`inline-flex items-center gap-1 rounded-lg border ${style.border} ${style.bg} px-2.5 py-1`}>
+        <Award className={`h-3.5 w-3.5 ${style.text}`} />
+        <span className={`text-sm font-bold ${style.text}`}>{score}</span>
+        <span className={`text-xs ${style.text}`}>/100</span>
+      </div>
+      {verdict && (
+        <span className="text-xs text-slate-600">{verdict}</span>
+      )}
+    </div>
+  );
+};
+
+const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds, onSingleAction, onCandidateClick, onAnalyze, analyzingIds = new Set() }) => {
   const allSelected = useMemo(() => applications.length > 0 && selectedIds.length === applications.length, [applications, selectedIds]);
 
   const toggleAll = (e) => {
@@ -41,6 +71,12 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
             <th className="p-3 text-left text-xs font-semibold text-slate-600">Candidate</th>
             <th className="p-3 text-left text-xs font-semibold text-slate-600">Contact</th>
             <th className="p-3 text-left text-xs font-semibold text-slate-600">Applied</th>
+            <th className="p-3 text-left text-xs font-semibold text-slate-600">
+              <div className="flex items-center gap-1">
+                <Sparkles className="h-3.5 w-3.5 text-violet-500" />
+                AI Score
+              </div>
+            </th>
             <th className="p-3 text-left text-xs font-semibold text-slate-600">Resume</th>
             <th className="p-3 text-left text-xs font-semibold text-slate-600">Status</th>
             <th className="p-3 text-right text-xs font-semibold text-slate-600">Actions</th>
@@ -89,6 +125,12 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                 </td>
                 <td className="p-3 text-sm text-slate-700">{appliedDate}</td>
                 <td className="p-3">
+                  <AIScoreBadge 
+                    score={app.aiScore || app.resumeScore} 
+                    verdict={app.aiVerdict}
+                  />
+                </td>
+                <td className="p-3">
                   <a href={resumeUrl} target="_blank" className="inline-flex items-center gap-1 text-sm text-slate-700 hover:text-slate-900">
                     <FileDown className="h-4 w-4" /> {resumeName}
                   </a>
@@ -107,7 +149,7 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
           })}
           {applications.length === 0 && (
             <tr>
-              <td colSpan="7" className="p-6 text-center text-sm text-slate-500">No applications found.</td>
+              <td colSpan="8" className="p-6 text-center text-sm text-slate-500">No applications found.</td>
             </tr>
           )}
         </tbody>

@@ -11,6 +11,8 @@ import {
   XCircle,
   RefreshCcw,
   Trash2,
+  Sparkles,
+  Trophy,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '@clerk/clerk-react';
@@ -21,6 +23,7 @@ import {
 } from '../store/slices/jobSlice';
 import { fetchEmployerProfile } from '../store/slices/employerSlice';
 import EmployerHeader from '../components/layout/EmployerHeader';
+import TopCandidatesDashboard from '../components/employer/TopCandidatesDashboard';
 
 const statusFilters = [
   { label: 'All', value: 'all' },
@@ -65,6 +68,7 @@ const MyJobsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+  const [topCandidatesModal, setTopCandidatesModal] = useState({ isOpen: false, jobId: null, jobTitle: '' });
 
   useEffect(() => {
     const loadData = async () => {
@@ -118,6 +122,18 @@ const MyJobsPage = () => {
 
   const handleViewApplications = (jobId) => {
     navigate(`/employer/jobs/${jobId}/applications`);
+  };
+
+  const handleViewTopCandidates = (job) => {
+    setTopCandidatesModal({
+      isOpen: true,
+      jobId: job._id || job.id,
+      jobTitle: job.title
+    });
+  };
+
+  const closeTopCandidatesModal = () => {
+    setTopCandidatesModal({ isOpen: false, jobId: null, jobTitle: '' });
   };
 
   const handleEditJob = (jobId) => {
@@ -329,6 +345,14 @@ const MyJobsPage = () => {
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     type="button"
+                    onClick={() => handleViewTopCandidates(job)}
+                    className="inline-flex items-center gap-2 rounded-full border-2 border-violet-300 bg-gradient-to-r from-violet-50 to-purple-50 px-4 py-1.5 text-sm font-semibold text-violet-700 transition-all hover:border-violet-400 hover:from-violet-100 hover:to-purple-100"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    AI Top Candidates
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleViewApplications(jobId)}
                     className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50"
                   >
@@ -376,6 +400,14 @@ const MyJobsPage = () => {
           </section>
         </motion.section>
       </main>
+
+      {/* Top Candidates Modal */}
+      <TopCandidatesDashboard
+        isOpen={topCandidatesModal.isOpen}
+        onClose={closeTopCandidatesModal}
+        jobId={topCandidatesModal.jobId}
+        jobTitle={topCandidatesModal.jobTitle}
+      />
     </div>
   );
 };

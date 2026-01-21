@@ -1,0 +1,117 @@
+{
+  "name": "Resume Ranking Module - API Collection",
+  "description": "Complete API collection for testing the AI-powered Resume Ranking Module",
+  "variables": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "description": "Backend server URL"
+    },
+    {
+      "key": "application_id",
+      "value": "",
+      "description": "Sample application ID for testing"
+    },
+    {
+      "key": "job_id",
+      "value": "",
+      "description": "Sample job ID for testing"
+    }
+  ],
+  "requests": [
+    {
+      "name": "1. Analyze Resume",
+      "method": "POST",
+      "url": "{{base_url}}/api/resume-ranking/analyze/{{application_id}}",
+      "body": {
+        "mode": "formdata",
+        "formdata": [
+          {
+            "key": "resume",
+            "type": "file",
+            "description": "Upload PDF/DOCX/TXT resume file"
+          },
+          {
+            "key": "apiProvider",
+            "value": "rule-based",
+            "type": "text",
+            "description": "Optional: huggingface, openai, local, rule-based"
+          }
+        ]
+      },
+      "tests": "pm.test('Status code is 200', () => pm.response.to.have.status(200));\npm.test('Analysis successful', () => pm.response.json().success === true);"
+    },
+    {
+      "name": "2. Get Analysis Results",
+      "method": "GET",
+      "url": "{{base_url}}/api/resume-ranking/results/{{application_id}}",
+      "tests": "pm.test('Status code is 200', () => pm.response.to.have.status(200));\npm.test('Has score', () => pm.response.json().data.score !== undefined);"
+    },
+    {
+      "name": "3. Get Detailed Analysis",
+      "method": "GET",
+      "url": "{{base_url}}/api/resume-ranking/detailed/{{application_id}}",
+      "tests": "pm.test('Status code is 200', () => pm.response.to.have.status(200));\npm.test('Has all agent outputs', () => {\n  const data = pm.response.json().data;\n  return data.jdExtraction && data.resumeAnalysis && data.matchingScore && data.finalVerdict;\n});"
+    },
+    {
+      "name": "4. Get Analysis Status",
+      "method": "GET",
+      "url": "{{base_url}}/api/resume-ranking/status/{{application_id}}",
+      "tests": "pm.test('Status code is 200', () => pm.response.to.have.status(200));\npm.test('Has status', () => pm.response.json().data.status !== undefined);"
+    },
+    {
+      "name": "5. Get Top Candidates",
+      "method": "GET",
+      "url": "{{base_url}}/api/resume-ranking/top-candidates/{{job_id}}?limit=10",
+      "tests": "pm.test('Status code is 200', () => pm.response.to.have.status(200));\npm.test('Has candidates array', () => Array.isArray(pm.response.json().data.candidates));"
+    },
+    {
+      "name": "6. Get Job Statistics",
+      "method": "GET",
+      "url": "{{base_url}}/api/resume-ranking/statistics/{{job_id}}",
+      "tests": "pm.test('Status code is 200', () => pm.response.to.have.status(200));\npm.test('Has statistics', () => pm.response.json().data.totalAnalyzed !== undefined);"
+    },
+    {
+      "name": "7. Re-analyze Resume",
+      "method": "POST",
+      "url": "{{base_url}}/api/resume-ranking/reanalyze/{{application_id}}",
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"apiProvider\": \"rule-based\",\n  \"useLLM\": false\n}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "tests": "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+    },
+    {
+      "name": "8. Batch Analyze",
+      "method": "POST",
+      "url": "{{base_url}}/api/resume-ranking/batch-analyze/{{job_id}}",
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"applicationIds\": [\"app_id_1\", \"app_id_2\", \"app_id_3\"]\n}",
+        "options": {
+          "raw": {
+            "language": "json"
+          }
+        }
+      },
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "tests": "pm.test('Status code is 200', () => pm.response.to.have.status(200));\npm.test('Has results', () => pm.response.json().data.results !== undefined);"
+    }
+  ]
+}

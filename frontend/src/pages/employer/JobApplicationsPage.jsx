@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
-import { Download, FileText, Handshake, CalendarClock, CheckCircle2, XCircle, Users, ChevronRight } from 'lucide-react';
+import { Download, FileText, Handshake, CalendarClock, CheckCircle2, XCircle, Users, ChevronRight, Sparkles, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchEmployerProfile } from '../../store/slices/employerSlice';
 import applicationApi from '../../services/api/applicationApi';
+import { batchAnalyzeApplications, analyzeResume } from '../../services/api/resumeRankingApi';
 import FiltersBar from '../../components/FiltersBar';
 import ApplicationsTable from '../../components/ApplicationsTable';
 import CandidateModal from '../../components/CandidateModal';
@@ -50,8 +51,18 @@ const JobApplicationsPage = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [candidateOpen, setCandidateOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState(null);
+  const [analyzingBatch, setAnalyzingBatch] = useState(false);
+  const [analyzingIds, setAnalyzingIds] = useState(new Set());
+  const [batchProgress, setBatchProgress] = useState(null);
+  const [pollingInterval, setPollingInterval] = useState(null);
 
   const hasSelection = selectedIds.length > 0;
+
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) clearInterval(pollingInterval);
+    };
+  }, [pollingInterval]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -195,6 +206,101 @@ const JobApplicationsPage = () => {
     }
   };
 
+  const handleBatchAnalyze = async () => {
+    if (analyzingBatch) return;
+    
+    const confirmed = window.confirm(
+      `This will analyze all ${applications.length} applications using AI. This may take a few minutes. Continue?`
+    );
+    
+    if (!confirmed) return;
+    
+    setAnalyzingBatch(true);
+    setBatchProgress({ current: 0, total: applications.length, status: 'Starting...' });
+    
+    try {
+      const result = await batchAnalyzeApplications(jobId);
+      const totalApps = result.data?.totalApplications || applications.length;
+      
+      setBatchProgress({ current: 0, total: totalApps, status: 'Analyzing resumes...' });
+      
+      // Start polling for progress
+      const interval = setInterval(async () => {
+        try {
+          await refresh();
+          
+          // Count how many have been analyzed
+          const analyzed = applications.filter(app => app.aiScore != null).length;
+          setBatchProgress(prev => ({
+            ...prev,
+            current: analyzed,
+            status: analyzed >= totalApps ? 'Complete!' : 'Analyzing resumes...'
+          }));
+          
+          // Stop polling when all are analyzed
+          if (analyzed >= totalApps) {
+            clearInterval(interval);
+            setPollingInterval(null);
+            setTimeout(() => {
+              setAnalyzingBatch(false);
+              setBatchProgress(null);
+            }, 2000);
+          }
+        } catch (err) {
+          console.error('Polling error:', err);
+        }
+      }, 3000); // Poll every 3 seconds
+      
+      setPollingInterval(interval);
+      
+    } catch (err) {
+      console.error('Batch analysis error:', err);
+      alert('Failed to analyze applications: ' + (err.message || 'Unknown error'));
+      setAnalyzingBatch(false);
+      setBatchProgress(null);
+    }
+  };
+
+  const handleAnalyzeSingle = async (applicationId) => {
+    setAnalyzingIds(prev => new Set(prev).add(applicationId));
+    try {
+      await analyzeResume(applicationId);
+      
+      // Auto-refresh to show updated score
+      const refreshInterval = setInterval(async () => {
+        await refresh();
+        const app = applications.find(a => a._id === applicationId);
+        if (app?.aiScore != null) {
+          clearInterval(refreshInterval);
+          setAnalyzingIds(prev => {
+            const next = new Set(prev);
+            next.delete(applicationId);
+            return next;
+          });
+        }
+      }, 2000);
+      
+      // Timeout after 60 seconds
+      setTimeout(() => {
+        clearInterval(refreshInterval);
+        setAnalyzingIds(prev => {
+          const next = new Set(prev);
+          next.delete(applicationId);
+          return next;
+        });
+      }, 60000);
+      
+    } catch (err) {
+      console.error('Analysis error:', err);
+      alert('Failed to analyze resume. Please try again.');
+      setAnalyzingIds(prev => {
+        const next = new Set(prev);
+        next.delete(applicationId);
+        return next;
+      });
+    }
+  };
+
   const bulkBar = (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -237,6 +343,21 @@ const JobApplicationsPage = () => {
         <Handshake className="h-4 w-4" /> Accept
       </button>
       <div className="ml-auto flex items-center gap-2">
+        <button 
+          onClick={handleBatchAnalyze}
+          disabled={analyzingBatch || applications.length === 0}
+          className="inline-flex items-center gap-2 rounded-lg border-2 border-violet-300 bg-gradient-to-r from-violet-50 to-purple-50 px-4 py-2 text-sm font-semibold text-violet-700 hover:border-violet-400 hover:from-violet-100 hover:to-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+        >
+          {analyzingBatch ? (
+            <>
+              <RefreshCw className="h-4 w-4 animate-spin" /> Analyzing...
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-4 w-4" /> AI Analyze All
+            </>
+          )}
+        </button>
         <button onClick={exportCSV} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 transition-colors">
           <Download className="h-4 w-4" /> Export CSV
         </button>
@@ -362,6 +483,8 @@ const JobApplicationsPage = () => {
                 setSelectedIds={setSelectedIds}
                 onSingleAction={singleAction}
                 onCandidateClick={(app) => { setSelectedApplication(app); setCandidateOpen(true); }}
+                onAnalyze={handleAnalyzeSingle}
+                analyzingIds={analyzingIds}
               />
             )}
           </div>
@@ -372,7 +495,68 @@ const JobApplicationsPage = () => {
           onClose={() => setCandidateOpen(false)}
           application={selectedApplication}
         />
-      </main>
+        {/* Batch Analysis Progress Modal */}
+        <AnimatePresence>
+          {batchProgress && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border border-violet-100"
+              >
+                <div className="text-center">
+                  <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 mb-4">
+                    <Sparkles className="h-8 w-8 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">AI Analysis in Progress</h3>
+                  <p className="text-sm text-slate-600 mb-6">{batchProgress.status}</p>
+                  
+                  {/* Progress Bar */}
+                  <div className="relative w-full h-3 bg-slate-200 rounded-full overflow-hidden mb-3">
+                    <motion.div
+                      className="absolute top-0 left-0 h-full bg-gradient-to-r from-violet-500 to-purple-600"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                      transition={{ duration: 0.5, ease: 'easeOut' }}
+                    />
+                  </div>
+                  
+                  {/* Progress Text */}
+                  <div className="flex justify-between items-center text-sm mb-4">
+                    <span className="text-slate-600">
+                      {batchProgress.current} of {batchProgress.total} analyzed
+                    </span>
+                    <span className="font-semibold text-violet-600">
+                      {Math.round((batchProgress.current / batchProgress.total) * 100)}%
+                    </span>
+                  </div>
+                  
+                  {/* Spinner */}
+                  {batchProgress.current < batchProgress.total && (
+                    <div className="flex items-center justify-center gap-2 text-slate-500">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">This may take a few minutes...</span>
+                    </div>
+                  )}
+                  
+                  {/* Success Message */}
+                  {batchProgress.current >= batchProgress.total && (
+                    <div className="flex items-center justify-center gap-2 text-emerald-600">
+                      <CheckCircle2 className="h-5 w-5" />
+                      <span className="font-semibold">Analysis Complete!</span>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>      </main>
     </div>
   );
 };

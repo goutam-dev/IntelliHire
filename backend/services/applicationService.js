@@ -4,6 +4,7 @@ const Job = require('../models/Job');
 const CandidateProfile = require('../models/CandidateProfile');
 const User = require('../models/User');
 const EmployerProfile = require('../models/EmployerProfile');
+const ResumeAnalysis = require('../models/ResumeAnalysis');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errorHandler');
 const logger = require('../utils/logger');
 const path = require('path');
@@ -142,6 +143,30 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
       job: app.jobId
     };
   });
+
+  // Enrich with AI scores
+  const applicationIds = applications.map(app => app._id);
+  const resumeAnalyses = await ResumeAnalysis.find({ 
+    applicationId: { $in: applicationIds } 
+  }).select('applicationId supervisorVerdict matchingScore').lean();
+  
+  // Create a map for quick lookup
+  const scoreMap = {};
+  resumeAnalyses.forEach(analysis => {
+    scoreMap[analysis.applicationId.toString()] = {
+      aiScore: analysis.supervisorVerdict?.final_resume_score,
+      aiVerdict: analysis.supervisorVerdict?.verdict,
+      matchingScore: analysis.matchingScore?.overall_score
+    };
+  });
+  
+  // Add AI scores to applications
+  applications = applications.map(app => ({
+    ...app,
+    aiScore: scoreMap[app._id.toString()]?.aiScore,
+    aiVerdict: scoreMap[app._id.toString()]?.aiVerdict,
+    matchingScore: scoreMap[app._id.toString()]?.matchingScore
+  }));
 
   // In-memory filtering (search)
   applications = filterBySearch(applications, search);

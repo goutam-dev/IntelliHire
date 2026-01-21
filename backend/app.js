@@ -15,6 +15,7 @@ const authRoutes = require('./routes/auth.routes');
 const employerRoutes = require('./routes/employer.routes');
 const candidateRoutes = require('./routes/candidate.routes');
 const jobRoutes = require('./routes/jobRoutes');
+const resumeRankingRoutes = require('./routes/resumeRanking.routes');
 
 const app = express();
 
@@ -87,11 +88,19 @@ app.get('/health', (req, res) => {
 // ======================
 // API Routes
 // ======================
+
+// Global request logger
+app.use((req, res, next) => {
+  console.log(`\n📨 [${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/employer', employerRoutes);
 app.use('/api/candidate', candidateRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/job-applications', require('./routes/jobApplication.routes'));
+app.use('/api/resume-ranking', resumeRankingRoutes); // AI-powered Resume Ranking Module
 
 // Serve uploaded files
 const path = require('path');
