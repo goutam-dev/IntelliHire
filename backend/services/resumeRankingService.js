@@ -12,6 +12,10 @@
  * Flow:
  * Resume Upload → Parse → Agent 1 & 2 (parallel) → Agent 3 → Agent 4 → Save Results
  * 
+ * FEATURE TOGGLE: USE_HYBRID_RANKING (default: true)
+ * - When true: Uses fast, deterministic hybrid ranking (semantic + rule-based + keywords)
+ * - When false: Uses original LLM Council approach (4 agents + supervisor)
+ * 
  * Part of FYP: Intelligent Recruitment and Interview Automation System
  */
 
@@ -20,7 +24,10 @@ const Job = require('../models/Job');
 const JobApplication = require('../models/JobApplication');
 const { parseResume, validateResumeFile, extractResumeSections } = require('../utils/resumeParser');
 
-// Import all AI agents
+// Import Hybrid Ranking Module
+const { executeHybridRanking } = require('./ai-agents/hybrid-ranking');
+
+// Import all AI agents (LLM Council - kept for backward compatibility)
 const { extractJDInformation } = require('./ai-agents/agent1-jd-extractor');
 const { analyzeResumeTechnical } = require('./ai-agents/agent2-resume-analyzer');
 const { performSemanticMatching } = require('./ai-agents/agent3-semantic-matcher');
@@ -117,16 +124,33 @@ async function analyzeResumeForApplication(applicationId, resumeFilePath, mimeTy
     console.log('[Resume Ranking] ✓ Analysis record created/updated in database');
     console.log('');
     
-    // 6. Execute Multi-Agent Council Pipeline
-    console.log('[Resume Ranking] Step 6: Executing Multi-Agent Council Pipeline...');
-    console.log('[Resume Ranking] This will invoke all 4 AI Directors in sequence');
-    console.log('');
-    const agentResults = await executeMultiAgentPipeline(
-      jobDescriptionText,
-      resumeText,
-      resumeSections,
-      options
-    );
+    // 6. Execute Ranking Pipeline (Hybrid or LLM Council based on feature toggle)
+    console.log('[Resume Ranking] Step 6: Executing Ranking Pipeline...');
+    
+    // Check feature toggle: USE_HYBRID_RANKING (default: true)
+    const useHybridRanking = process.env.USE_HYBRID_RANKING !== 'false';
+    
+    let agentResults;
+    if (useHybridRanking) {
+      console.log('[Resume Ranking] 🚀 Using HYBRID RANKING approach (fast & deterministic)');
+      console.log('');
+      agentResults = await executeHybridRanking(
+        jobDescriptionText,
+        resumeText,
+        resumeSections,
+        options
+      );
+    } else {
+      console.log('[Resume Ranking] 🤖 Using LLM COUNCIL approach (4 AI Directors)');
+      console.log('[Resume Ranking] This will invoke all 4 AI Directors in sequence');
+      console.log('');
+      agentResults = await executeMultiAgentPipeline(
+        jobDescriptionText,
+        resumeText,
+        resumeSections,
+        options
+      );
+    }
     
     // 7. Update analysis with all agent results
     analysis.jdExtraction = agentResults.agent1.data;
@@ -140,7 +164,8 @@ async function analyzeResumeForApplication(applicationId, resumeFilePath, mimeTy
       resumeAnalyzerModel: agentResults.agent2.metadata?.model || 'rule-based',
       matchingModel: agentResults.agent3.metadata?.model || 'rule-based',
       supervisorModel: agentResults.agent4.metadata?.model || 'rule-based',
-      apiProvider: options.apiProvider || process.env.AI_API_PROVIDER || 'rule-based'
+      apiProvider: useHybridRanking ? 'hybrid-ranking' : (options.apiProvider || process.env.AI_API_PROVIDER || 'rule-based'),
+      rankingMethod: useHybridRanking ? 'hybrid' : 'llm-council'
     };
     
     // 9. Set performance metrics

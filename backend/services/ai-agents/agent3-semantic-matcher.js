@@ -116,7 +116,9 @@ async function llmBasedMatching(jdData, resumeData, options = {}) {
   
   let llmResult;
   
-  if (apiProvider === 'openrouter') {
+  if (apiProvider === 'groq') {
+    llmResult = await callGroqAPI(prompt, options);
+  } else if (apiProvider === 'openrouter') {
     llmResult = await callOpenRouterAPI(prompt, options);
   } else if (apiProvider === 'huggingface') {
     llmResult = await callHuggingFaceAPI(prompt, options);
@@ -568,6 +570,48 @@ function generateReasoning(result, skillsScore, experienceScore, projectScore, e
   }
   
   return `${overallAssessment} ${reasons.join('. ')}.`;
+}
+
+/**
+ * Call Groq API for matching
+ */
+async function callGroqAPI(prompt, options = {}) {
+  const apiKey = options.groqApiKey || process.env.GROQ_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('Groq API key not configured');
+  }
+  
+  const model = options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  
+  const response = await axios.post(
+    'https://api.groq.com/openai/v1/chat/completions',
+    {
+      model: model,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.0,
+      max_tokens: 1500
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 60000
+    }
+  );
+  
+  if (!response.data || !response.data.choices || !response.data.choices[0]) {
+    throw new Error('Invalid Groq response format');
+  }
+  
+  const generatedText = response.data.choices[0].message.content;
+  return parseJSONFromLLMResponse(generatedText);
 }
 
 /**

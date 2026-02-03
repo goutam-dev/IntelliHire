@@ -157,7 +157,9 @@ OUTPUT (JSON ONLY, NO OTHER TEXT):`;
 async function callLLMForAnalysis(prompt, options = {}) {
   const apiProvider = options.apiProvider || process.env.AI_API_PROVIDER || 'openrouter';
   
-  if (apiProvider === 'openrouter') {
+  if (apiProvider === 'groq') {
+    return await callGroqAPI(prompt, options);
+  } else if (apiProvider === 'openrouter') {
     return await callOpenRouterAPI(prompt, options);
   } else if (apiProvider === 'huggingface') {
     return await callHuggingFaceAPI(prompt, options);
@@ -167,6 +169,56 @@ async function callLLMForAnalysis(prompt, options = {}) {
     return await callLocalLLM(prompt, options);
   } else {
     // Fallback: Use rule-based analysis
+    return await ruleBasedResumeAnalysis(prompt);
+  }
+}
+
+/**
+ * Call Groq API
+ */
+async function callGroqAPI(prompt, options = {}) {
+  try {
+    const apiKey = options.groqApiKey || process.env.GROQ_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('Groq API key not found, using rule-based analysis');
+      return await ruleBasedResumeAnalysis(prompt);
+    }
+    
+    const model = options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.0,
+        max_tokens: 1500
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 60000
+      }
+    );
+    
+    if (!response.data || !response.data.choices || !response.data.choices[0]) {
+      console.warn('Invalid Groq response format, using rule-based');
+      return await ruleBasedResumeAnalysis(prompt);
+    }
+    
+    const generatedText = response.data.choices[0].message.content;
+    return parseJSONFromLLMResponse(generatedText);
+    
+  } catch (error) {
+    console.error('Groq API Error:', error.response?.data || error.message);
     return await ruleBasedResumeAnalysis(prompt);
   }
 }

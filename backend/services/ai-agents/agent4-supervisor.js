@@ -57,6 +57,14 @@ async function superviseFinalVerdict(jdExtraction, resumeAnalysis, matchingScore
       try {
         verdict = await llmBasedSupervision(jdExtraction, resumeAnalysis, matchingScore, qualityCheck, options);
         console.log('[Director 4] ✓ LLM-based supervision completed');
+        console.log('[Director 4] LLM returned score:', verdict.final_resume_score);
+        
+        // Validate LLM returned a proper score (not 0 from default structure)
+        if (!verdict.final_resume_score || verdict.final_resume_score === 0) {
+          console.warn('[Director 4] ⚠ LLM returned invalid score (0), falling back to rule-based');
+          verdict = ruleBasedSupervision(jdExtraction, resumeAnalysis, matchingScore, qualityCheck);
+          console.log('[Director 4] ✓ Rule-based fallback completed with score:', verdict.final_resume_score);
+        }
       } catch (error) {
         console.warn('[Director 4] ⚠ LLM-based supervision failed, using rule-based:', error.message);
         verdict = ruleBasedSupervision(jdExtraction, resumeAnalysis, matchingScore, qualityCheck);
@@ -207,7 +215,9 @@ async function llmBasedSupervision(jdExtraction, resumeAnalysis, matchingScore, 
   
   let llmResult;
   
-  if (apiProvider === 'openrouter') {
+  if (apiProvider === 'groq') {
+    llmResult = await callGroqAPI(prompt, options);
+  } else if (apiProvider === 'openrouter') {
     llmResult = await callOpenRouterAPI(prompt, options);
   } else if (apiProvider === 'huggingface') {
     llmResult = await callHuggingFaceAPI(prompt, options);
@@ -482,6 +492,48 @@ function generateExplanation(verdict, matchingScore, qualityCheck) {
 }
 
 /**
+ * Call Groq API
+ */
+async function callGroqAPI(prompt, options = {}) {
+  const apiKey = options.groqApiKey || process.env.GROQ_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('Groq API key not configured');
+  }
+  
+  const model = options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  
+  const response = await axios.post(
+    'https://api.groq.com/openai/v1/chat/completions',
+    {
+      model: model,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.0,
+      max_tokens: 1500
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 60000
+    }
+  );
+  
+  if (!response.data || !response.data.choices || !response.data.choices[0]) {
+    throw new Error('Invalid Groq response format');
+  }
+  
+  const generatedText = response.data.choices[0].message.content;
+  return parseJSONFromLLMResponse(generatedText);
+}
+
+/**
  * Call OpenRouter API
  */
 async function callOpenRouterAPI(prompt, options = {}) {
@@ -631,21 +683,34 @@ async function callLocalLLM(prompt, options = {}) {
  * Parse JSON from LLM response
  */
 function parseJSONFromLLMResponse(response) {
+  console.log('[Agent 4] Parsing LLM response...');
+  console.log('[Agent 4] Response preview:', response?.substring(0, 200));
+  
   try {
-    return JSON.parse(response);
+    const parsed = JSON.parse(response);
+    console.log('[Agent 4] ✓ Successfully parsed JSON directly');
+    return parsed;
   } catch (e) {
+    console.log('[Agent 4] Direct JSON parse failed, trying extraction...');
+    
     const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/) ||
                       response.match(/\{[\s\S]*\}/);
     
     if (jsonMatch) {
       try {
-        return JSON.parse(jsonMatch[1] || jsonMatch[0]);
+        const extracted = jsonMatch[1] || jsonMatch[0];
+        const parsed = JSON.parse(extracted);
+        console.log('[Agent 4] ✓ Successfully extracted and parsed JSON');
+        return parsed;
       } catch (e2) {
-        console.error('Failed to parse JSON from LLM response');
+        console.error('[Agent 4] ✗ Failed to parse extracted JSON:', e2.message);
+        console.error('[Agent 4] Extracted text:', (jsonMatch[1] || jsonMatch[0]).substring(0, 300));
         return getDefaultSupervisorStructure();
       }
     }
     
+    console.error('[Agent 4] ✗ No JSON found in response');
+    console.error('[Agent 4] Full response:', response);
     return getDefaultSupervisorStructure();
   }
 }
