@@ -221,6 +221,13 @@ async function analyzeResumeForApplication(applicationId, resumeFilePath, mimeTy
 async function executeMultiAgentPipeline(jobDescriptionText, resumeText, resumeSections, options = {}) {
   console.log('[Multi-Agent Pipeline] Starting...');
   
+  // Check if deterministic scoring is forced
+  const forceDeterministic = process.env.FORCE_DETERMINISTIC_SCORING === 'true';
+  if (forceDeterministic) {
+    console.log('[Multi-Agent Pipeline] ⚠️  DETERMINISTIC MODE: Using rule-based scoring for 100% consistency');
+    options.useLLM = false; // Force rule-based for Agent 3
+  }
+  
   // Execute Agent 1 and Agent 2 in parallel (they are independent)
   console.log('[Multi-Agent Pipeline] Executing Agent 1 & 2 in parallel...');
   const [agent1Result, agent2Result] = await Promise.all([

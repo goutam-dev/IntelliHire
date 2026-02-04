@@ -75,12 +75,12 @@ const upload = multer({
 
 /**
  * @route   POST /api/resume-ranking/analyze/:applicationId
- * @desc    Analyze a resume for a specific application
+ * @desc    Analyze a resume for a specific application (existing resume or upload new one)
  * @access  Private (Employer or System)
  */
 router.post(
   '/analyze/:applicationId',
-  upload.single('resume'),
+  upload.single('resume'), // Optional - will analyze existing resume if no file uploaded
   resumeRankingController.analyzeResume
 );
 

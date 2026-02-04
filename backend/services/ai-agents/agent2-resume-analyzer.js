@@ -174,7 +174,10 @@ async function callLLMForAnalysis(prompt, options = {}) {
 }
 
 /**
- * Call Groq API
+ * Call Groq API (FREE & FAST - RECOMMENDED)
+ * @param {String} prompt - Analysis prompt
+ * @param {Object} options - API options
+ * @returns {Promise<Object>} - Analyzed data
  */
 async function callGroqAPI(prompt, options = {}) {
   try {
@@ -185,7 +188,8 @@ async function callGroqAPI(prompt, options = {}) {
       return await ruleBasedResumeAnalysis(prompt);
     }
     
-    const model = options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    // Use Groq's fast models
+    let model = options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
     
     const response = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
@@ -198,7 +202,8 @@ async function callGroqAPI(prompt, options = {}) {
           }
         ],
         temperature: 0.0,
-        max_tokens: 1500
+        max_tokens: 2000,
+        seed: 42
       },
       {
         headers: {
@@ -210,7 +215,7 @@ async function callGroqAPI(prompt, options = {}) {
     );
     
     if (!response.data || !response.data.choices || !response.data.choices[0]) {
-      console.warn('Invalid Groq response format, using rule-based');
+      console.warn('Invalid Groq response, using rule-based');
       return await ruleBasedResumeAnalysis(prompt);
     }
     
@@ -251,7 +256,8 @@ async function callOpenRouterAPI(prompt, options = {}) {
           }
         ],
         temperature: 0.0,
-        max_tokens: 2000
+        max_tokens: 2000,
+        seed: 42
       },
       {
         headers: {
@@ -353,7 +359,8 @@ async function callOpenAIAPI(prompt, options = {}) {
           }
         ],
         temperature: 0.0,
-        max_tokens: 1500
+        max_tokens: 1500,
+        seed: 42
       },
       {
         headers: {

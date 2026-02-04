@@ -8,6 +8,7 @@
 const resumeRankingService = require('../services/resumeRankingService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 const path = require('path');
+const fs = require('fs');
 
 /**
  * Analyze a resume for a specific application
@@ -17,38 +18,162 @@ async function analyzeResume(req, res) {
   try {
     const { applicationId } = req.params;
     
-    // Check if resume file was uploaded
-    if (!req.file) {
-      return sendError(res, 'No resume file provided', 400);
+    console.log(`\n[Analyze Resume] Processing application: ${applicationId}`);
+    
+    // Check if this is a file upload (new resume) or existing application resume
+    if (req.file) {
+      console.log('[Analyze Resume] File upload detected - analyzing uploaded resume');
+      
+      // Extract file information
+      const resumeFilePath = req.file.path;
+      const mimeType = req.file.mimetype;
+      const originalName = req.file.originalname;
+      const fileSize = req.file.size;
+      
+      // Optional: Get AI provider from request (default to env variable)
+      const apiProvider = req.body?.apiProvider || req.query?.apiProvider;
+      const useLLM = req.body?.useLLM !== 'false' && req.query?.useLLM !== 'false';
+      
+      // Call the resume ranking service
+      const result = await resumeRankingService.analyzeResumeForApplication(
+        applicationId,
+        resumeFilePath,
+        mimeType,
+        {
+          originalName,
+          fileSize,
+          apiProvider,
+          useLLM
+        }
+      );
+      
+      return sendSuccess(res, { success: true, data: result, message: 'Resume analysis completed successfully' });
+    } else {
+      // No file uploaded - analyze existing application resume
+      console.log('[Analyze Resume] No file upload - fetching existing application resume');
+      
+      const JobApplication = require('../models/JobApplication');
+      const application = await JobApplication.findById(applicationId);
+      
+      if (!application) {
+        console.log(`[Analyze Resume] ❌ Application not found: ${applicationId}`);
+        return sendError(res, 'Application not found', 404);
+      }
+      
+      console.log(`[Analyze Resume] ✓ Application found`);
+      console.log(`[Analyze Resume] Full application data:`, JSON.stringify(application.resume, null, 2));
+      
+      // Get resume path - check multiple possible fields
+      const resumePath = application.resume?.filePath || 
+                        application.resume?.filename || 
+                        application.resumePath;
+      const resumeFileName = application.resume?.originalName || 
+                            application.resume?.filename || 
+                            'resume.pdf';
+      
+      console.log(`[Analyze Resume] Resume File Name: ${resumeFileName}`);
+      console.log(`[Analyze Resume] Resume Path (raw): ${resumePath}`);
+      
+      if (!resumePath) {
+        console.log(`[Analyze Resume] ❌ No resume path found`);
+        console.log(`[Analyze Resume] Application resume object:`, application.resume);
+        return sendError(res, 'No resume found for this application. Please upload a resume first.', 400);
+      }
+      
+      // Convert URL path to absolute filesystem path
+      let absoluteResumePath = resumePath;
+      
+      // Handle different path formats
+      if (resumePath.startsWith('http://') || resumePath.startsWith('https://')) {
+        // It's a URL - extract the path part
+        try {
+          const url = new URL(resumePath);
+          absoluteResumePath = path.join(__dirname, '..', url.pathname);
+        } catch (e) {
+          absoluteResumePath = resumePath;
+        }
+      } else if (resumePath.startsWith('/uploads/') || resumePath.startsWith('uploads/')) {
+        // Relative path from project root
+        const cleanPath = resumePath.startsWith('/') ? resumePath.substring(1) : resumePath;
+        absoluteResumePath = path.join(__dirname, '..', cleanPath);
+      } else if (resumePath.startsWith('/')) {
+        // Absolute-looking path
+        absoluteResumePath = path.join(__dirname, '..', resumePath);
+      } else {
+        // Assume it's a filename in uploads/resumes
+        absoluteResumePath = path.join(__dirname, '..', 'uploads', 'resumes', resumePath);
+      }
+      
+      console.log(`[Analyze Resume] Absolute File Path: ${absoluteResumePath}`);
+      
+      // Check if file exists
+      if (!fs.existsSync(absoluteResumePath)) {
+        console.log(`[Analyze Resume] ❌ File does not exist at: ${absoluteResumePath}`);
+        
+        // Try alternative paths
+        const alternativePaths = [
+          path.join(__dirname, '..', 'uploads', 'applications', path.basename(resumePath)),
+          path.join(__dirname, '..', 'uploads', path.basename(resumePath)),
+          path.join(__dirname, '..', resumePath)
+        ];
+        
+        let foundPath = null;
+        for (const altPath of alternativePaths) {
+          console.log(`[Analyze Resume] Trying alternative path: ${altPath}`);
+          if (fs.existsSync(altPath)) {
+            foundPath = altPath;
+            console.log(`[Analyze Resume] ✓ Found file at: ${foundPath}`);
+            break;
+          }
+        }
+        
+        if (!foundPath) {
+          console.log(`[Analyze Resume] ❌ Resume file not found in any expected location`);
+          return sendError(res, 'Resume file not found on server. The file may have been moved or deleted.', 404);
+        }
+        
+        absoluteResumePath = foundPath;
+      } else {
+        console.log(`[Analyze Resume] ✓ File exists at: ${absoluteResumePath}`);
+      }
+      
+      // Determine MIME type from file extension
+      const ext = path.extname(absoluteResumePath).toLowerCase();
+      let mimeType = 'application/pdf';
+      if (ext === '.docx') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      else if (ext === '.doc') mimeType = 'application/msword';
+      else if (ext === '.txt') mimeType = 'text/plain';
+      
+      console.log(`[Analyze Resume] MIME Type: ${mimeType}`);
+      console.log(`[Analyze Resume] File Extension: ${ext}`);
+      
+      // Optional: Get AI provider from request (with safe null checks)
+      const apiProvider = req.body?.apiProvider || req.query?.apiProvider;
+      const useLLM = req.body?.useLLM !== 'false' && req.query?.useLLM !== 'false';
+      
+      // Analyze resume
+      console.log(`[Analyze Resume] 🔄 Starting AI analysis...`);
+      const result = await resumeRankingService.analyzeResumeForApplication(
+        applicationId,
+        absoluteResumePath,
+        mimeType,
+        {
+          originalName: resumeFileName,
+          apiProvider,
+          useLLM
+        }
+      );
+      
+      console.log(`[Analyze Resume] ✅ Analysis completed successfully`);
+      console.log(`[Analyze Resume] Score: ${result.score}/100`);
+      console.log(`[Analyze Resume] Verdict: ${result.verdict}`);
+      
+      return sendSuccess(res, { success: true, data: result, message: 'Resume analysis completed successfully' });
     }
     
-    // Extract file information
-    const resumeFilePath = req.file.path;
-    const mimeType = req.file.mimetype;
-    const originalName = req.file.originalname;
-    const fileSize = req.file.size;
-    
-    // Optional: Get AI provider from request (default to env variable)
-    const apiProvider = req.body.apiProvider || req.query.apiProvider;
-    const useLLM = req.body.useLLM !== 'false' && req.query.useLLM !== 'false';
-    
-    // Call the resume ranking service
-    const result = await resumeRankingService.analyzeResumeForApplication(
-      applicationId,
-      resumeFilePath,
-      mimeType,
-      {
-        originalName,
-        fileSize,
-        apiProvider,
-        useLLM
-      }
-    );
-    
-    return sendSuccess(res, { success: true, data: result, message: 'Resume analysis completed successfully' });
-    
   } catch (error) {
-    console.error('Resume analysis error:', error);
+    console.error('[Analyze Resume] ❌ Error:', error);
+    console.error('[Analyze Resume] Error stack:', error.stack);
     return sendError(res, error.message || 'Resume analysis failed', 500);
   }
 }
