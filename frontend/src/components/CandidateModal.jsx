@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { X, Sparkles, Loader2, Award } from 'lucide-react';
 
 const Section = ({ title, children }) => (
   <div>
@@ -8,7 +8,7 @@ const Section = ({ title, children }) => (
   </div>
 );
 
-const CandidateModal = ({ open, onClose, application }) => {
+const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = new Set() }) => {
   if (!open) return null;
   const candidate = application?.candidate;
   const user = candidate?.user;
@@ -76,10 +76,47 @@ const CandidateModal = ({ open, onClose, application }) => {
           </Section>
 
           <Section title="History">
-            <div className="text-sm text-slate-700">
+            <div className="text-sm text-slate-700 space-y-2">
               <p className="font-medium">Current Status: {application?.status}</p>
               <p>Applied: {application?.createdAt ? new Date(application.createdAt).toLocaleString() : 'Date N/A'}</p>
               {application?.reviewedAt && <p>Reviewed: {new Date(application.reviewedAt).toLocaleString()}</p>}
+              
+              {/* AI Score Display */}
+              {(application?.aiScore || application?.aiScore === 0) && (
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <Award className="h-4 w-4 text-violet-600" />
+                    <span className="font-semibold text-slate-900">AI Score:</span>
+                    <span className="text-lg font-bold text-violet-600">{application.aiScore}/100</span>
+                  </div>
+                  {application?.aiVerdict && (
+                    <p className="text-sm text-slate-600 mt-1">Verdict: {application.aiVerdict}</p>
+                  )}
+                </div>
+              )}
+              
+              {/* Analyze Button */}
+              {onAnalyze && (
+                <div className="pt-2">
+                  <button
+                    onClick={() => onAnalyze(application._id)}
+                    disabled={analyzingIds.has(application._id)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-medium text-white hover:from-violet-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow w-full justify-center"
+                  >
+                    {analyzingIds.has(application._id) ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Analyzing Resume...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Analyze Resume with AI
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </Section>
 

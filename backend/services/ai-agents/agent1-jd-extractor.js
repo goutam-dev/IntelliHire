@@ -116,7 +116,7 @@ REQUIRED OUTPUT FORMAT (JSON ONLY):
   "job_title": "<extract the exact job title>",
   "required_skills": ["<list all required/mandatory skills mentioned>"],
   "preferred_skills": ["<list all preferred/nice-to-have skills mentioned>"],
-  "minimum_experience_years": "<extract years of experience required, e.g., '3-5 years', '2+ years', or 'Not specified'>",
+  "minimum_experience_years": "<extract years of experience required, e.g., '3 years', '3-5 years', '2+ years', 'at least 3 years', 'minimum 3 years', or 'Not specified' if not mentioned>",
   "education_requirements": "<extract education requirements, e.g., 'Bachelor's in Computer Science' or 'Not specified'>",
   "job_responsibilities": ["<list main job responsibilities>"],
   "keywords": ["<extract important technical keywords and technologies>"]
@@ -125,7 +125,10 @@ REQUIRED OUTPUT FORMAT (JSON ONLY):
 EXTRACTION RULES:
 - If a field is not mentioned, use empty array [] or "Not specified"
 - For skills, separate required vs preferred based on language like "must have", "required" vs "nice to have", "preferred"
-- Extract exact years mentioned for experience
+- For experience: Look for patterns like "X years", "X+ years", "minimum X years", "at least X years", "X-Y years", "Minimum X+"
+  - Extract the EXACT phrase as written in the job description
+  - DO NOT return "Not specified" if experience is mentioned anywhere in the description
+  - Common locations: Required Skills section, Required Qualifications, opening paragraph
 - Include all technical terms, frameworks, tools, and technologies
 - Be precise and literal - do not paraphrase excessively
 
@@ -141,7 +144,9 @@ OUTPUT (JSON ONLY, NO OTHER TEXT):`;
 async function callLLMForExtraction(prompt, options = {}) {
   const apiProvider = options.apiProvider || process.env.AI_API_PROVIDER || 'openrouter';
   
-  if (apiProvider === 'openrouter') {
+  if (apiProvider === 'groq') {
+    return await callGroqAPI(prompt, options);
+  } else if (apiProvider === 'openrouter') {
     return await callOpenRouterAPI(prompt, options);
   } else if (apiProvider === 'huggingface') {
     return await callHuggingFaceAPI(prompt, options);
@@ -151,6 +156,62 @@ async function callLLMForExtraction(prompt, options = {}) {
     return await callLocalLLM(prompt, options);
   } else {
     // Fallback: Use rule-based extraction
+    return await ruleBasedExtraction(prompt);
+  }
+}
+
+/**
+ * Call Groq API (FREE & FAST - RECOMMENDED)
+ * @param {String} prompt - Extraction prompt
+ * @param {Object} options - API options
+ * @returns {Promise<Object>} - Extracted data
+ */
+async function callGroqAPI(prompt, options = {}) {
+  try {
+    const apiKey = options.groqApiKey || process.env.GROQ_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('Groq API key not found, using rule-based extraction');
+      return await ruleBasedExtraction(prompt);
+    }
+    
+    // Use Groq's fast models
+    let model = options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.0,
+        max_tokens: 1500,
+        seed: 42 // Fixed seed for deterministic output
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 60000
+      }
+    );
+    
+    if (!response.data || !response.data.choices || !response.data.choices[0]) {
+      console.warn('Invalid Groq response format, using rule-based');
+      return await ruleBasedExtraction(prompt);
+    }
+    
+    const generatedText = response.data.choices[0].message.content;
+    return parseJSONFromLLMResponse(generatedText);
+    
+  } catch (error) {
+    console.error('Groq API Error:', error.response?.data || error.message);
+    // Fallback to rule-based extraction
     return await ruleBasedExtraction(prompt);
   }
 }
@@ -184,7 +245,8 @@ async function callOpenRouterAPI(prompt, options = {}) {
           }
         ],
         temperature: 0.0,
-        max_tokens: 1500
+        max_tokens: 1500,
+        seed: 42 // Fixed seed for deterministic output
       },
       {
         headers: {
@@ -289,7 +351,8 @@ async function callOpenAIAPI(prompt, options = {}) {
           }
         ],
         temperature: 0.0,
-        max_tokens: 1000
+        max_tokens: 1000,
+        seed: 42 // Fixed seed for deterministic output
       },
       {
         headers: {
@@ -387,10 +450,24 @@ async function ruleBasedExtraction(prompt) {
     extracted.preferred_skills = skills.slice(0, 10);
   }
   
-  // Extract experience years
-  const expMatch = jdText.match(/(\d+)[\+\-]?\s*(?:to\s*\d+\s*)?years?\s+(?:of\s+)?experience/i);
-  if (expMatch) {
-    extracted.minimum_experience_years = expMatch[0];
+  // Extract experience years - improved regex to catch more patterns
+  const expPatterns = [
+    // "at least 3 years", "minimum 3 years", "minimum of 3 years"
+    /(?:at least|minimum|minimum of)\s+(\d+)\+?\s*years?/i,
+    // "3+ years", "3-5 years", "3 to 5 years"
+    /(\d+)[\+\-]\s*(?:to\s*\d+\s*)?years?/i,
+    // "X years of experience", "X years experience"
+    /(\d+)\s*years?\s+(?:of\s+)?(?:professional\s+)?(?:hands-on\s+)?experience/i,
+    // "Minimum X+ years"
+    /minimum\s+(\d+)\+/i
+  ];
+  
+  for (const pattern of expPatterns) {
+    const expMatch = jdText.match(pattern);
+    if (expMatch) {
+      extracted.minimum_experience_years = expMatch[0].trim();
+      break; // Use first match found
+    }
   }
   
   // Extract education

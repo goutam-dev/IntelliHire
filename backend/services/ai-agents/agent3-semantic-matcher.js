@@ -65,10 +65,10 @@ async function performSemanticMatching(jdData, resumeData, options = {}) {
     const validatedResult = validateMatchingScores(matchingResult);
     console.log('[Director 3] ✓ Validation complete');
     console.log('[Director 3] DECISION: Matching scores breakdown:');
-    console.log(`  - Skills Match: ${validatedResult.skills_match_score}/40`);
+    console.log(`  - Skills Match: ${validatedResult.skill_match_score}/40`);
     console.log(`  - Experience Match: ${validatedResult.experience_match_score}/25`);
     console.log(`  - Project Relevance: ${validatedResult.project_relevance_score}/20`);
-    console.log(`  - Education Match: ${validatedResult.education_match_score}/15`);
+    console.log(`  - Education Match: ${validatedResult.education_score}/15`);
     console.log(`  - OVERALL SCORE: ${validatedResult.overall_score}/100`);
     
     const processingTime = Date.now() - startTime;
@@ -116,7 +116,9 @@ async function llmBasedMatching(jdData, resumeData, options = {}) {
   
   let llmResult;
   
-  if (apiProvider === 'openrouter') {
+  if (apiProvider === 'groq') {
+    llmResult = await callGroqAPI(prompt, options);
+  } else if (apiProvider === 'openrouter') {
     llmResult = await callOpenRouterAPI(prompt, options);
   } else if (apiProvider === 'huggingface') {
     llmResult = await callHuggingFaceAPI(prompt, options);
@@ -151,34 +153,57 @@ RESUME DATA:
 ${JSON.stringify(resumeData, null, 2)}
 
 SCORING CRITERIA (USE EXACT FORMULA - DO NOT VARY):
+
+IMPORTANT: You MUST calculate scores using the EXACT formulas below. Same inputs MUST produce IDENTICAL outputs every single time.
+
 1. Skills Match (40 points max):
-   - Count matched required skills: each = 6 points (max 30 points for 5+ skills)
-   - Count matched preferred skills: each = 2 points (max 10 points for 5+ skills)
-   - Use exact formula: (matched_required * 6) + (matched_preferred * 2), cap at 40
+   Step 1: Count how many REQUIRED skills from JD are found in resume (use semantic matching)
+   Step 2: Count how many PREFERRED skills from JD are found in resume
+   Step 3: Calculate: min(40, (required_matches * 6) + (preferred_matches * 2))
+   
+   Example: If 4 required skills match and 3 preferred skills match:
+   Score = min(40, (4 * 6) + (3 * 2)) = min(40, 24 + 6) = 30
 
 2. Experience Match (25 points max):
-   - If candidate years >= required years: 25 points
-   - If candidate years = required - 1: 20 points
-   - If candidate years = required - 2: 15 points
-   - If candidate years < required - 2: 10 points
-   - Use ONLY these fixed values
+   Step 1: Extract numeric years from both JD and resume (e.g., "3+ years" = 3)
+   Step 2: Compare using this EXACT formula:
+   - If candidate_years >= required_years: 25 points
+   - If candidate_years == required_years - 1: 20 points  
+   - If candidate_years == required_years - 2: 15 points
+   - If candidate_years < required_years - 2: 10 points
+   - If either is "Not specified": 15 points
+   
+   Example: Required=5, Candidate=6 → 25 points
+   Example: Required=5, Candidate=4 → 20 points
+   Example: Required=5, Candidate=3 → 15 points
 
 3. Project Relevance (20 points max):
-   - Count projects using required skills/technologies: each = 5 points (max 20)
-   - Use exact formula: min(relevant_projects * 5, 20)
+   Step 1: Count projects that mention ANY keyword/technology from JD
+   Step 2: Calculate: min(20, relevant_project_count * 5)
+   
+   Example: If 3 projects are relevant: min(20, 3 * 5) = 15
+   Example: If 5+ projects are relevant: min(20, 5 * 5) = 20
 
 4. Education & Certifications (15 points max):
-   - Meets exact education requirement: 15 points
-   - Higher than requirement: 15 points
-   - One level below requirement: 10 points
-   - Two+ levels below: 5 points
-   - Use ONLY these fixed values
+   Step 1: Compare education levels using hierarchy: Associate < Bachelor < Master < PhD
+   - Meets or exceeds requirement: 10 points
+   - One level below: 7 points
+   - Two+ levels below or unclear: 3 points
+   - Not specified on either side: 6 points
+   
+   Step 2: Add certification bonus: min(5, certification_count * 1.5) rounded
+   Step 3: Total education_score = min(15, education_base + cert_bonus)
+   
+   Example: Bachelor required, Master achieved, 2 certs: min(15, 10 + 3) = 13
 
-CALCULATION RULES (MANDATORY):
-- Sum all component scores to get overall_score
-- Round all scores to nearest integer
-- Never randomize or vary scores for same input
-- Apply formulas EXACTLY as specified above
+FINAL CALCULATION:
+overall_score = skill_match_score + experience_match_score + project_relevance_score + education_score
+
+CRITICAL RULES:
+- Use temperature=0 logic: ALWAYS produce same output for same input
+- Round all intermediate calculations to nearest integer
+- Apply min() caps as shown
+- Perform semantic matching: React.js = React, Node = Node.js, AWS = Amazon Web Services, etc.
 
 REQUIRED OUTPUT FORMAT (JSON ONLY):
 {
@@ -293,14 +318,14 @@ function calculateSkillsMatch(requiredSkills, preferredSkills, candidateSkills, 
     }
   }
   
-  // Calculate score (out of 40)
-  const totalRequired = requiredSkills.length || 1;
-  const totalPreferred = preferredSkills.length || 1;
+  // Calculate score (out of 40) - EXACT FORMULA matching LLM prompt
+  // Each required skill match = 6 points (max 30 points)
+  // Each preferred skill match = 2 points (max 10 points)
+  // This ensures deterministic, count-based scoring
+  const requiredScore = Math.min(30, requiredMatches * 6);
+  const preferredScore = Math.min(10, preferredMatches * 2);
   
-  const requiredScore = (requiredMatches / totalRequired) * 30; // 30 points for required
-  const preferredScore = (preferredMatches / totalPreferred) * 10; // 10 points for preferred
-  
-  const score = Math.min(40, Math.round(requiredScore + preferredScore));
+  const score = Math.min(40, requiredScore + preferredScore);
   
   return { score, matched, missing };
 }
@@ -376,26 +401,19 @@ function calculateExperienceMatch(requiredExp, candidateExp) {
     return { score: 15, reason: 'Experience requirements not clearly specified' };
   }
   
-  // Calculate score (out of 25)
+  // Calculate score (out of 25) - EXACT FORMULA matching LLM prompt
   if (candidateYears >= requiredYears) {
-    // Meets or exceeds requirement
-    const excess = candidateYears - requiredYears;
-    if (excess <= 2) {
-      return { score: 25, reason: 'Meets experience requirement perfectly' };
-    } else if (excess <= 5) {
-      return { score: 23, reason: 'Good experience level for the role' };
-    } else {
-      return { score: 20, reason: 'Significantly exceeds experience requirement' };
-    }
+    // Meets or exceeds requirement - ALWAYS 25 points
+    return { score: 25, reason: 'Meets or exceeds experience requirement' };
   } else {
-    // Below requirement
+    // Below requirement - use exact formula from prompt
     const deficit = requiredYears - candidateYears;
-    if (deficit <= 1) {
-      return { score: 18, reason: 'Slightly below experience requirement' };
-    } else if (deficit <= 2) {
-      return { score: 12, reason: 'Below experience requirement' };
+    if (deficit === 1) {
+      return { score: 20, reason: 'One year below experience requirement' };
+    } else if (deficit === 2) {
+      return { score: 15, reason: 'Two years below experience requirement' };
     } else {
-      return { score: 5, reason: 'Significantly below experience requirement' };
+      return { score: 10, reason: 'Significantly below experience requirement' };
     }
   }
 }
@@ -428,39 +446,41 @@ function parseExperienceYears(expText) {
  */
 function calculateProjectRelevance(jobResponsibilities, jdKeywords, projects) {
   if (projects.length === 0) {
-    return { score: 5, reason: 'No projects listed' };
+    return { score: 0, reason: 'No projects listed' };
   }
   
   const allJdText = [...jobResponsibilities, ...jdKeywords].join(' ').toLowerCase();
-  const projectsText = projects.join(' ').toLowerCase();
-  
-  // Check for keyword overlap
   const keywords = jdKeywords.map(k => k.toLowerCase());
-  let matchCount = 0;
   
-  for (const keyword of keywords) {
-    if (projectsText.includes(keyword)) {
-      matchCount++;
+  // Count how many projects mention JD keywords/technologies - EXACT FORMULA from prompt
+  let relevantProjectCount = 0;
+  
+  for (const project of projects) {
+    const projectLower = project.toLowerCase();
+    // Check if this project mentions any JD keyword
+    for (const keyword of keywords) {
+      if (projectLower.includes(keyword)) {
+        relevantProjectCount++;
+        break; // Count this project only once
+      }
     }
   }
   
-  // Calculate score (out of 20)
-  if (keywords.length === 0) {
-    // No keywords to match, give average score
-    return { score: 12, reason: 'Projects present but hard to assess relevance' };
-  }
+  // Calculate score: min(20, relevant_project_count * 5) - EXACT from prompt
+  const score = Math.min(20, relevantProjectCount * 5);
   
-  const matchRatio = matchCount / keywords.length;
-  
-  if (matchRatio >= 0.6) {
-    return { score: 20, reason: 'Projects highly relevant to job requirements' };
-  } else if (matchRatio >= 0.4) {
-    return { score: 16, reason: 'Projects moderately relevant to job requirements' };
-  } else if (matchRatio >= 0.2) {
-    return { score: 10, reason: 'Some project relevance to job requirements' };
+  let reason = '';
+  if (score >= 20) {
+    reason = 'Projects highly relevant to job requirements';
+  } else if (score >= 10) {
+    reason = 'Projects moderately relevant to job requirements';
+  } else if (score > 0) {
+    reason = 'Some project relevance to job requirements';
   } else {
-    return { score: 5, reason: 'Limited project relevance to job requirements' };
+    reason = 'Limited project relevance to job requirements';
   }
+  
+  return { score, reason };
 }
 
 /**
@@ -471,18 +491,18 @@ function calculateProjectRelevance(jobResponsibilities, jdKeywords, projects) {
  * @returns {Object} - Score and details
  */
 function calculateEducationMatch(requiredEdu, candidateEdu, certifications) {
-  let score = 0;
+  let educationBase = 0;
   let reason = '';
   
   const lowerRequired = requiredEdu.toLowerCase();
   const lowerCandidate = candidateEdu.toLowerCase();
   
-  // Education match (10 points max)
+  // Education match - EXACT FORMULA from LLM prompt
   if (requiredEdu === 'Not specified' || candidateEdu === 'Not specified') {
-    score += 6; // Neutral score if not specified
+    educationBase = 6; // Neutral score if not specified
     reason = 'Education requirements not clearly specified';
   } else {
-    // Check degree level match
+    // Check degree level match using hierarchy
     const degreeHierarchy = ['associate', 'bachelor', 'master', 'phd', 'doctorate'];
     
     let requiredLevel = -1;
@@ -497,26 +517,33 @@ function calculateEducationMatch(requiredEdu, candidateEdu, certifications) {
       }
     }
     
+    // Apply EXACT scoring from prompt
     if (candidateLevel >= requiredLevel && candidateLevel >= 0) {
-      score += 10;
-      reason = 'Meets education requirement';
+      educationBase = 10; // Meets or exceeds requirement
+      reason = 'Meets or exceeds education requirement';
+    } else if (candidateLevel === requiredLevel - 1) {
+      educationBase = 7; // One level below
+      reason = 'One level below education requirement';
     } else if (candidateLevel >= 0) {
-      score += 5;
+      educationBase = 3; // Two+ levels below
       reason = 'Below education requirement';
     } else {
-      score += 3;
+      educationBase = 3; // Unclear
       reason = 'Education level unclear';
     }
   }
   
-  // Certifications bonus (5 points max)
+  // Certifications bonus: min(5, certification_count * 1.5) rounded - EXACT from prompt
+  const certBonus = Math.min(5, Math.round(certifications.length * 1.5));
+  
+  // Total education score: min(15, education_base + cert_bonus)
+  const score = Math.min(15, educationBase + certBonus);
+  
   if (certifications.length > 0) {
-    const certScore = Math.min(5, certifications.length * 1.5);
-    score += Math.round(certScore);
-    reason += certifications.length > 0 ? ', Has relevant certifications' : '';
+    reason += `, ${certifications.length} certification(s)`;
   }
   
-  return { score: Math.min(15, Math.round(score)), reason };
+  return { score, reason };
 }
 
 /**
@@ -573,6 +600,49 @@ function generateReasoning(result, skillsScore, experienceScore, projectScore, e
 /**
  * Call OpenRouter API for matching
  */
+/**
+ * Call Groq API for matching (FREE & FAST - RECOMMENDED)
+ */
+async function callGroqAPI(prompt, options = {}) {
+  const apiKey = options.groqApiKey || process.env.GROQ_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('Groq API key not configured');
+  }
+  
+  let model = options.model || process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  
+  const response = await axios.post(
+    'https://api.groq.com/openai/v1/chat/completions',
+    {
+      model: model,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.0,
+      max_tokens: 1500,
+      seed: 42
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 60000
+    }
+  );
+  
+  if (!response.data || !response.data.choices || !response.data.choices[0]) {
+    throw new Error('Invalid Groq response format');
+  }
+  
+  const generatedText = response.data.choices[0].message.content;
+  return parseJSONFromLLMResponse(generatedText);
+}
+
 async function callOpenRouterAPI(prompt, options = {}) {
   const apiKey = options.openrouterApiKey || process.env.OPENROUTER_API_KEY;
   
@@ -593,7 +663,8 @@ async function callOpenRouterAPI(prompt, options = {}) {
         }
       ],
       temperature: 0.0,
-      max_tokens: 1500
+      max_tokens: 1500,
+      seed: 42
     },
     {
       headers: {
@@ -667,7 +738,7 @@ async function callOpenAIAPI(prompt, options = {}) {
       messages: [
         {
           role: 'system',
-          content: 'You are an expert at semantic matching between job requirements and candidate qualifications. Always respond with valid JSON only.'
+          content: 'You are an expert semantic matching agent in a resume ranking system. Always use exact formulas and respond with valid JSON only. Same inputs must produce identical outputs.'
         },
         {
           role: 'user',
@@ -675,7 +746,8 @@ async function callOpenAIAPI(prompt, options = {}) {
         }
       ],
       temperature: 0.0,
-      max_tokens: 1000
+      max_tokens: 1000,
+      seed: 42
     },
     {
       headers: {

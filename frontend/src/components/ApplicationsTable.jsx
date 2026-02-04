@@ -78,6 +78,12 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
               </div>
             </th>
             <th className="p-3 text-left text-xs font-semibold text-slate-600">Resume</th>
+            <th className="p-3 text-center text-xs font-semibold text-slate-600">
+              <div className="flex items-center justify-center gap-1">
+                <Zap className="h-3.5 w-3.5 text-amber-500" />
+                Analyze
+              </div>
+            </th>
             <th className="p-3 text-left text-xs font-semibold text-slate-600">Status</th>
             <th className="p-3 text-right text-xs font-semibold text-slate-600">Actions</th>
           </tr>
@@ -136,6 +142,28 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                   </a>
                 </td>
                 <td className="p-3">
+                  <div className="flex justify-center">
+                    <button
+                      onClick={() => onAnalyze && onAnalyze(app._id)}
+                      disabled={analyzingIds.has(app._id)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:from-violet-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow"
+                      title="Analyze this resume with AI"
+                    >
+                      {analyzingIds.has(app._id) ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3.5 w-3.5" />
+                          Analyze
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </td>
+                <td className="p-3">
                   <StatusBadge status={app.status} />
                 </td>
                 <td className="p-3 text-right">
@@ -149,7 +177,7 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
           })}
           {applications.length === 0 && (
             <tr>
-              <td colSpan="8" className="p-6 text-center text-sm text-slate-500">No applications found.</td>
+              <td colSpan="9" className="p-6 text-center text-sm text-slate-500">No applications found.</td>
             </tr>
           )}
         </tbody>

@@ -494,6 +494,8 @@ const JobApplicationsPage = () => {
           open={candidateOpen}
           onClose={() => setCandidateOpen(false)}
           application={selectedApplication}
+          onAnalyze={handleAnalyzeSingle}
+          analyzingIds={analyzingIds}
         />
         {/* Batch Analysis Progress Modal */}
         <AnimatePresence>
