@@ -152,6 +152,32 @@ export const updateNotificationPreferences = createAsyncThunk(
   }
 );
 
+export const uploadVideo = createAsyncThunk(
+  'candidate/uploadVideo',
+  async (formData, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/candidate/video', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || error.message);
+    }
+  }
+);
+
+export const deleteVideo = createAsyncThunk(
+  'candidate/deleteVideo',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.delete('/candidate/video');
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
 const initialState = {
   profile: null,
   loading: false,
@@ -218,6 +244,13 @@ const candidateSlice = createSlice({
         state.profile = action.payload.profile || action.payload;
       })
       .addCase(deleteProfilePhoto.fulfilled, (state, action) => {
+        state.profile = action.payload.profile || action.payload;
+      })
+      // Video operations
+      .addCase(uploadVideo.fulfilled, (state, action) => {
+        state.profile = action.payload.profile || action.payload;
+      })
+      .addCase(deleteVideo.fulfilled, (state, action) => {
         state.profile = action.payload.profile || action.payload;
       })
       // Notification preferences

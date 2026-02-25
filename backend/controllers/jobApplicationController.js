@@ -34,7 +34,7 @@ exports.getProfileDataForApplication = asyncHandler(async (req, res) => {
  * Submit job application
  */
 exports.submitApplication = asyncHandler(async (req, res) => {
-  const result = await applicationService.submitApplication(req.user.id, req.body, req.file);
+  const result = await applicationService.submitApplication(req.user.id, req.body, req.files || req.file);
   res.status(201).json({
     success: true,
     message: 'Application submitted successfully!',

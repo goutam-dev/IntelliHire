@@ -59,6 +59,28 @@ const jobApplicationSchema = new mongoose.Schema({
     filePath: String,
     isFromProfile: { type: Boolean, default: false } // true if using existing resume from profile
   },
+  // Video introduction – required at application time (validated in service layer)
+  video: {
+    filename: { type: String },
+    originalName: String,
+    uploadDate: { type: Date, default: Date.now },
+    fileSize: Number,
+    filePath: String,
+    isFromProfile: { type: Boolean, default: false }
+  },
+  // Derived files generated server-side from the application video
+  audioFile: {
+    // WAV audio extracted for voice-verification during interview
+    filename: { type: String },
+    filePath: { type: String },  // relative: /uploads/application-audio/<name>.wav
+    createdAt: { type: Date }
+  },
+  silentVideoFile: {
+    // Audio-stripped MP4 for facial-verification during interview
+    filename: { type: String },
+    filePath: { type: String },  // relative: /uploads/application-videos-silent/<name>-silent.mp4
+    createdAt: { type: Date }
+  },
   coverLetter: {
     type: String,
     maxlength: 500
@@ -67,6 +89,15 @@ const jobApplicationSchema = new mongoose.Schema({
     type: Boolean,
     required: true,
     default: false
+  },
+  // Interview window set by employer
+  interviewWindowStart: {
+    type: Date,
+    default: null
+  },
+  interviewWindowEnd: {
+    type: Date,
+    default: null
   },
   // Employer actions
   employerNotes: String,

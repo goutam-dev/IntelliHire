@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Video } from 'lucide-react';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -171,6 +172,36 @@ const ApplicationDetails = () => {
                   View Job Posting
                 </button>
               )}
+              {application.status === 'Interview Scheduled' && (() => {
+                const now = new Date();
+                const deadline = application.interviewWindowEnd
+                  ? new Date(application.interviewWindowEnd)
+                  : null;
+                if (deadline) deadline.setHours(23, 59, 59, 999);
+                const active = deadline ? now <= deadline : true;
+                return (
+                  <button
+                    disabled={!active}
+                    onClick={() =>
+                      navigate(`/candidate/interview/${application.applicationId}`, {
+                        state: {
+                          jobTitle: application.jobId?.title,
+                          jobId: application.jobId?._id,
+                          applicationId: application.applicationId,
+                        },
+                      })
+                    }
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      active
+                        ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Video className="w-4 h-4" />
+                    {active ? 'Give Interview' : 'Deadline Passed'}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

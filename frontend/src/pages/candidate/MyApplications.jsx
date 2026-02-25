@@ -15,7 +15,9 @@ import {
   Filter,
   Search,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Video,
+  CalendarClock
 } from 'lucide-react';
 
 import {
@@ -102,6 +104,23 @@ const MyApplications = () => {
         console.error('Failed to withdraw application:', error);
       }
     }
+  };
+
+  /**
+   * Returns true if today is on or before the interview deadline.
+   */
+  const isInterviewWindowActive = (app) => {
+    if (!app.interviewWindowEnd) return false;
+    const now = new Date();
+    const deadline = new Date(app.interviewWindowEnd);
+    // Set deadline to end-of-day
+    deadline.setHours(23, 59, 59, 999);
+    return now <= deadline;
+  };
+
+  const formatInterviewDeadline = (app) => {
+    if (!app.interviewWindowEnd) return null;
+    return new Date(app.interviewWindowEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const getStatusColor = (status) => {
@@ -326,6 +345,42 @@ const MyApplications = () => {
                           Withdraw
                         </button>
                       )}
+
+                      {application.status === 'Interview Scheduled' && (() => {
+                        const active = isInterviewWindowActive(application);
+                        const deadline = formatInterviewDeadline(application);
+                        return (
+                          <div className="flex flex-col items-end gap-1">
+                            {deadline && (
+                              <span className="flex items-center gap-1 text-xs text-slate-500">
+                                <CalendarClock className="w-3.5 h-3.5" />
+                                Interview deadline: {deadline}
+                              </span>
+                            )}
+                            <button
+                              disabled={!active}
+                              onClick={() =>
+                                navigate(`/candidate/interview/${application.applicationId}`, {
+                                  state: {
+                                    jobTitle: application.jobId?.title,
+                                    jobId: application.jobId?._id,
+                                    applicationId: application.applicationId,
+                                  },
+                                })
+                              }
+                              title={active ? 'Give your interview now' : deadline ? `Deadline was ${deadline}` : 'Interview deadline not set'}
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                active
+                                  ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow'
+                                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                              }`}
+                            >
+                              <Video className="w-4 h-4" />
+                              {active ? 'Give Interview' : 'Interview Deadline Passed'}
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </motion.div>

@@ -38,6 +38,16 @@ const ResumeSchema = new Schema(
   { _id: false }
 );
 
+const VideoSchema = new Schema(
+  {
+    fileName: { type: String },
+    fileUrl: { type: String },
+    uploadedAt: { type: Date },
+    fileSize: { type: Number }
+  },
+  { _id: false }
+);
+
 const ProfileCompletionSchema = new Schema(
   {
     basicInfo: { type: Boolean, default: false },
@@ -75,6 +85,8 @@ const CandidateProfileSchema = new Schema(
     experience: { type: [ExperienceSchema], default: [] },
     skills: { type: [String], default: [] },
     profilePhotoUrl: { type: String },
+    // Video Introduction (optional at profile stage)
+    video: { type: VideoSchema, default: () => ({}) },
     
     // Notification Preferences
     notificationPreferences: {

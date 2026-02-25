@@ -141,6 +141,30 @@ exports.deletePhoto = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Upload video introduction
+ */
+exports.uploadVideo = asyncHandler(async (req, res) => {
+  const result = await candidateService.uploadVideo(req.user.id, req.file);
+  res.json({
+    success: true,
+    message: 'Video uploaded successfully',
+    ...result
+  });
+});
+
+/**
+ * Delete video introduction
+ */
+exports.deleteVideo = asyncHandler(async (req, res) => {
+  const profile = await candidateService.deleteVideo(req.user.id);
+  res.json({
+    success: true,
+    message: 'Video removed successfully',
+    profile
+  });
+});
+
+/**
  * Update notification preferences
  */
 exports.updateNotificationPreferences = asyncHandler(async (req, res) => {

@@ -486,6 +486,89 @@ const deletePhoto = async (userId) => {
 };
 
 /**
+ * Upload video introduction to candidate profile
+ */
+const uploadVideo = async (userId, file) => {
+  if (!file) {
+    throw new ValidationError('No file uploaded');
+  }
+
+  if (!file.mimetype.startsWith('video/')) {
+    throw new ValidationError('Only video files are allowed');
+  }
+
+  let profile = await CandidateProfile.findOne({ user: userId });
+  
+  if (!profile) {
+    profile = new CandidateProfile({ user: userId });
+  }
+
+  // Delete old video file if exists
+  if (profile.video && profile.video.fileUrl) {
+    const oldFilePath = path.join(__dirname, '..', profile.video.fileUrl);
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    const resolvedPath = path.resolve(oldFilePath);
+    const resolvedUploadsDir = path.resolve(uploadsDir);
+    
+    if (resolvedPath.startsWith(resolvedUploadsDir) && fs.existsSync(oldFilePath)) {
+      try {
+        fs.unlinkSync(oldFilePath);
+        logger.info(`Deleted old profile video file: ${oldFilePath}`);
+      } catch (err) {
+        logger.error('Error deleting old profile video:', err);
+      }
+    }
+  }
+
+  profile.video = {
+    fileName: file.originalname,
+    fileUrl: `/uploads/videos/${file.filename}`,
+    uploadedAt: new Date(),
+    fileSize: file.size
+  };
+
+  await profile.save();
+  
+  const updatedProfile = await CandidateProfile.findOne({ user: userId }).populate('user', 'fullName email phoneNumber');
+  return {
+    profile: updatedProfile,
+    video: updatedProfile.video
+  };
+};
+
+/**
+ * Delete video introduction from candidate profile
+ */
+const deleteVideo = async (userId) => {
+  const profile = await CandidateProfile.findOne({ user: userId });
+  
+  if (!profile) {
+    throw new NotFoundError('Profile not found');
+  }
+
+  if (profile.video && profile.video.fileUrl) {
+    const filePath = path.join(__dirname, '..', profile.video.fileUrl);
+    const uploadsDir = path.join(__dirname, '..', 'uploads');
+    const resolvedPath = path.resolve(filePath);
+    const resolvedUploadsDir = path.resolve(uploadsDir);
+    
+    if (resolvedPath.startsWith(resolvedUploadsDir) && fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+        logger.info(`Deleted profile video file: ${filePath}`);
+      } catch (err) {
+        logger.error('Error deleting profile video file:', err);
+      }
+    }
+  }
+
+  profile.video = {};
+  await profile.save();
+  
+  return await CandidateProfile.findOne({ user: userId }).populate('user', 'fullName email phoneNumber');
+};
+
+/**
  * Update notification preferences
  */
 const updateNotificationPreferences = async (userId, preferences) => {
@@ -612,6 +695,8 @@ module.exports = {
   deleteResume,
   uploadPhoto,
   deletePhoto,
+  uploadVideo,
+  deleteVideo,
   updateNotificationPreferences,
   getProfileCompletion,
   getCandidateDashboardStats,

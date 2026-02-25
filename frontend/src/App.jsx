@@ -30,6 +30,7 @@ import MyJobsPage from './pages/MyJobsPage';
 import EditJobPage from './pages/EditJobPage';
 import JobApplicationsPage from './pages/employer/JobApplicationsPage';
 import EmployerProfilePage from './pages/employer/EmployerProfilePage';
+import InterviewProctoring from './pages/candidate/InterviewProctoring';
 
 function App() {
   return (
@@ -147,6 +148,7 @@ function App() {
               <Route path="applications/:applicationId" element={<ApplicationDetails />} />
               <Route path="profile" element={<Profile />} />
               <Route path="apply/:jobId" element={<JobApplication />} />
+              <Route path="interview/:applicationId" element={<InterviewProctoring />} />
               
               {/* Redirect /candidate to /candidate/dashboard */}
               <Route index element={<Navigate to="dashboard" replace />} />

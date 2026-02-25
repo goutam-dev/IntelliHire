@@ -11,6 +11,8 @@ import {
   deleteEducation,
   deleteExperience,
   deleteResume,
+  uploadVideo,
+  deleteVideo,
   clearError
 } from '../../store/slices/candidateSlice';
 
@@ -21,6 +23,7 @@ import ExperienceSection from '../../components/candidate/profile/ExperienceSect
 import SkillsSection from '../../components/candidate/profile/SkillsSection';
 import SummarySection from '../../components/candidate/profile/SummarySection';
 import AccountSettingsSection from '../../components/candidate/profile/AccountSettingsSection';
+import VideoSection from '../../components/candidate/profile/VideoSection';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { toast } from 'react-toastify';
 
@@ -55,6 +58,7 @@ const Profile = () => {
   const sections = [
     { id: 'personal', label: 'Personal Info', icon: '👤' },
     { id: 'resume', label: 'Resume', icon: '📄' },
+    { id: 'video', label: 'Video Intro', icon: '🎥' },
     { id: 'education', label: 'Education', icon: '🎓' },
     { id: 'experience', label: 'Experience', icon: '💼' },
     { id: 'skills', label: 'Skills', icon: '⚡' },
@@ -148,6 +152,14 @@ const Profile = () => {
                   profile={profile}
                   onUpload={(formData) => dispatch(uploadResume(formData))}
                   onDelete={() => dispatch(deleteResume())}
+                />
+              )}
+
+              {activeSection === 'video' && (
+                <VideoSection
+                  profile={profile}
+                  onUpload={(formData) => dispatch(uploadVideo(formData))}
+                  onDelete={() => dispatch(deleteVideo())}
                 />
               )}
 

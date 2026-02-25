@@ -2,12 +2,19 @@ const express = require('express');
 const router = express.Router();
 const jobApplicationController = require('../controllers/jobApplicationController');
 const auth = require('../middleware/auth');
-const upload = require('../middleware/upload');
+const { videoUpload } = require('../middleware/upload');
+
+// Accept both resume (PDF) and applicationVideo in a single multipart request
+// videoUpload has the 50MB limit suitable for video files
+const applyFields = videoUpload.fields([
+  { name: 'resume', maxCount: 1 },
+  { name: 'applicationVideo', maxCount: 1 }
+]);
 
 // Candidate routes
 router.get('/check/:jobId', auth, jobApplicationController.checkApplicationStatus);
 router.get('/profile-data', auth, jobApplicationController.getProfileDataForApplication);
-router.post('/apply', auth, upload.single('resume'), jobApplicationController.submitApplication);
+router.post('/apply', auth, applyFields, jobApplicationController.submitApplication);
 router.get('/my-applications', auth, jobApplicationController.getMyApplications);
 router.get('/download-resume', auth, jobApplicationController.downloadResume);
 router.get('/:applicationId', auth, jobApplicationController.getApplicationById);

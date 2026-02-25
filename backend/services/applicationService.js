@@ -9,6 +9,7 @@ const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/err
 const logger = require('../utils/logger');
 const path = require('path');
 const fs = require('fs');
+const { processApplicationVideo } = require('../utils/videoProcessor');
 
 /**
  * Application service - handles all application-related business logic
@@ -299,10 +300,25 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
  * Schedule interview for application
  */
 const scheduleInterview = async (applicationId, interviewData, userId) => {
-  const { scheduledAt, instructions } = interviewData;
+  const { interviewWindowStart, interviewWindowEnd, instructions } = interviewData;
 
   if (!mongoose.Types.ObjectId.isValid(applicationId)) {
     throw new ValidationError('Invalid applicationId');
+  }
+
+  if (!interviewWindowStart || !interviewWindowEnd) {
+    throw new ValidationError('Interview window start and end dates are required');
+  }
+
+  const startDate = new Date(interviewWindowStart);
+  const endDate = new Date(interviewWindowEnd);
+
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    throw new ValidationError('Invalid interview window dates');
+  }
+
+  if (endDate <= startDate) {
+    throw new ValidationError('Interview window end date must be after start date');
   }
 
   const application = await JobApplication.findById(applicationId).populate('jobId');
@@ -322,7 +338,9 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   }
 
   application.status = 'Interview Scheduled';
-  application.employerNotes = `Interview scheduled for ${scheduledAt}. ${instructions}`;
+  application.interviewWindowStart = startDate;
+  application.interviewWindowEnd = endDate;
+  application.employerNotes = `Interview window: ${startDate.toDateString()} – ${endDate.toDateString()}. ${instructions || ''}`.trim();
   
   await application.save();
 
@@ -402,6 +420,13 @@ const getProfileDataForApplication = async (candidateId) => {
       uploadedAt: profile.resume.uploadedAt,
       path: profile.resume.fileUrl,
       size: null
+    } : null,
+    video: profile.video && profile.video.fileUrl ? {
+      filename: profile.video.fileName,
+      originalName: profile.video.fileName,
+      uploadedAt: profile.video.uploadedAt,
+      fileUrl: profile.video.fileUrl,
+      fileSize: profile.video.fileSize
     } : null
   };
 };
@@ -409,13 +434,18 @@ const getProfileDataForApplication = async (candidateId) => {
 /**
  * Submit job application
  */
-const submitApplication = async (candidateId, applicationData, file) => {
+const submitApplication = async (candidateId, applicationData, files) => {
+  // files is the result of upload.fields() – { resume: [fileObj], applicationVideo: [fileObj] }
+  const file = files && files.resume ? files.resume[0] : null;
+  const videoFile = files && files.applicationVideo ? files.applicationVideo[0] : null;
+
   const {
     jobId,
     applicationProfile,
     coverLetter,
     profileAccuracyConfirmed,
-    useExistingResume
+    useExistingResume,
+    useExistingVideo
   } = applicationData;
 
   // Parse applicationProfile if it's a string
@@ -514,17 +544,124 @@ const submitApplication = async (candidateId, applicationData, file) => {
     };
   }
 
+  // Handle video – mandatory at application time
+  let videoData;
+  const appVideosDir = path.join(__dirname, '..', 'uploads', 'application-videos');
+  if (!fs.existsSync(appVideosDir)) {
+    fs.mkdirSync(appVideosDir, { recursive: true });
+  }
+
+  if (useExistingVideo === 'true' || useExistingVideo === true) {
+    const profile = await CandidateProfile.findOne({ user: candidateId });
+    if (!profile || !profile.video || !profile.video.fileUrl) {
+      throw new ValidationError('No existing video introduction found in profile. Please upload a video.');
+    }
+    
+    const sourceFilePath = path.join(__dirname, '..', profile.video.fileUrl);
+    const timestamp = Date.now();
+    const fileExtension = path.extname(profile.video.fileName || 'video.mp4');
+    const newFilename = `appvid-${candidateId}-${timestamp}${fileExtension}`;
+    const destPath = path.join(appVideosDir, newFilename);
+    
+    if (fs.existsSync(sourceFilePath)) {
+      fs.copyFileSync(sourceFilePath, destPath);
+    } else {
+      throw new ValidationError('Profile video file not found. Please re-upload your video.');
+    }
+    
+    videoData = {
+      filename: newFilename,
+      originalName: profile.video.fileName || 'video.mp4',
+      uploadDate: new Date(),
+      fileSize: profile.video.fileSize,
+      filePath: `/uploads/application-videos/${newFilename}`,
+      isFromProfile: true
+    };
+  } else {
+    if (!videoFile) {
+      throw new ValidationError('Video introduction is required for job applications');
+    }
+    
+    const timestamp = Date.now();
+    const fileExtension = path.extname(videoFile.originalname);
+    const newFilename = `appvid-${candidateId}-${timestamp}${fileExtension}`;
+    const sourcePath = videoFile.path;
+    const destPath = path.join(appVideosDir, newFilename);
+    
+    if (fs.existsSync(sourcePath)) {
+      fs.renameSync(sourcePath, destPath);
+    }
+    
+    videoData = {
+      filename: newFilename,
+      originalName: videoFile.originalname,
+      uploadDate: new Date(),
+      fileSize: videoFile.size,
+      filePath: `/uploads/application-videos/${newFilename}`,
+      isFromProfile: false
+    };
+  }
+
   try {
     const jobApplication = new JobApplication({
       jobId,
       candidateId,
       applicationProfile: parsedApplicationProfile,
       resume: resumeData,
+      video: videoData,
       coverLetter: coverLetter || '',
       profileAccuracyConfirmed: profileAccuracyConfirmed === 'true'
     });
 
     await jobApplication.save();
+
+    // ── Background video processing ─────────────────────────────────────────
+    // Extract WAV audio (voice verification) and strip-audio MP4 (facial
+    // verification) from the application video.  Runs after the response is
+    // returned so the candidate is not kept waiting.
+    if (videoData && videoData.filePath) {
+      const absoluteVideoPath = path.join(__dirname, '..', videoData.filePath);
+      const baseName         = path.basename(videoData.filename, path.extname(videoData.filename));
+      const audioOutDir      = path.join(__dirname, '..', 'uploads', 'application-audio');
+      const silentOutDir     = path.join(__dirname, '..', 'uploads', 'application-videos-silent');
+
+      // Fire-and-forget: don't await so the HTTP response is not delayed
+      setImmediate(async () => {
+        try {
+          const { audioPath, silentVideoPath } = await processApplicationVideo(
+            absoluteVideoPath,
+            baseName,
+            audioOutDir,
+            silentOutDir
+          );
+
+          // Persist relative paths back to the application document
+          await JobApplication.findByIdAndUpdate(jobApplication._id, {
+            $set: {
+              audioFile: {
+                filename: path.basename(audioPath),
+                filePath: `/uploads/application-audio/${path.basename(audioPath)}`,
+                createdAt: new Date()
+              },
+              silentVideoFile: {
+                filename: path.basename(silentVideoPath),
+                filePath: `/uploads/application-videos-silent/${path.basename(silentVideoPath)}`,
+                createdAt: new Date()
+              }
+            }
+          });
+
+          logger.info(`[submitApplication] Video processing complete for application ${jobApplication._id}`);
+        } catch (processingError) {
+          // Non-fatal: log the error but do not fail the application submission
+          logger.error(
+            `[submitApplication] Video processing failed for application ${jobApplication._id}:`,
+            processingError
+          );
+        }
+      });
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     // Update job applications count
     await Job.findByIdAndUpdate(jobId, {
@@ -557,7 +694,7 @@ const submitApplication = async (candidateId, applicationData, file) => {
 
     return jobApplication;
   } catch (error) {
-    // Delete uploaded/copied file if application submission failed
+    // Delete uploaded/copied files if application submission failed
     if (resumeData && resumeData.filePath) {
       const filePath = path.join(__dirname, '..', resumeData.filePath);
       if (fs.existsSync(filePath)) {
@@ -566,6 +703,17 @@ const submitApplication = async (candidateId, applicationData, file) => {
           logger.info(`Deleted application resume after failed submission: ${filePath}`);
         } catch (unlinkError) {
           logger.error('Error deleting application resume after failed submission:', unlinkError);
+        }
+      }
+    }
+    if (videoData && videoData.filePath) {
+      const filePath = path.join(__dirname, '..', videoData.filePath);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          logger.info(`Deleted application video after failed submission: ${filePath}`);
+        } catch (unlinkError) {
+          logger.error('Error deleting application video after failed submission:', unlinkError);
         }
       }
     }

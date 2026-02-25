@@ -3,6 +3,7 @@ const router = express.Router();
 const candidateController = require('../controllers/candidateController');
 const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { videoUpload } = require('../middleware/upload');
 
 // All routes require authentication
 router.use(auth);
@@ -43,6 +44,12 @@ router.delete('/experience/:experienceId', candidateController.deleteExperience)
 // Skills Routes
 // ==========================================
 router.put('/skills', candidateController.updateSkills);
+
+// ==========================================
+// Video Routes
+// ==========================================
+router.post('/video', videoUpload.single('profileVideo'), candidateController.uploadVideo);
+router.delete('/video', candidateController.deleteVideo);
 
 // ==========================================
 // Settings & Stats Routes

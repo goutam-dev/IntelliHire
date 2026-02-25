@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -21,6 +21,9 @@ import {
   X,
   CheckCircle,
   Eye,
+  Video,
+  Film,
+  Play,
 } from "lucide-react";
 
 import {
@@ -235,6 +238,8 @@ const JobApplication = () => {
   const [applicationForm, setApplicationForm] = useState({
     resumeOption: "existing", // 'existing' or 'new'
     newResumeFile: null,
+    videoOption: "existing", // 'existing' or 'new'
+    newVideoFile: null,
     coverLetter: "",
     profileAccuracyConfirmed: false,
   });
@@ -454,6 +459,27 @@ const JobApplication = () => {
     }));
   };
 
+  const handleVideoFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const allowedTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Please select a valid video file (MP4, WEBM, MOV, or AVI).');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Video file size must be less than 50MB.');
+      return;
+    }
+
+    setApplicationForm((prev) => ({
+      ...prev,
+      newVideoFile: file,
+    }));
+  };
+
   const handleCoverLetterChange = (e) => {
     const value = e.target.value;
     if (value.length <= 500) {
@@ -483,6 +509,16 @@ const JobApplication = () => {
       return;
     }
 
+    // Validate video: must have either an existing profile video (when opting "existing") or a new file
+    if (applicationForm.videoOption === 'existing' && !profileData?.video) {
+      alert('You do not have a video introduction in your profile. Please upload a new video for this application.');
+      return;
+    }
+    if (applicationForm.videoOption === 'new' && !applicationForm.newVideoFile) {
+      alert('Please select a video file to upload with your application.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -502,6 +538,13 @@ const JobApplication = () => {
         formData.append("resume", applicationForm.newResumeFile);
       } else {
         formData.append("useExistingResume", "true");
+      }
+
+      // Add video
+      if (applicationForm.videoOption === "new" && applicationForm.newVideoFile) {
+        formData.append("applicationVideo", applicationForm.newVideoFile);
+      } else {
+        formData.append("useExistingVideo", "true");
       }
 
       // Add cover letter
@@ -1389,6 +1432,167 @@ const JobApplication = () => {
                         </p>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Video Introduction Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200">
+            <div className="p-6 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Film className="w-5 h-5 text-purple-600" />
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">
+                    Video Introduction
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Required for job applications
+                  </p>
+                </div>
+                <span className="ml-auto text-xs font-medium text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                  Required
+                </span>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                {/* Video Options */}
+                <div className="space-y-3">
+                  <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-slate-50 ${!profileData?.video ? 'opacity-50 cursor-not-allowed' : 'border-slate-200'}`}>
+                    <input
+                      type="radio"
+                      name="videoOption"
+                      value="existing"
+                      checked={applicationForm.videoOption === "existing"}
+                      disabled={!profileData?.video}
+                      onChange={(e) =>
+                        setApplicationForm((prev) => ({
+                          ...prev,
+                          videoOption: e.target.value,
+                        }))
+                      }
+                      className="text-purple-600"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-slate-900">
+                        Use video from my profile
+                      </div>
+                      {profileData?.video ? (
+                        <div className="text-sm text-slate-600 mt-1">
+                          {profileData.video.originalName || profileData.video.filename}
+                          <span className="ml-2 text-xs text-slate-500">
+                            (Uploaded{" "}
+                            {new Date(profileData.video.uploadedAt).toLocaleDateString()})
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-amber-600 mt-1">
+                          No video found in your profile — upload a new one below
+                        </div>
+                      )}
+                    </div>
+                    {profileData?.video && applicationForm.videoOption === "existing" && (
+                      <button
+                        onClick={() => {
+                          const base = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+                          const url = profileData.video.fileUrl;
+                          window.open(url?.startsWith('http') ? url : `${base}${url}`, '_blank');
+                        }}
+                        className="text-purple-600 hover:text-purple-700"
+                        type="button"
+                        title="Preview video"
+                      >
+                        <Play className="w-4 h-4" />
+                      </button>
+                    )}
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="videoOption"
+                      value="new"
+                      checked={applicationForm.videoOption === "new"}
+                      onChange={(e) =>
+                        setApplicationForm((prev) => ({
+                          ...prev,
+                          videoOption: e.target.value,
+                        }))
+                      }
+                      className="text-purple-600"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-slate-900">
+                        Upload a new video
+                      </div>
+                      <div className="text-sm text-slate-600 mt-1">
+                        MP4, WEBM, MOV, AVI — max 50MB
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* File Upload for New Video */}
+                {applicationForm.videoOption === "new" && (
+                  <div className="mt-4">
+                    <div className="border-2 border-dashed border-purple-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors">
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm,video/quicktime,video/x-msvideo"
+                        onChange={handleVideoFileChange}
+                        className="hidden"
+                        id="video-upload"
+                      />
+                      <label htmlFor="video-upload" className="cursor-pointer">
+                        <Video className="w-12 h-12 text-purple-400 mx-auto mb-4" />
+                        <p className="text-lg font-medium text-slate-900 mb-2">
+                          {applicationForm.newVideoFile ? 'Change Video' : 'Select Video'}
+                        </p>
+                        <p className="text-sm text-slate-500 mb-4">
+                          MP4, WEBM, MOV, AVI — max 50MB
+                        </p>
+                        <div className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors inline-block">
+                          Choose File
+                        </div>
+                      </label>
+                    </div>
+                    {applicationForm.newVideoFile && (
+                      <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Film className="w-4 h-4 text-purple-600" />
+                          <span className="text-sm text-purple-800 font-medium">
+                            Selected: {applicationForm.newVideoFile.name}
+                          </span>
+                          <span className="text-xs text-purple-600">
+                            ({(applicationForm.newVideoFile.size / 1024 / 1024).toFixed(2)} MB)
+                          </span>
+                        </div>
+                        <p className="text-xs text-purple-600 mt-1">
+                          This video will only be used for this job application
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Warning if no video will be provided */}
+                {applicationForm.videoOption === "existing" && !profileData?.video && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-red-700">
+                      You must provide a video introduction to submit this application.
+                      Please select "Upload a new video" or{" "}
+                      <a
+                        href="/candidate/profile"
+                        className="underline font-medium"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        upload one to your profile first
+                      </a>.
+                    </p>
                   </div>
                 )}
               </div>

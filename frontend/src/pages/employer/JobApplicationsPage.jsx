@@ -102,7 +102,8 @@ const JobApplicationsPage = () => {
     try {
       if (type === 'interview') {
         await applicationApi.scheduleInterview(id, {
-          scheduledAt: payload.scheduledAt,
+          interviewWindowStart: payload.interviewWindowStart,
+          interviewWindowEnd: payload.interviewWindowEnd,
           instructions: payload.instructions
         });
       } else {
