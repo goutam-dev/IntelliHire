@@ -184,11 +184,29 @@ async function generateQuestionFromGroq(
   }
 
   const questionCount = conversationHistory.filter((m) => m.role === "assistant").length;
+  const unansweredCount = conversationHistory.filter(
+    (m) => m.role === "user" && m.content.startsWith("(no response")
+  ).length;
+
   if (questionCount === 0) {
     systemPrompt += `This is the FIRST question. Welcome the candidate briefly (one sentence) and ask them to introduce ` +
       `themselves and describe their most relevant experience for this ${jobTitle} role.`;
   } else {
-    systemPrompt += `Based on the full conversation, ask the NEXT interview question. Output ONLY the question â€” ` +
+    systemPrompt +=
+      `## Cross-Examination Strategy\n` +
+      `You MUST actively reference specifics from the candidate's resume (projects, technologies, past roles, achievements) ` +
+      `when formulating questions. Cross-examine their claims -- if they mentioned a project or technology in their resume ` +
+      `or an earlier answer, dig deeper: ask HOW they implemented it, what technical challenges they faced, ` +
+      `what tradeoffs they made, and what they would do differently now. If an earlier answer was vague or unconvincing, ` +
+      `challenge it directly with a targeted follow-up.\n\n` +
+      `## When to End the Interview\n` +
+      `You have asked ${questionCount} question(s) so far. The candidate has left ${unansweredCount} question(s) unanswered. ` +
+      `You MAY decide to end the interview when BOTH conditions are true: ` +
+      `(a) you have asked at least 8 questions, AND ` +
+      `(b) you feel confident in your overall assessment -- ` +
+      `whether positive (thoroughly impressed) or negative (consistently poor or evasive answers). ` +
+      `To signal that the interview should end, output ONLY this exact token on its own: [END_INTERVIEW]\n\n` +
+      `Otherwise, ask the NEXT interview question. Output ONLY the question -- ` +
       `no preamble, no "Great answer", no pleasantries, no numbering. One concise, focused question.`;
   }
 
@@ -301,13 +319,22 @@ function startListeningRealtime(stream, onInterim, onFinal, onError) {
   let finalText = "";
   let retryCount = 0;
   const MAX_RETRIES = 5;
-  const SILENCE_TIMEOUT_MS = 8000;  // push final if silent for 8s
+  const INITIAL_WAIT_MS = 30000;    // 30s for candidate to BEGIN speaking
+  const SILENCE_TIMEOUT_MS = 8000;  // push final if silent for 8s after speech starts
   const HARD_TIMEOUT_MS = 90000;    // absolute cap per answer
   let silenceTimer = null;
   let hardTimer = null;
+  let initialWaitTimer = null;
+  let speechStarted = false;
   let rec = null;
 
   const resetSilenceTimer = () => {
+    // First speech detected — cancel the 30-second initial-wait countdown
+    if (!speechStarted) {
+      speechStarted = true;
+      clearTimeout(initialWaitTimer);
+      initialWaitTimer = null;
+    }
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
       if (!stopped) {
@@ -370,12 +397,22 @@ function startListeningRealtime(stream, onInterim, onFinal, onError) {
 
   rec = createRec();
   rec.start();
-  resetSilenceTimer();
+
+  // 30-second initial wait — if the candidate hasn't spoken a single word, mark as unanswered
+  initialWaitTimer = setTimeout(() => {
+    if (!stopped && !speechStarted) {
+      stopped = true;
+      clearTimeout(hardTimer);
+      try { rec?.stop(); } catch { }
+      onFinal("(no response - timed out)");
+    }
+  }, INITIAL_WAIT_MS);
 
   hardTimer = setTimeout(() => {
     if (!stopped) {
       stopped = true;
       clearTimeout(silenceTimer);
+      clearTimeout(initialWaitTimer);
       try { rec?.stop(); } catch { }
       onFinal(finalText || "(no response â€” timed out)");
     }
@@ -385,6 +422,7 @@ function startListeningRealtime(stream, onInterim, onFinal, onError) {
     stopped = true;
     clearTimeout(silenceTimer);
     clearTimeout(hardTimer);
+    clearTimeout(initialWaitTimer);
     try { rec?.stop(); } catch { }
     if (finalText) onFinal(finalText);
   };
@@ -734,6 +772,10 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
   const lastEvalRef = useRef(null);
   const elapsedRef = useRef(0);
   const wrappingUpRef = useRef(false);
+  /** Tracks how many questions in a row the candidate has not answered */
+  const consecutiveSilentRef = useRef(0);
+  /** Total unanswered/skipped questions this session */
+  const totalUnansweredRef = useRef(0);
 
   // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [aiStatus, setAiStatus] = useState(AI_VOICE_STATUS.IDLE);
@@ -882,6 +924,21 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
           lastEvalRef.current
         );
 
+        // LLM-triggered interview termination
+        if (question.trim() === "[END_INTERVIEW]" || question.includes("[END_INTERVIEW]")) {
+          if (!wrappingUpRef.current) {
+            wrappingUpRef.current = true;
+            setAiStatus(AI_VOICE_STATUS.WRAPPING_UP);
+            const closingLine =
+              "I have gathered enough information to make a thorough assessment. " +
+              "That concludes our interview session. Thank you so much for your time today. " +
+              "We will be in touch soon with the next steps. Take care!";
+            await handleSpeak(closingLine, () => setAiStatus(AI_VOICE_STATUS.WRAPPING_UP), () => {});
+            setTimeout(() => onComplete?.(history, evaluations), 1500);
+          }
+          return;
+        }
+
         questionCounterRef.current += 1;
         setCurrentQuestion(question);
         setQuestionIndex(questionCounterRef.current);
@@ -907,6 +964,29 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
             setLiveTranscript("");
             setAiStatus(AI_VOICE_STATUS.PROCESSING);
 
+            const isUnanswered = finalText.startsWith("(no response");
+
+            if (isUnanswered) {
+              consecutiveSilentRef.current += 1;
+              totalUnansweredRef.current += 1;
+              console.warn(
+                `[Interview] No response -- consecutive: ${consecutiveSilentRef.current}, total: ${totalUnansweredRef.current}`
+              );
+              setEvaluations((prev) => [
+                ...prev,
+                {
+                  score: 0,
+                  feedback: "No response given -- question was skipped.",
+                  topics: [],
+                  question,
+                  answer: finalText,
+                  unanswered: true,
+                },
+              ]);
+            } else {
+              consecutiveSilentRef.current = 0;
+            }
+
             const updatedHistory = [
               ...history,
               { role: "assistant", content: question },
@@ -914,26 +994,70 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
             ];
             setConversationHistory(updatedHistory);
 
-            // Evaluate in parallel â€” don't block next question on it
-            evaluateAnswerWithGroq(question, finalText, jobTitle).then((evalResult) => {
-              lastEvalRef.current = evalResult;
-              if (evalResult.score !== null) {
-                console.info(`[Eval] Q${questionCounterRef.current} | Score: ${evalResult.score}/10 | ${evalResult.feedback}`);
-                setEvaluations((prev) => [...prev, { ...evalResult, question, answer: finalText }]);
+            // Auto-terminate after 3 consecutive silent questions
+            if (consecutiveSilentRef.current >= 3) {
+              if (!wrappingUpRef.current) {
+                wrappingUpRef.current = true;
+                setAiStatus(AI_VOICE_STATUS.WRAPPING_UP);
+                const terminationLine =
+                  "I notice you have not been able to respond to the last few questions. " +
+                  "I will need to conclude our session here. " +
+                  "Thank you for your time today. We will be in touch with our findings shortly.";
+                await handleSpeak(terminationLine, () => setAiStatus(AI_VOICE_STATUS.WRAPPING_UP), () => {});
+                setTimeout(() => onComplete?.(updatedHistory, evaluations), 1500);
               }
-            });
+              return;
+            }
+
+            // Evaluate in parallel -- don't block next question on it
+            if (!isUnanswered) {
+              evaluateAnswerWithGroq(question, finalText, jobTitle).then((evalResult) => {
+                lastEvalRef.current = evalResult;
+                if (evalResult.score !== null) {
+                  console.info(`[Eval] Q${questionCounterRef.current} | Score: ${evalResult.score}/10 | ${evalResult.feedback}`);
+                  setEvaluations((prev) => [...prev, { ...evalResult, question, answer: finalText }]);
+                }
+              });
+            } else {
+              lastEvalRef.current = { score: 0, feedback: "No response -- question was skipped.", topics: [] };
+            }
 
             await new Promise((r) => setTimeout(r, 1200));
             askNextQuestionRef.current?.(updatedHistory);
           },
           (err) => {
             console.warn("[STT] Error:", err);
+            consecutiveSilentRef.current += 1;
+            totalUnansweredRef.current += 1;
             const updatedHistory = [
               ...history,
               { role: "assistant", content: question },
               { role: "user", content: "(no response detected)" },
             ];
             setConversationHistory(updatedHistory);
+            setEvaluations((prev) => [
+              ...prev,
+              {
+                score: 0,
+                feedback: "No response given -- question was skipped.",
+                topics: [],
+                question,
+                answer: "(no response detected)",
+                unanswered: true,
+              },
+            ]);
+            if (consecutiveSilentRef.current >= 3 && !wrappingUpRef.current) {
+              wrappingUpRef.current = true;
+              setAiStatus(AI_VOICE_STATUS.WRAPPING_UP);
+              const terminationLine =
+                "I notice you have not been able to respond to the last few questions. " +
+                "I will need to conclude our session here. " +
+                "Thank you for your time today. We will be in touch with our findings shortly.";
+              handleSpeak(terminationLine, () => setAiStatus(AI_VOICE_STATUS.WRAPPING_UP), () => {}).then(() => {
+                setTimeout(() => onComplete?.(updatedHistory, evaluations), 1500);
+              });
+              return;
+            }
             setTimeout(() => askNextQuestionRef.current?.(updatedHistory), 2000);
           }
         );
@@ -1161,6 +1285,8 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
                     ? "bg-emerald-500"
                     : ev.score >= 5
                     ? "bg-amber-500"
+                    : ev.unanswered
+                    ? "bg-slate-600 opacity-40"
                     : "bg-red-500"
                   : "bg-slate-700";
                 return (
