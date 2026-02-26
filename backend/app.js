@@ -100,6 +100,7 @@ app.use('/api/employer', employerRoutes);
 app.use('/api/candidate', candidateRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/job-applications', require('./routes/jobApplication.routes'));
+app.use('/api/interview', require('./routes/interview.routes'));
 app.use('/api/resume-ranking', resumeRankingRoutes); // AI-powered Resume Ranking Module
 
 // Serve uploaded files
