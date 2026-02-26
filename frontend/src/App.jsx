@@ -148,11 +148,20 @@ function App() {
               <Route path="applications/:applicationId" element={<ApplicationDetails />} />
               <Route path="profile" element={<Profile />} />
               <Route path="apply/:jobId" element={<JobApplication />} />
-              <Route path="interview/:applicationId" element={<InterviewProctoring />} />
-              
+
               {/* Redirect /candidate to /candidate/dashboard */}
               <Route index element={<Navigate to="dashboard" replace />} />
             </Route>
+
+            {/* Interview route — standalone, NO layout/navbar/header */}
+            <Route
+              path="/candidate/interview/:applicationId"
+              element={
+                <ProtectedRoute allowedRoles={['candidate']}>
+                  <InterviewProctoring />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Catch all - redirect to home */}
             <Route path="*" element={<Navigate to="/" replace />} />

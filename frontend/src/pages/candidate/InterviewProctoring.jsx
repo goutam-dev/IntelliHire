@@ -56,6 +56,30 @@ const PHASE = {
 const INTERVIEW_MIN_SECONDS = 20 * 60; // 20 min
 const INTERVIEW_MAX_SECONDS = 30 * 60; // 30 min
 
+// ── Anti-Cheating System ──────────────────────────────────────────────────────
+/** Total cheating score needed to auto-terminate the interview */
+const CHEATING_THRESHOLD = 10;
+
+/** Points awarded per violation event type */
+const CHEATING_SCORES = {
+  tab_switch:       2,  // Tab switch / browser minimise
+  window_switch:    2,  // Alt-tab / window lost focus
+  exit_fullscreen:  3,  // Exited fullscreen mode
+  copy_paste:       4,  // Copy / cut action detected
+  right_click:      1,  // Right-click context menu
+  multiple_screens: 5,  // Extended display / multiple monitors
+};
+
+/** Human-readable labels for each cheat event type */
+const CHEATING_LABELS = {
+  tab_switch:       "Tab / Browser Switch",
+  window_switch:    "Window Switch (Alt-Tab)",
+  exit_fullscreen:  "Exited Fullscreen",
+  copy_paste:       "Copy / Paste Attempt",
+  right_click:      "Right-Click Attempt",
+  multiple_screens: "Multiple Screens Detected",
+};
+
 const TERMS = [
   {
     id: 1,
@@ -625,15 +649,29 @@ function TermsModal({ onAccept }) {
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PERM_STEPS = [
   { id: "camera", label: "Camera & Microphone", icon: Camera, description: "Required to capture your interview feed and voice responses throughout the session." },
-  { id: "screen", label: "Screen Recording", icon: Monitor, description: "Required to ensure no unauthorised resources are used during the 20â€“30 min session." },
+  { id: "screen", label: "Screen Recording (Entire Screen)", icon: Monitor, description: "Required to ensure no unauthorised resources are used. You MUST share your Entire Screen — not a browser tab or window." },
 ];
+
+/**
+ * Module-level lock — survives React StrictMode's double-invoke of effects.
+ * Ensures the browser is never asked for the same permission twice in one page load.
+ */
+let _permissionsRequested = false;
 
 function PermissionsScreen({ onGranted, onDenied }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [stepStatus, setStepStatus] = useState({ camera: "idle", screen: "idle" });
+  const [screenShareHint, setScreenShareHint] = useState(null);
   const streamsRef = useRef({ camera: null, screen: null });
+  // Guard against React StrictMode double-invocation — prevents duplicate browser permission prompts
+  const hasStartedRef = useRef(false);
 
   const requestPermissions = useCallback(async () => {
+    // Both the module-level flag and the component ref must be clear before proceeding.
+    // This prevents a duplicate prompt from React StrictMode's double-invoke of effects.
+    if (_permissionsRequested || hasStartedRef.current) return;
+    _permissionsRequested = true;
+    hasStartedRef.current = true;
     // â”€â”€ Step 1: Camera + Mic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     setStepStatus((s) => ({ ...s, camera: "requesting" }));
     let cameraStream;
@@ -646,27 +684,83 @@ function PermissionsScreen({ onGranted, onDenied }) {
       setStepStatus((s) => ({ ...s, camera: "granted" }));
       setStepIndex(1);
     } catch {
+      _permissionsRequested = false; // allow a future page reload to retry
       setStepStatus((s) => ({ ...s, camera: "denied" }));
-      onDenied("Camera & Microphone permission was denied. Please allow access and refresh the page.");
+      onDenied(
+        "Camera & Microphone permission was denied. " +
+        "These permissions are mandatory for proctoring. " +
+        "Your session has been cancelled."
+      );
       return;
     }
 
     // â”€â”€ Step 2: Screen Share â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     setStepStatus((s) => ({ ...s, screen: "requesting" }));
-    try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: "always" },
-        audio: false,
-      });
-      streamsRef.current.screen = screenStream;
-      setStepStatus((s) => ({ ...s, screen: "granted" }));
+    const MAX_SCREEN_ATTEMPTS = 3;
+    let screenGranted = false;
+    for (let attempt = 1; attempt <= MAX_SCREEN_ATTEMPTS; attempt++) {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: "always", displaySurface: "monitor" },
+          audio: false,
+          preferCurrentTab: false,
+          selfBrowserSurface: "exclude",
+          surfaceSwitching: "exclude",
+        });
 
-      // Brief delay so the user sees "Granted" before transition
-      setTimeout(() => onGranted(streamsRef.current), 600);
-    } catch {
+        // Validate the user shared the entire screen, not a tab or window
+        const track = screenStream.getVideoTracks()[0];
+        const surface = track?.getSettings?.()?.displaySurface;
+        if (surface && surface !== "monitor") {
+          screenStream.getTracks().forEach((t) => t.stop());
+          if (attempt < MAX_SCREEN_ATTEMPTS) {
+            setScreenShareHint(
+              `⚠️ You shared a ${surface === "browser" ? "browser tab" : surface} instead of your entire screen. ` +
+              `Please click the prompt again and choose "Entire Screen" only. ` +
+              `(Attempt ${attempt + 1} of ${MAX_SCREEN_ATTEMPTS})`
+            );
+            continue;
+          } else {
+            cameraStream.getTracks().forEach((t) => t.stop());
+            _permissionsRequested = false;
+            setStepStatus((s) => ({ ...s, screen: "denied" }));
+            onDenied(
+              "You must share your Entire Screen (not a browser tab or window). " +
+              "This is mandatory for interview integrity. " +
+              "Your session has been cancelled."
+            );
+            return;
+          }
+        }
+
+        streamsRef.current.screen = screenStream;
+        setScreenShareHint(null);
+        setStepStatus((s) => ({ ...s, screen: "granted" }));
+        screenGranted = true;
+        // Brief delay so the user sees "Granted" before transition
+        setTimeout(() => onGranted(streamsRef.current), 600);
+        break;
+      } catch {
+        cameraStream.getTracks().forEach((t) => t.stop());
+        _permissionsRequested = false;
+        setStepStatus((s) => ({ ...s, screen: "denied" }));
+        onDenied(
+          "Screen Recording permission was denied. " +
+          "This permission is mandatory for interview integrity. " +
+          "Your session has been cancelled."
+        );
+        return;
+      }
+    }
+    if (!screenGranted) {
       cameraStream.getTracks().forEach((t) => t.stop());
+      _permissionsRequested = false;
       setStepStatus((s) => ({ ...s, screen: "denied" }));
-      onDenied("Screen Recording permission was denied. This permission is mandatory. Please allow access and refresh the page.");
+      onDenied(
+        "You must share your Entire Screen. " +
+        "This permission is mandatory for interview integrity. " +
+        "Your session has been cancelled."
+      );
     }
   }, [onGranted, onDenied]);
 
@@ -739,6 +833,14 @@ function PermissionsScreen({ onGranted, onDenied }) {
             );
           })}
         </div>
+
+        {/* Entire-screen-only hint shown when user picks wrong surface */}
+        {screenShareHint && (
+          <div className="mt-4 flex items-start gap-2.5 bg-amber-900/30 border border-amber-500/40 text-amber-300 text-xs leading-relaxed rounded-xl px-4 py-3">
+            <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+            <span>{screenShareHint}</span>
+          </div>
+        )}
       </motion.div>
     </div>
   );
@@ -776,6 +878,32 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
   const consecutiveSilentRef = useRef(0);
   /** Total unanswered/skipped questions this session */
   const totalUnansweredRef = useRef(0);
+  /** Proctoring: violation count (max 2 before termination) */
+  const violationCountRef = useRef(0);
+  /** Proctoring: prevents duplicate termination calls */
+  const terminatingRef = useRef(false);
+  /** Proctoring: always-current terminate function */
+  const terminateForViolationRef = useRef(null);
+  /** Proctoring: always-current conversation history (for termination callback) */
+  const conversationHistoryRef = useRef([]);
+  /** Proctoring: always-current evaluations (for termination callback) */
+  const evaluationsRef = useRef([]);
+  /** Anti-cheating: accumulated cheating event log (aggregated per event type) */
+  const cheatingReportRef = useRef([]);
+  /** Anti-cheating: running total cheating score */
+  const totalCheatingScoreRef = useRef(0);
+  /** Anti-cheating: stable ref so event-listener closures can always call the latest fn */
+  const recordCheatingEventRef = useRef(null);
+  /** Fullscreen return overlay: shown whenever fullscreen is unexpectedly lost */
+  const showFsReturnOverlayRef = useRef(false);
+  /** Pause state ref — checked by timer, STT and question loops to freeze execution */
+  const isPausedRef = useRef(false);
+  const currentCallHistoryRef = useRef([]); // tracks history mid-flight so pauseInterview can resume from it
+  const pendingQuestionRef = useRef(null);   // stores the generated question text until an answer is received
+  /** Stores the pre-pause AI status so we can restore it on resume */
+  const pausedAiStatusRef = useRef(null);
+  /** Holds the pending-resume callback (re-asks current question after resume) */
+  const resumeCallbackRef = useRef(null);
 
   // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [aiStatus, setAiStatus] = useState(AI_VOICE_STATUS.IDLE);
@@ -791,6 +919,20 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
   const [isRecording, setIsRecording] = useState(false);
   const [evaluations, setEvaluations] = useState([]);
   const [timeWarning, setTimeWarning] = useState(false);
+  /** Proctoring violation overlay: null = none, { count, message } = active */
+  const [proctoringViolation, setProctoringViolation] = useState(null);
+  /** Anti-cheating: aggregated event log */
+  const [cheatingReport, setCheatingReport] = useState([]);
+  /** Anti-cheating: total accumulated score */
+  const [totalCheatingScore, setTotalCheatingScore] = useState(0);
+  /** Anti-cheating: transient warning banner (non-terminating) */
+  const [cheatingWarning, setCheatingWarning] = useState(null); // { score, message, eventType, points }
+  /** Fullscreen return overlay — blocks the UI until user clicks to re-enter fullscreen */
+  const [showFsReturnOverlay, setShowFsReturnOverlay] = useState(false);
+  /** True whenever the interview is paused (fullscreen lost / tab hidden / blur) */
+  const [isPaused, setIsPaused] = useState(false);
+  /** Reason text shown in the pause overlay */
+  const [pauseReason, setPauseReason] = useState("");
 
   // â”€â”€ Fetch application context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
@@ -823,6 +965,24 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
     })();
   }, [applicationId]);
 
+  // ── Ensure fullscreen is active when interview mounts ───────────────────
+  useEffect(() => {
+    const enterFullscreen = async () => {
+      const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+        document.mozFullScreenElement || document.msFullscreenElement);
+      if (isFS) return;
+      try {
+        const el = document.documentElement;
+        const req = el.requestFullscreen || el.webkitRequestFullscreen ||
+          el.mozRequestFullScreen || el.msRequestFullscreen;
+        if (req) await req.call(el);
+      } catch (e) {
+        console.warn("[Fullscreen] Re-entry failed:", e);
+      }
+    };
+    enterFullscreen();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // â”€â”€ Attach camera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (videoRef.current && cameraStream) videoRef.current.srcObject = cameraStream;
@@ -845,6 +1005,8 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
   // â”€â”€ Session timer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const id = setInterval(() => {
+      // Do not advance the timer while the interview is paused
+      if (isPausedRef.current) return;
       setElapsedSeconds((s) => {
         const next = s + 1;
         elapsedRef.current = next;
@@ -881,6 +1043,398 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
     };
   }, [cameraStream]);
 
+  // ── Strict Proctoring Lockdown ─────────────────────────────────────────────
+  // Keep terminateForViolation always up-to-date with the latest state
+  useEffect(() => {
+    terminateForViolationRef.current = async (reason) => {
+      if (terminatingRef.current || wrappingUpRef.current) return;
+      terminatingRef.current = true;
+      wrappingUpRef.current = true;
+      stopListeningRef.current?.();
+      window.speechSynthesis?.cancel();
+      setAiStatus(AI_VOICE_STATUS.WRAPPING_UP);
+      const msg =
+        "This interview session has been automatically terminated due to a proctoring violation. " +
+        "Your session data has been flagged and submitted to the hiring team.";
+      await handleSpeak(msg, () => {}, () => {});
+      setTimeout(() => onComplete?.(conversationHistoryRef.current, evaluationsRef.current, cheatingReportRef.current, totalCheatingScoreRef.current), 1500);
+    };
+  }, [onComplete]);
+
+  // Attach lockdown event listeners once the interview is active
+  useEffect(() => {
+    // Uses score-based anti-cheating: individual events add points.
+    // Interview only terminates when totalCheatingScore >= CHEATING_THRESHOLD.
+
+    // ── pauseInterview / resumeInterview ──────────────────────────────────
+    // pauseInterview: immediately halts TTS, STT, timer and shows the overlay.
+    // resumeInterview: called by the user clicking the return-to-fullscreen
+    //   button AFTER fullscreen is re-entered (the click provides the user
+    //   gesture that browsers require for requestFullscreen).
+    const pauseInterview = (reason) => {
+      if (isPausedRef.current || terminatingRef.current || wrappingUpRef.current) return;
+      isPausedRef.current = true;
+      // Stop speech synthesis immediately
+      window.speechSynthesis?.cancel();
+      // Stop any active STT listener
+      stopListeningRef.current?.();
+      stopListeningRef.current = null;
+      // Capture where we are so the resume button replays the exact same question
+      if (!resumeCallbackRef.current) {
+        const savedQuestion = pendingQuestionRef.current;
+        const savedHistory  = currentCallHistoryRef.current;
+        if (savedQuestion) {
+          // Question was already generated+spoken (or mid-speak): re-ask it verbatim
+          resumeCallbackRef.current = () => askNextQuestionRef.current?.(savedHistory, savedQuestion);
+        } else {
+          // Paused before generation — regenerate from the same history
+          resumeCallbackRef.current = () => askNextQuestionRef.current?.(savedHistory);
+        }
+      }
+      // Snapshot the current AI status so we can restore after resume
+      pausedAiStatusRef.current = null; // will be restored by overlay
+      setIsPaused(true);
+      setPauseReason(reason);
+      setShowFsReturnOverlay(true);
+      showFsReturnOverlayRef.current = true;
+      console.warn("[Proctoring] PAUSED:", reason);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (!terminatingRef.current && !wrappingUpRef.current) {
+          recordCheatingEventRef.current?.("tab_switch", "Tab switch or browser minimise detected");
+          pauseInterview("Tab switched or browser minimised. Return to fullscreen to continue.");
+        }
+      } else {
+        // Tab is visible again — if still lacking fullscreen, keep overlay up
+        if (!terminatingRef.current && !wrappingUpRef.current) {
+          const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+            document.mozFullScreenElement || document.msFullscreenElement);
+          if (!isFS) {
+            // Ensure overlay is showing so user must click to re-enter fullscreen
+            isPausedRef.current = true;
+            setIsPaused(true);
+            setPauseReason("Return to fullscreen to continue the interview.");
+            setShowFsReturnOverlay(true);
+            showFsReturnOverlayRef.current = true;
+          }
+        }
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (!document.hidden && !terminatingRef.current && !wrappingUpRef.current) {
+        recordCheatingEventRef.current?.("window_switch", "Browser window lost focus — possible external resource access");
+        pauseInterview("Browser window lost focus. Return to fullscreen to continue.");
+      }
+    };
+
+    const handleWindowFocus = () => {
+      // Window regained focus — if fullscreen is also active, allow resume
+      if (!terminatingRef.current && !wrappingUpRef.current && isPausedRef.current) {
+        const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+          document.mozFullScreenElement || document.msFullscreenElement);
+        if (isFS) {
+          // Fullscreen already active, just ensure overlay is shown for user to click
+          setShowFsReturnOverlay(true);
+          showFsReturnOverlayRef.current = true;
+        }
+      }
+    };
+
+    const screenTrack = streams.screen?.getVideoTracks?.()?.[0];
+    const handleScreenShareEnded = () => {
+      if (!terminatingRef.current && !wrappingUpRef.current) {
+        const msg = "Screen sharing was stopped during the interview";
+        setProctoringViolation({ count: CHEATING_THRESHOLD, message: msg });
+        terminateForViolationRef.current?.(msg);
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+        document.mozFullScreenElement || document.msFullscreenElement);
+      if (!isFullscreen && !terminatingRef.current && !wrappingUpRef.current) {
+        recordCheatingEventRef.current?.("exit_fullscreen", "Fullscreen mode was exited during the interview");
+        pauseInterview("Fullscreen was exited. Click below to return to fullscreen and continue.");
+      } else if (isFullscreen && isPausedRef.current) {
+        // Fullscreen restored — keep overlay up; user must click to confirm resume
+        // (This case is hit when handleReturnToFullscreen succeeds)
+        setPauseReason("Fullscreen restored. Click below to continue the interview.");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
+    if (screenTrack) screenTrack.addEventListener("ended", handleScreenShareEnded);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
+      if (screenTrack) screenTrack.removeEventListener("ended", handleScreenShareEnded);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, [streams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Copy / Clipboard / DevTools Prevention ──────────────────────────────────
+  useEffect(() => {
+    // Disable text selection on the entire page for the duration of the interview
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    document.body.style.webkitUserSelect = "none";
+
+    const blockCopy = (e) => {
+      e.preventDefault();
+      recordCheatingEventRef.current?.("copy_paste", "Copy or cut action attempted during interview");
+    };
+
+    const blockContextMenu = (e) => {
+      e.preventDefault();
+      recordCheatingEventRef.current?.("right_click", "Right-click context menu attempted during interview");
+    };
+
+    const blockKeys = (e) => {
+      const key = e.key.toLowerCase();
+
+      // ── Clipboard shortcuts ──────────────────────────────────────────────
+      if (e.ctrlKey && ["c", "x", "a", "u", "p", "s", "v"].includes(key)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      // ── DevTools ─────────────────────────────────────────────────────────
+      if (e.key === "F12") { e.preventDefault(); e.stopPropagation(); }
+      if (e.ctrlKey && e.shiftKey && ["i", "j", "c", "k"].includes(key)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      // ── Tab / window management ──────────────────────────────────────────
+      // Ctrl+Tab / Ctrl+Shift+Tab  (switch browser tabs)
+      if (e.ctrlKey && e.key === "Tab") { e.preventDefault(); e.stopPropagation(); }
+      // Ctrl+T  (new tab)  |  Ctrl+Shift+T  (reopen tab)
+      if (e.ctrlKey && key === "t") { e.preventDefault(); e.stopPropagation(); }
+      // Ctrl+N  (new window)  |  Ctrl+Shift+N  (incognito)
+      if (e.ctrlKey && key === "n") { e.preventDefault(); e.stopPropagation(); }
+      // Ctrl+W / Ctrl+F4  (close tab)
+      if (e.ctrlKey && (key === "w" || e.key === "F4")) { e.preventDefault(); e.stopPropagation(); }
+      // Alt+F4  (close window – browser-level prevention; OS may still act)
+      if (e.altKey && e.key === "F4") { e.preventDefault(); e.stopPropagation(); }
+
+      // ── Navigation ───────────────────────────────────────────────────────
+      // Alt+Left / Alt+Right  (browser back/forward)
+      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault(); e.stopPropagation();
+      }
+      // Ctrl+L / Alt+D  (focus address bar)
+      if ((e.ctrlKey && key === "l") || (e.altKey && key === "d")) {
+        e.preventDefault(); e.stopPropagation();
+      }
+      // Ctrl+R / F5 / Ctrl+F5  (refresh)
+      if ((e.ctrlKey && key === "r") || e.key === "F5") {
+        e.preventDefault(); e.stopPropagation();
+      }
+
+      // ── Fullscreen escape prevention ─────────────────────────────────────
+      // F11  (toggle fullscreen)
+      if (e.key === "F11") { e.preventDefault(); e.stopPropagation(); }
+      // Escape  (exits fullscreen) — suppress at browser level
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); }
+
+      // ── Find / misc ───────────────────────────────────────────────────────
+      if (e.ctrlKey && key === "f") { e.preventDefault(); e.stopPropagation(); }
+      if (e.ctrlKey && key === "h") { e.preventDefault(); e.stopPropagation(); }
+      if (e.ctrlKey && key === "o") { e.preventDefault(); e.stopPropagation(); }
+      if (e.ctrlKey && key === "g") { e.preventDefault(); e.stopPropagation(); }
+
+      // ── Task-switching keys ───────────────────────────────────────────────
+      // Alt+Tab  (OS shortcut — browser prevention is best-effort)
+      if (e.altKey && key === "tab") { e.preventDefault(); e.stopPropagation(); }
+      // Meta/Windows key  (OS shortcut — prevention attempted)
+      if (e.key === "Meta" || e.key === "OS") { e.preventDefault(); e.stopPropagation(); }
+      // Meta + key combinations (Windows shortcuts: Win+D, Win+Tab, etc.)
+      if (e.metaKey) { e.preventDefault(); e.stopPropagation(); }
+
+      // ── Screenshot / screen recording ────────────────────────────────────
+      if (e.key === "PrintScreen") { e.preventDefault(); e.stopPropagation(); }
+    };
+
+    const blockPaste = (e) => {
+      e.preventDefault();
+      recordCheatingEventRef.current?.("copy_paste", "Paste action attempted during interview");
+    };
+
+    document.addEventListener("copy", blockCopy);
+    document.addEventListener("cut", blockCopy);
+    document.addEventListener("paste", blockPaste);
+    document.addEventListener("contextmenu", blockContextMenu);
+    document.addEventListener("keydown", blockKeys, true);
+
+    return () => {
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.webkitUserSelect = "";
+      document.removeEventListener("copy", blockCopy);
+      document.removeEventListener("cut", blockCopy);
+      document.removeEventListener("paste", blockPaste);
+      document.removeEventListener("contextmenu", blockContextMenu);
+      document.removeEventListener("keydown", blockKeys, true);
+    };
+  }, []);
+
+  // ── Multi-touch, Drag-Drop, Navigation & Periodic Fullscreen Enforcement ───
+  useEffect(() => {
+    // ── Prevent multi-touch gestures (3-finger swipe = task switch on touchpads) ──
+    const blockMultiTouch = (e) => {
+      if (e.touches && e.touches.length >= 3) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    const blockGestureEvents = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+    // ── Block drag-and-drop (could be used to extract text / drop files) ──
+    const blockDrag = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+    // ── Prevent navigation away from the interview page ───────────────────
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "Leaving this page will terminate your interview session.";
+      return e.returnValue;
+    };
+
+    // ── Intercept all anchor / form navigations ───────────────────────────
+    const blockNavigation = (e) => {
+      const target = e.target.closest("a, form");
+      if (target && !target.dataset.interviewAllowed) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    // ── Disable pointer events on scrollbars to prevent leaving fullscreen ─
+    // (Some browsers expose a scrollbar area that can be clicked outside fullscreen)
+    const prevOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+
+    document.addEventListener("touchstart", blockMultiTouch, { passive: false });
+    document.addEventListener("touchmove", blockMultiTouch, { passive: false });
+    if ("ongesturestart" in window) {
+      document.addEventListener("gesturestart", blockGestureEvents, { passive: false });
+      document.addEventListener("gesturechange", blockGestureEvents, { passive: false });
+    }
+    document.addEventListener("dragstart", blockDrag, true);
+    document.addEventListener("drop", blockDrag, true);
+    document.addEventListener("dragover", blockDrag, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", blockNavigation, true);
+    document.addEventListener("submit", blockNavigation, true);
+
+    return () => {
+      document.documentElement.style.overflow = prevOverflow;
+      document.removeEventListener("touchstart", blockMultiTouch);
+      document.removeEventListener("touchmove", blockMultiTouch);
+      if ("ongesturestart" in window) {
+        document.removeEventListener("gesturestart", blockGestureEvents);
+        document.removeEventListener("gesturechange", blockGestureEvents);
+      }
+      document.removeEventListener("dragstart", blockDrag, true);
+      document.removeEventListener("drop", blockDrag, true);
+      document.removeEventListener("dragover", blockDrag, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", blockNavigation, true);
+      document.removeEventListener("submit", blockNavigation, true);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Sync state → refs (for use inside lockdown/termination closures) ───────
+  useEffect(() => { conversationHistoryRef.current = conversationHistory; }, [conversationHistory]);
+  useEffect(() => { evaluationsRef.current = evaluations; }, [evaluations]);
+
+  // ── recordCheatingEvent ────────────────────────────────────────────────────
+  // Accumulates cheating events, updates the report, and terminates only when
+  // totalCheatingScore reaches CHEATING_THRESHOLD.
+  const recordCheatingEvent = useCallback((eventType, message) => {
+    if (terminatingRef.current) return;
+
+    const points = CHEATING_SCORES[eventType] ?? 1;
+    const newTotal = totalCheatingScoreRef.current + points;
+    totalCheatingScoreRef.current = newTotal;
+
+    // Aggregate per event type: increment count if already exists, else create
+    const existingIndex = cheatingReportRef.current.findIndex((r) => r.eventType === eventType);
+    let updatedReport;
+    if (existingIndex >= 0) {
+      updatedReport = cheatingReportRef.current.map((r, i) =>
+        i === existingIndex
+          ? { ...r, count: r.count + 1, lastTimestamp: new Date().toISOString(), totalPoints: (r.count + 1) * r.points }
+          : r
+      );
+    } else {
+      updatedReport = [
+        ...cheatingReportRef.current,
+        {
+          eventType,
+          label: CHEATING_LABELS[eventType] ?? eventType,
+          message,
+          timestamp: new Date().toISOString(),
+          lastTimestamp: new Date().toISOString(),
+          count: 1,
+          points,
+          totalPoints: points,
+        },
+      ];
+    }
+
+    cheatingReportRef.current = updatedReport;
+    setCheatingReport([...updatedReport]);
+    setTotalCheatingScore(newTotal);
+
+    console.warn(
+      `[AntiCheat] ${CHEATING_LABELS[eventType] ?? eventType} | +${points}pts | Total: ${newTotal}/${CHEATING_THRESHOLD}`
+    );
+
+    if (newTotal >= CHEATING_THRESHOLD) {
+      // Threshold exceeded — terminate the session
+      const terminationMsg = `Integrity threshold exceeded (score: ${newTotal}/${CHEATING_THRESHOLD}). Last event: ${message}`;
+      setProctoringViolation({ count: newTotal, message: terminationMsg });
+      terminateForViolationRef.current?.(terminationMsg);
+    } else {
+      // Below threshold — show dismissible warning banner
+      setCheatingWarning({ score: newTotal, message, eventType, points });
+      setTimeout(() => setCheatingWarning(null), 4500);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the ref up-to-date so event-listener closures always call the latest version
+  useEffect(() => { recordCheatingEventRef.current = recordCheatingEvent; }, [recordCheatingEvent]);
+
+  // ── Multiple-screen detection ───────────────────────────────────────────────
+  // Fires once after the interview mounts; uses the Screen API where available.
+  useEffect(() => {
+    const checkMultipleScreens = () => {
+      // window.screen.isExtended is true when an extended display is connected
+      if (window.screen?.isExtended === true) {
+        recordCheatingEventRef.current?.(
+          "multiple_screens",
+          "Extended display / multiple monitors detected"
+        );
+      }
+    };
+    // Small delay to ensure ref is populated
+    const id = setTimeout(checkMultipleScreens, 1500);
+    return () => clearTimeout(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // â”€â”€ Formatted timer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const formattedTime = useMemo(() => {
     const m = Math.floor(elapsedSeconds / 60).toString().padStart(2, "0");
@@ -901,13 +1455,21 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
 
   // â”€â”€ Core interview loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const askNextQuestion = useCallback(
-    async (history) => {
+    async (history, _resumeQuestion = null) => {
+      // If the interview is paused, store this call as a resume callback
+      // so the question flow restarts exactly where it left off.
+      if (isPausedRef.current) {
+        resumeCallbackRef.current = () => askNextQuestionRef.current?.(history);
+        return;
+      }
+      // Always record where we are so pauseInterview can resume from the right question
+      currentCallHistoryRef.current = history;
       if (wrappingUpRef.current) {
         setAiStatus(AI_VOICE_STATUS.WRAPPING_UP);
         const closingLine =
           "That brings us to the end of our session. Thank you so much for your time today â€” we'll be in touch soon with next steps. Take care!";
         await handleSpeak(closingLine, () => setAiStatus(AI_VOICE_STATUS.WRAPPING_UP), () => { });
-        setTimeout(() => onComplete?.(history, evaluations), 1500);
+        setTimeout(() => onComplete?.(history, evaluations, cheatingReportRef.current, totalCheatingScoreRef.current), 1500);
         return;
       }
 
@@ -916,32 +1478,40 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
       setFinalTranscript("");
 
       try {
-        const question = await generateQuestionFromGroq(
-          history,
-          jobTitle,
-          interviewContextRef.current,
-          elapsedRef.current,
-          lastEvalRef.current
-        );
+        let question;
+        if (_resumeQuestion) {
+          // Resuming after a pause — re-ask the exact same question, no LLM call,
+          // no counter increment (those already happened before the pause).
+          question = _resumeQuestion;
+        } else {
+          question = await generateQuestionFromGroq(
+            history,
+            jobTitle,
+            interviewContextRef.current,
+            elapsedRef.current,
+            lastEvalRef.current
+          );
 
-        // LLM-triggered interview termination
-        if (question.trim() === "[END_INTERVIEW]" || question.includes("[END_INTERVIEW]")) {
-          if (!wrappingUpRef.current) {
-            wrappingUpRef.current = true;
-            setAiStatus(AI_VOICE_STATUS.WRAPPING_UP);
-            const closingLine =
-              "I have gathered enough information to make a thorough assessment. " +
-              "That concludes our interview session. Thank you so much for your time today. " +
-              "We will be in touch soon with the next steps. Take care!";
-            await handleSpeak(closingLine, () => setAiStatus(AI_VOICE_STATUS.WRAPPING_UP), () => {});
-            setTimeout(() => onComplete?.(history, evaluations), 1500);
+          // LLM-triggered interview termination
+          if (question.trim() === "[END_INTERVIEW]" || question.includes("[END_INTERVIEW]")) {
+            if (!wrappingUpRef.current) {
+              wrappingUpRef.current = true;
+              setAiStatus(AI_VOICE_STATUS.WRAPPING_UP);
+              const closingLine =
+                "I have gathered enough information to make a thorough assessment. " +
+                "That concludes our interview session. Thank you so much for your time today. " +
+                "We will be in touch soon with the next steps. Take care!";
+              await handleSpeak(closingLine, () => setAiStatus(AI_VOICE_STATUS.WRAPPING_UP), () => {});
+              setTimeout(() => onComplete?.(history, evaluations, cheatingReportRef.current, totalCheatingScoreRef.current), 1500);
+            }
+            return;
           }
-          return;
-        }
 
-        questionCounterRef.current += 1;
-        setCurrentQuestion(question);
-        setQuestionIndex(questionCounterRef.current);
+          questionCounterRef.current += 1;
+          setCurrentQuestion(question);
+          setQuestionIndex(questionCounterRef.current);
+          pendingQuestionRef.current = question; // save in case a pause hits before answer received
+        }
 
         await handleSpeak(
           question,
@@ -950,6 +1520,8 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
         );
 
         if (wrappingUpRef.current) return;
+        // If pause hit during TTS, bail out — resumeCallbackRef will replay this question
+        if (isPausedRef.current) return;
 
         setAiStatus(AI_VOICE_STATUS.LISTENING);
         setLiveTranscript("");
@@ -963,6 +1535,7 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
             setFinalTranscript(finalText);
             setLiveTranscript("");
             setAiStatus(AI_VOICE_STATUS.PROCESSING);
+            pendingQuestionRef.current = null; // answer received — no longer pending
 
             const isUnanswered = finalText.startsWith("(no response");
 
@@ -1004,7 +1577,7 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
                   "I will need to conclude our session here. " +
                   "Thank you for your time today. We will be in touch with our findings shortly.";
                 await handleSpeak(terminationLine, () => setAiStatus(AI_VOICE_STATUS.WRAPPING_UP), () => {});
-                setTimeout(() => onComplete?.(updatedHistory, evaluations), 1500);
+                setTimeout(() => onComplete?.(updatedHistory, evaluations, cheatingReportRef.current, totalCheatingScoreRef.current), 1500);
               }
               return;
             }
@@ -1054,7 +1627,7 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
                 "I will need to conclude our session here. " +
                 "Thank you for your time today. We will be in touch with our findings shortly.";
               handleSpeak(terminationLine, () => setAiStatus(AI_VOICE_STATUS.WRAPPING_UP), () => {}).then(() => {
-                setTimeout(() => onComplete?.(updatedHistory, evaluations), 1500);
+                setTimeout(() => onComplete?.(updatedHistory, evaluations, cheatingReportRef.current, totalCheatingScoreRef.current), 1500);
               });
               return;
             }
@@ -1080,6 +1653,37 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
       window.speechSynthesis?.cancel();
     };
   }, []); // eslint-disable-line
+
+  // Fullscreen return + resume handler.
+  // The button click BOTH provides the user-gesture for requestFullscreen()
+  // AND resumes the paused interview session.
+  const handleReturnToFullscreen = useCallback(async () => {
+    // Step 1: Re-enter fullscreen (requires this click as the user gesture)
+    try {
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen ||
+        el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (req) await req.call(el);
+    } catch (e) {
+      console.warn('[Fullscreen] Re-entry failed:', e);
+    }
+    // Step 2: Dismiss the overlay
+    showFsReturnOverlayRef.current = false;
+    setShowFsReturnOverlay(false);
+    // Step 3: Resume the interview
+    if (isPausedRef.current && !terminatingRef.current && !wrappingUpRef.current) {
+      isPausedRef.current = false;
+      setIsPaused(false);
+      setPauseReason("");
+      console.info("[Proctoring] RESUMED");
+      // If there is a pending resume callback (re-ask current question), fire it
+      const cb = resumeCallbackRef.current;
+      resumeCallbackRef.current = null;
+      if (cb) {
+        setTimeout(cb, 800); // small delay so fullscreen animation settles
+      }
+    }
+  }, []);
 
   // â”€â”€ Status pill config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const statusConfig = useMemo(() => {
@@ -1126,6 +1730,20 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
             <div className="flex items-center gap-1.5 text-xs font-medium text-slate-300 bg-slate-800 border border-slate-700/50 rounded-full px-3 py-1.5">
               <TrendingUp size={12} className="text-emerald-400" />
               Avg {avgScore}/10
+            </div>
+          )}
+
+          {/* Integrity score badge */}
+          {totalCheatingScore > 0 && (
+            <div className={`flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5 border ${
+              totalCheatingScore >= CHEATING_THRESHOLD * 0.7
+                ? "bg-red-900/50 border-red-500/40 text-red-400"
+                : totalCheatingScore >= CHEATING_THRESHOLD * 0.4
+                ? "bg-amber-900/50 border-amber-500/40 text-amber-400"
+                : "bg-slate-800 border-slate-700/50 text-slate-400"
+            }`}>
+              <AlertTriangle size={11} />
+              {totalCheatingScore}/{CHEATING_THRESHOLD}
             </div>
           )}
 
@@ -1194,6 +1812,8 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
                 animate="visible"
                 exit="exit"
                 className="text-3xl lg:text-4xl font-bold text-white text-center leading-snug max-w-3xl"
+                style={{ userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" }}
+                onContextMenu={(e) => e.preventDefault()}
               >
                 {currentQuestion}
               </motion.h1>
@@ -1366,6 +1986,184 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
           </div>
         </aside>
       </div>
+      {/* ── Anti-Cheat Warning Banner (non-terminating, dismisses after 4.5s) ── */}
+      <AnimatePresence>
+        {cheatingWarning && (
+          <motion.div
+            key="cheat-warning"
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className="fixed top-14 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-lg px-4"
+          >
+            <div className="flex items-start gap-3 bg-amber-950 border border-amber-500/50 rounded-xl px-5 py-3.5 shadow-2xl">
+              <AlertTriangle className="text-amber-400 flex-shrink-0 mt-0.5" size={18} />
+              <div className="flex-1 min-w-0">
+                <p className="text-amber-300 text-sm font-semibold">
+                  Integrity Warning &mdash; +{cheatingWarning.points} pts
+                </p>
+                <p className="text-amber-400/80 text-xs mt-0.5 leading-relaxed">
+                  {cheatingWarning.message}
+                </p>
+              </div>
+              <div className="flex-shrink-0 text-right">
+                <p className="text-amber-400 text-xs font-bold">
+                  {cheatingWarning.score}/{CHEATING_THRESHOLD}
+                </p>
+                <p className="text-amber-600 text-[10px] mt-0.5">integrity score</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* INTERVIEW PAUSE OVERLAY                                             */}
+      {/* Shown on: tab switch / window blur / fullscreen exit / minimise.    */}
+      {/* Completely blocks interaction. Interview only resumes on click.      */}
+      {/* ─────────────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {isPaused && !proctoringViolation && (
+          <motion.div
+            key="pause-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.2 } }}
+            className="fixed inset-0 z-[9998] flex flex-col items-center justify-center select-none"
+            style={{ background: "rgba(0,0,0,0.98)", backdropFilter: "blur(12px)" }}
+            // Block every click from reaching the interview below
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 24 }}
+              animate={{ scale: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 22 } }}
+              className="max-w-lg w-full mx-4 rounded-2xl overflow-hidden border border-red-500/40 shadow-[0_0_80px_rgba(239,68,68,0.18)] bg-[#0d0708]"
+            >
+              {/* Header */}
+              <div className="flex items-center gap-3 bg-red-950/70 border-b border-red-900/60 px-7 py-5">
+                <div className="h-10 w-10 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="text-red-400" size={20} />
+                </div>
+                <div>
+                  <p className="text-red-400 font-bold text-base tracking-tight">Interview Paused</p>
+                  <p className="text-red-500/70 text-xs mt-0.5">Violation detected — session frozen</p>
+                </div>
+                {/* Live cheating score badge */}
+                <div className={`ml-auto flex-shrink-0 text-center px-4 py-1.5 rounded-full border text-xs font-bold ${
+                  totalCheatingScore >= CHEATING_THRESHOLD * 0.7
+                    ? "bg-red-900/60 border-red-500/40 text-red-400"
+                    : totalCheatingScore >= CHEATING_THRESHOLD * 0.4
+                    ? "bg-amber-900/60 border-amber-500/40 text-amber-400"
+                    : "bg-slate-800 border-slate-700/50 text-slate-400"
+                }`}>
+                  {totalCheatingScore}/{CHEATING_THRESHOLD} pts
+                </div>
+              </div>
+
+              <div className="px-7 py-6 space-y-5">
+                {/* Warning message */}
+                <div className="flex items-start gap-3 bg-slate-900/80 border border-slate-700/40 rounded-xl px-4 py-3.5">
+                  <Monitor className="text-slate-400 flex-shrink-0 mt-0.5" size={18} />
+                  <p className="text-slate-200 text-sm leading-relaxed">
+                    {pauseReason || "Interview paused. Please return to fullscreen to continue."}
+                  </p>
+                </div>
+
+                {/* Requirements checklist */}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Resume conditions</p>
+                  {[
+                    { label: "Fullscreen mode must be active", check: !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) },
+                    { label: "Browser tab must be focused", check: !document.hidden },
+                    { label: "Browser window must be active", check: true },
+                  ].map(({ label, check }) => (
+                    <div key={label} className="flex items-center gap-2.5 text-xs">
+                      {check
+                        ? <CheckCircle size={13} className="text-emerald-400 flex-shrink-0" />
+                        : <XCircle size={13} className="text-red-400 flex-shrink-0" />}
+                      <span className={check ? "text-emerald-300" : "text-slate-400"}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Threshold warning */}
+                <div className="bg-amber-950/50 border border-amber-800/40 rounded-xl px-4 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-amber-400 text-xs font-semibold">⚠️ Integrity Score</p>
+                    <p className="text-amber-400 text-xs font-bold font-mono">{totalCheatingScore} / {CHEATING_THRESHOLD}</p>
+                  </div>
+                  <div className="h-1.5 bg-slate-700/60 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? "bg-red-500" :
+                        totalCheatingScore >= CHEATING_THRESHOLD * 0.4 ? "bg-amber-500" : "bg-emerald-500"
+                      }`}
+                      style={{ width: `${Math.min(100, (totalCheatingScore / CHEATING_THRESHOLD) * 100)}%`, transition: "width 0.4s" }}
+                    />
+                  </div>
+                  <p className="text-amber-600/80 text-xs mt-2 leading-relaxed">
+                    Exceeding the threshold will automatically terminate your session.
+                  </p>
+                </div>
+
+                {/* Return button */}
+                <button
+                  onClick={handleReturnToFullscreen}
+                  className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold text-sm rounded-xl transition-all duration-150 flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-900/40"
+                >
+                  <Monitor size={16} />
+                  Return to Fullscreen &amp; Resume Interview
+                </button>
+                <p className="text-slate-600 text-xs text-center">
+                  All activity during this pause has been logged.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Proctoring Violation Overlay (integrity threshold exceeded)egrity threshold exceeded) ──────── */}
+      <AnimatePresence>
+        {proctoringViolation && (
+          <motion.div
+            key="violation-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 24 }}
+              animate={{ scale: 1, y: 0 }}
+              className="max-w-md w-full mx-4 rounded-2xl p-8 border bg-red-950 border-red-500/50 shadow-2xl text-center"
+            >
+              <div className="h-16 w-16 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center mx-auto mb-5">
+                <AlertTriangle className="text-red-400" size={32} />
+              </div>
+              <h2 className="text-2xl font-bold text-red-400 mb-3">Session Terminated</h2>
+              <p className="text-slate-300 text-sm leading-relaxed mb-2">
+                This interview has been{" "}
+                <strong className="text-red-400">automatically terminated</strong>{" "}
+                because the integrity threshold was exceeded.
+              </p>
+              <div className="flex items-center justify-center gap-2 my-3">
+                <span className="text-3xl font-black text-red-400">{totalCheatingScore}</span>
+                <span className="text-slate-500 text-sm">/ {CHEATING_THRESHOLD} pts</span>
+              </div>
+              <p className="text-slate-400 text-xs mt-3 leading-relaxed border-t border-red-900/60 pt-3">
+                <strong className="text-red-400">Last event:</strong> {proctoringViolation.message}.
+              </p>
+              <p className="text-slate-500 text-xs mt-3 leading-relaxed">
+                Your session data and integrity report have been flagged and submitted to the hiring team.
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
     </div>
   );
 }
@@ -1373,7 +2171,7 @@ function InterviewInterface({ streams, jobTitle = "Software Engineer", applicati
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //  PHASE 4 â€“ Summary Screen
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function SummaryScreen({ jobTitle, evaluations, conversationHistory }) {
+function SummaryScreen({ jobTitle, evaluations, conversationHistory, cheatingReport = [], totalCheatingScore = 0 }) {
   const avgScore = useMemo(() => {
     const scored = evaluations.filter((e) => e.score !== null);
     if (!scored.length) return null;
@@ -1383,6 +2181,24 @@ function SummaryScreen({ jobTitle, evaluations, conversationHistory }) {
   const scoreColor = avgScore >= 7 ? "text-emerald-400" : avgScore >= 5 ? "text-amber-400" : "text-red-400";
   const verdict =
     avgScore >= 7 ? "Strong Performance" : avgScore >= 5 ? "Moderate Performance" : "Needs Improvement";
+
+  const integrityPct   = Math.min(100, Math.round((totalCheatingScore / CHEATING_THRESHOLD) * 100));
+  const integrityLabel =
+    totalCheatingScore === 0                           ? "Clean"
+    : totalCheatingScore < CHEATING_THRESHOLD * 0.4   ? "Minor Flags"
+    : totalCheatingScore < CHEATING_THRESHOLD * 0.7   ? "Moderate Flags"
+    : totalCheatingScore >= CHEATING_THRESHOLD         ? "Terminated"
+    :                                                    "High Flags";
+  const integrityColor =
+    totalCheatingScore === 0                           ? "text-emerald-400"
+    : totalCheatingScore < CHEATING_THRESHOLD * 0.4   ? "text-sky-400"
+    : totalCheatingScore < CHEATING_THRESHOLD * 0.7   ? "text-amber-400"
+    :                                                    "text-red-400";
+  const integrityBarColor =
+    totalCheatingScore === 0                           ? "bg-emerald-500"
+    : totalCheatingScore < CHEATING_THRESHOLD * 0.4   ? "bg-sky-500"
+    : totalCheatingScore < CHEATING_THRESHOLD * 0.7   ? "bg-amber-500"
+    :                                                    "bg-red-500";
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -1396,23 +2212,109 @@ function SummaryScreen({ jobTitle, evaluations, conversationHistory }) {
           <Award className="text-emerald-400 flex-shrink-0" size={26} />
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight">Interview Complete</h2>
-            <p className="text-xs text-slate-400 mt-0.5">{jobTitle} â€” AI Interview Session</p>
+            <p className="text-xs text-slate-400 mt-0.5">{jobTitle} &mdash; AI Interview Session</p>
           </div>
         </div>
 
         <div className="px-7 py-6 space-y-6">
-          {/* Score summary card */}
+          {/* Performance summary card */}
           <div className="flex items-center gap-6 bg-slate-800/50 rounded-xl p-5">
             <div className="text-center">
-              <p className={`text-5xl font-black ${scoreColor}`}>{avgScore ?? "â€“"}</p>
-              <p className="text-xs text-slate-500 mt-1">/ 10  avg</p>
+              <p className={`text-5xl font-black ${scoreColor}`}>{avgScore ?? "\u2014"}</p>
+              <p className="text-xs text-slate-500 mt-1">/ 10 avg</p>
             </div>
             <div>
               <p className={`text-lg font-bold ${scoreColor}`}>{verdict}</p>
               <p className="text-sm text-slate-400 mt-1">
-                {evaluations.length} questions answered Â· {Math.round(conversationHistory.length / 2)} total exchanges
+                {evaluations.length} questions answered &middot;{" "}
+                {Math.round(conversationHistory.length / 2)} total exchanges
               </p>
             </div>
+          </div>
+
+          {/* ── Integrity Report ─────────────────────────────────────────── */}
+          <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden">
+            {/* Header row */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-800/70 border-b border-slate-700/40">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                <Shield size={13} />
+                Integrity Report
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-bold ${integrityColor}`}>{integrityLabel}</span>
+                <span className="text-xs text-slate-500 font-mono">
+                  {totalCheatingScore}/{CHEATING_THRESHOLD} pts
+                </span>
+              </div>
+            </div>
+
+            {/* Score bar */}
+            <div className="px-5 pt-4 pb-3">
+              <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
+                <span>Integrity score</span>
+                <span className="font-mono">{integrityPct}%</span>
+              </div>
+              <div className="h-2 bg-slate-700/60 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${integrityBarColor}`}
+                  style={{ width: `${integrityPct}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-600 mt-1.5">
+                Threshold: {CHEATING_THRESHOLD} pts &mdash; interview auto-terminates when exceeded
+              </p>
+            </div>
+
+            {/* Event log table */}
+            {cheatingReport.length > 0 ? (
+              <div className="px-5 pb-4">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-slate-500 border-b border-slate-700/40">
+                      <th className="text-left pb-2 font-semibold uppercase tracking-wide">Event</th>
+                      <th className="text-center pb-2 font-semibold uppercase tracking-wide">Count</th>
+                      <th className="text-center pb-2 font-semibold uppercase tracking-wide">Pts / Event</th>
+                      <th className="text-right  pb-2 font-semibold uppercase tracking-wide">Total Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/30">
+                    {cheatingReport.map((row) => (
+                      <tr key={row.eventType} className="text-slate-300">
+                        <td className="py-2 pr-3">
+                          <span className={`font-medium ${
+                            row.points >= 4 ? "text-red-400"
+                            : row.points >= 3 ? "text-amber-400"
+                            : "text-slate-300"
+                          }`}>{row.label}</span>
+                          <p className="text-slate-500 text-[10px] mt-0.5">
+                            First: {new Date(row.timestamp).toLocaleTimeString()} &middot;{" "}
+                            Last: {new Date(row.lastTimestamp).toLocaleTimeString()}
+                          </p>
+                        </td>
+                        <td className="py-2 text-center font-mono font-semibold">{row.count}</td>
+                        <td className="py-2 text-center font-mono text-amber-400">+{row.points}</td>
+                        <td className="py-2 text-right font-mono font-bold text-red-400">+{row.totalPoints}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-700/60">
+                      <td colSpan={3} className="pt-2.5 text-slate-400 font-semibold text-xs uppercase tracking-wide">
+                        Total Integrity Score
+                      </td>
+                      <td className={`pt-2.5 text-right font-black text-base ${integrityColor}`}>
+                        {totalCheatingScore}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : (
+              <div className="px-5 py-4 flex items-center gap-2 text-emerald-400 text-sm">
+                <CheckCircle size={16} />
+                <span>No integrity violations detected during this session.</span>
+              </div>
+            )}
           </div>
 
           {/* Per-question breakdown */}
@@ -1421,7 +2323,7 @@ function SummaryScreen({ jobTitle, evaluations, conversationHistory }) {
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
                 Question Breakdown
               </p>
-              <div className="space-y-3 max-h-72 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
+              <div className="space-y-3 max-h-64 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
                 {evaluations.map((ev, i) => (
                   <div key={i} className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
                     <div className="flex items-start justify-between gap-3 mb-2">
@@ -1433,7 +2335,7 @@ function SummaryScreen({ jobTitle, evaluations, conversationHistory }) {
                     <p className="text-xs text-slate-400 leading-relaxed">{ev.feedback}</p>
                     {ev.answer && !ev.answer.startsWith("(no response") && (
                       <p className="text-xs text-slate-600 mt-2 leading-relaxed italic line-clamp-2">
-                        "{ev.answer}"
+                        &ldquo;{ev.answer}&rdquo;
                       </p>
                     )}
                   </div>
@@ -1445,7 +2347,7 @@ function SummaryScreen({ jobTitle, evaluations, conversationHistory }) {
           <div className="text-center">
             <p className="text-sm text-slate-400 leading-relaxed">
               Your session data has been recorded and securely submitted. The hiring team will review your
-              performance and be in touch soon.
+              performance and integrity report and be in touch soon.
             </p>
             <button
               onClick={() => { try { window.close(); } catch { } window.location.href = "/"; }}
@@ -1473,16 +2375,24 @@ function ErrorScreen({ message }) {
         className="max-w-md w-full bg-slate-900 border border-red-500/30 rounded-2xl p-8 text-center shadow-2xl"
       >
         <div className="h-14 w-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-5">
-          <AlertTriangle className="text-red-400" size={26} />
+          <XCircle className="text-red-400" size={26} />
         </div>
-        <h2 className="text-xl font-bold text-white mb-3">Permissions Denied</h2>
-        <p className="text-sm text-slate-400 leading-relaxed mb-6">{message}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-xl transition-colors border border-slate-700/60"
-        >
-          Reload &amp; Try Again
-        </button>
+        <h2 className="text-xl font-bold text-red-400 mb-3">Interview Session Cancelled</h2>
+        <p className="text-sm text-slate-300 leading-relaxed mb-3">{message}</p>
+        <p className="text-xs text-slate-500 leading-relaxed mb-8">
+          All proctoring permissions (Camera, Microphone, and Screen Recording) are{" "}
+          <strong className="text-slate-300">mandatory</strong> and cannot be skipped.
+          The interview cannot proceed without them. Please contact the hiring team
+          if you believe this is an error.
+        </p>
+        <div className="flex flex-col gap-3">
+          <a
+            href="/"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-xl transition-colors border border-slate-700/60"
+          >
+            Return to Dashboard
+          </a>
+        </div>
       </motion.div>
     </div>
   );
@@ -1499,9 +2409,20 @@ export default function InterviewProctoring() {
   const [phase, setPhase] = useState(PHASE.TERMS);
   const [errorMessage, setErrorMessage] = useState("");
   const [streams, setStreams] = useState(null);
-  const [sessionData, setSessionData] = useState({ history: [], evaluations: [] });
+  const [sessionData, setSessionData] = useState({ history: [], evaluations: [], cheatingReport: [], totalCheatingScore: 0 });
 
-  const handleAcceptTerms = useCallback(() => setPhase(PHASE.PERMISSIONS), []);
+  const handleAcceptTerms = useCallback(async () => {
+    // Request fullscreen immediately on user gesture — required by browsers
+    try {
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen ||
+        el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (req) await req.call(el);
+    } catch (e) {
+      console.warn("[Fullscreen] Request failed:", e);
+    }
+    setPhase(PHASE.PERMISSIONS);
+  }, []);
 
   const handlePermissionsGranted = useCallback((grantedStreams) => {
     setStreams(grantedStreams);
@@ -1513,8 +2434,15 @@ export default function InterviewProctoring() {
     setPhase(PHASE.ERROR);
   }, []);
 
-  const handleInterviewComplete = useCallback((history, evaluations) => {
-    setSessionData({ history, evaluations });
+  const handleInterviewComplete = useCallback((history, evaluations, cheatingReport = [], totalCheatingScore = 0) => {
+    // Release fullscreen when the interview session ends
+    try {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+      else if (document.msExitFullscreen) document.msExitFullscreen();
+    } catch (e) {}
+    setSessionData({ history, evaluations, cheatingReport, totalCheatingScore });
     setPhase(PHASE.SUMMARY);
   }, []);
 
@@ -1550,6 +2478,8 @@ export default function InterviewProctoring() {
               jobTitle={jobTitle}
               evaluations={sessionData.evaluations}
               conversationHistory={sessionData.history}
+              cheatingReport={sessionData.cheatingReport}
+              totalCheatingScore={sessionData.totalCheatingScore}
             />
           </motion.div>
         )}
