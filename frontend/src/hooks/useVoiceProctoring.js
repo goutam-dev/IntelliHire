@@ -222,7 +222,7 @@ export function useVoiceProctoring(audioStream, shouldStream = true) {
 
         // Tell backend to close the Python WS
         if (sessionId) {
-            voiceProctoringApi.stopVoiceProctoring(sessionId).catch(() => { });
+            await voiceProctoringApi.stopVoiceProctoring(sessionId).catch(() => { });
         }
 
         setIsActive(false);
