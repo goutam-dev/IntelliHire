@@ -97,7 +97,10 @@ export function useInterviewEngine({
   const answerStartTimeRef = useRef(null);
   const browserSttRef = useRef(null); // Browser STT for live transcript
   const pausedWhileListeningRef = useRef(false);
+  const pausedWhileAskingRef = useRef(false);   // NEW: paused during TTS
   const pausedTurnIndexRef = useRef(null);
+  const engineStateRef = useRef(ENGINE_STATE.IDLE); // NEW: live engine state
+  const currentQuestionRef = useRef('');           // NEW: live current question
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -168,18 +171,24 @@ export function useInterviewEngine({
   const askQuestion = useCallback(async (question, turnIndex) => {
     if (isPausedRef.current || isTerminatingRef.current) return;
 
+    engineStateRef.current = ENGINE_STATE.ASKING;
     setEngineState(ENGINE_STATE.ASKING);
+    currentQuestionRef.current = question;
     setCurrentQuestion(question);
     setCurrentTurnIndex(turnIndex);
+    pausedTurnIndexRef.current = turnIndex;
     setLiveTranscript('');
     setFinalTranscript('');
 
     // Speak the question via TTS
     await speakText(question);
 
+    // Guard: if paused or terminated while TTS was running, stop here.
+    // pause() cancels TTS which resolves speakText early — this guard catches it.
     if (isPausedRef.current || isTerminatingRef.current) return;
 
     // Transition to listening
+    engineStateRef.current = ENGINE_STATE.LISTENING;
     setEngineState(ENGINE_STATE.LISTENING);
     answerStartTimeRef.current = Date.now();
 
@@ -204,6 +213,7 @@ export function useInterviewEngine({
   const processAnswer = useCallback(async (turnIndex) => {
     if (isPausedRef.current || isTerminatingRef.current) return;
 
+    engineStateRef.current = ENGINE_STATE.PROCESSING;
     setEngineState(ENGINE_STATE.PROCESSING);
     stopVAD();
     stopBrowserSTT();
@@ -353,30 +363,57 @@ export function useInterviewEngine({
 
   // ── Pause / Resume ─────────────────────────────────────────────────────────
   const pause = useCallback(() => {
+    // Read the LIVE engine state via ref (not the closed-over React state)
+    const liveState = engineStateRef.current;
+
+    // Set paused BEFORE cancelling TTS so the speakText guard fires correctly
     isPausedRef.current = true;
-    pausedWhileListeningRef.current = engineState === ENGINE_STATE.LISTENING;
-    pausedTurnIndexRef.current = currentTurnIndex;
+
+    pausedWhileListeningRef.current = liveState === ENGINE_STATE.LISTENING;
+    pausedWhileAskingRef.current = liveState === ENGINE_STATE.ASKING;
+
+    // Cancel any in-flight TTS. This resolves speakText early via onend,
+    // but isPausedRef is already true so the guard in askQuestion will stop it.
     window.speechSynthesis?.cancel();
+
     stopVAD();
     stopBrowserSTT();
+
     if (pausedWhileListeningRef.current) {
       stopRecording().catch(() => {});
     }
-  }, [engineState, currentTurnIndex, stopVAD, stopBrowserSTT, stopRecording]);
+  }, [stopVAD, stopBrowserSTT, stopRecording]);
 
   const resume = useCallback(() => {
+    if (isTerminatingRef.current) return;
+
     isPausedRef.current = false;
 
-    if (!pausedWhileListeningRef.current || isTerminatingRef.current) {
+    const turnIndex = pausedTurnIndexRef.current;
+
+    if (pausedWhileAskingRef.current) {
+      // Was paused while TTS was reading the question — re-ask it
+      pausedWhileAskingRef.current = false;
+      pausedWhileListeningRef.current = false;
+      const question = currentQuestionRef.current;
+      if (question && turnIndex != null) {
+        askNextRef.current?.(question, turnIndex);
+      }
       return;
     }
 
-    const turnIndex = pausedTurnIndexRef.current;
+    if (!pausedWhileListeningRef.current) {
+      // Paused during PROCESSING or another non-interactive phase — do nothing
+      return;
+    }
+
     if (turnIndex == null) {
       pausedWhileListeningRef.current = false;
       return;
     }
 
+    // Was paused while listening — resume recording and VAD for the same turn
+    engineStateRef.current = ENGINE_STATE.LISTENING;
     setEngineState(ENGINE_STATE.LISTENING);
     answerStartTimeRef.current = Date.now();
 

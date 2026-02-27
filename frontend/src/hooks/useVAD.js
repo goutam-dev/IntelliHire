@@ -20,8 +20,6 @@ const DEFAULT_CONFIG = {
   speechThreshold: 0.015,
   /** How many consecutive silence frames before firing onSilenceTimeout */
   silenceTimeoutMs: 6000,
-  /** Hard max for a single answer recording */
-  hardTimeoutMs: 120000,
   /** Initial wait — if no speech at all within this time, fire silence timeout */
   initialWaitMs: 25000,
   /** Noise floor calibration duration */
@@ -54,7 +52,7 @@ export function useVAD(stream, config = {}) {
   const analyserRef = useRef(null);
   const frameTimerRef = useRef(null);
   const silenceTimerRef = useRef(null);
-  const hardTimerRef = useRef(null);
+
   const initialWaitTimerRef = useRef(null);
   const stateRef = useRef({
     speechStarted: false,
@@ -72,7 +70,7 @@ export function useVAD(stream, config = {}) {
     stoppedRef.current = true;
     clearInterval(frameTimerRef.current);
     clearTimeout(silenceTimerRef.current);
-    clearTimeout(hardTimerRef.current);
+
     clearTimeout(initialWaitTimerRef.current);
     setIsListening(false);
     setIsSpeaking(false);
@@ -198,12 +196,7 @@ export function useVAD(stream, config = {}) {
       }
     }, cfg.initialWaitMs);
 
-    // ── Hard timeout ───────────────────────────────────────────────────────
-    hardTimerRef.current = setTimeout(() => {
-      if (!stoppedRef.current) {
-        callbacks.onSilenceTimeout?.();
-      }
-    }, cfg.hardTimeoutMs);
+
   }, [stream, cfg, cleanup]);
 
   /**
