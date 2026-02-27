@@ -5,6 +5,7 @@ const CandidateProfile = require('../models/CandidateProfile');
 const User = require('../models/User');
 const EmployerProfile = require('../models/EmployerProfile');
 const ResumeAnalysis = require('../models/ResumeAnalysis');
+const InterviewSession = require('../models/InterviewSession');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errorHandler');
 const logger = require('../utils/logger');
 const path = require('path');
@@ -91,6 +92,43 @@ const filterBySearch = (applications, search) => {
       professionalTitle.includes(searchLower) ||
       feedback.includes(searchLower)
     );
+  });
+};
+
+const TERMINAL_INTERVIEW_STATUSES = ['completed', 'terminated', 'abandoned', 'completing'];
+
+const enrichApplicationsWithInterviewState = async (applications = []) => {
+  if (!applications.length) return applications;
+
+  const applicationIds = applications.map((app) => app.applicationId).filter(Boolean);
+  if (!applicationIds.length) return applications;
+
+  const sessions = await InterviewSession.find({
+    applicationId: { $in: applicationIds },
+  })
+    .sort({ createdAt: -1 })
+    .select('applicationId status startedAt completedAt updatedAt createdAt')
+    .lean();
+
+  const latestByApplicationId = new Map();
+  for (const session of sessions) {
+    if (!latestByApplicationId.has(session.applicationId)) {
+      latestByApplicationId.set(session.applicationId, session);
+    }
+  }
+
+  return applications.map((application) => {
+    const latestInterviewSession = latestByApplicationId.get(application.applicationId) || null;
+    const interviewSessionStatus = latestInterviewSession?.status || null;
+    const interviewLocked = TERMINAL_INTERVIEW_STATUSES.includes(interviewSessionStatus);
+
+    return {
+      ...application,
+      interviewSessionStatus,
+      interviewLocked,
+      interviewCompletedAt: latestInterviewSession?.completedAt || null,
+      interviewLastUpdatedAt: latestInterviewSession?.updatedAt || latestInterviewSession?.createdAt || null,
+    };
   });
 };
 
@@ -759,11 +797,13 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
     }
   });
 
+  const enrichedApplications = await enrichApplicationsWithInterviewState(applications);
+
   const totalApplications = await JobApplication.countDocuments(filter);
   const totalPages = Math.ceil(totalApplications / parseInt(limit));
 
   return {
-    applications,
+    applications: enrichedApplications,
     pagination: {
       currentPage: parseInt(page),
       totalPages,
@@ -803,8 +843,10 @@ const getApplicationById = async (candidateId, applicationId) => {
   }
 
   // Format the response to match expected structure
+  const [enrichedApplication] = await enrichApplicationsWithInterviewState([application]);
+
   return {
-    ...application,
+    ...enrichedApplication,
     candidate: {
       user: application.candidateId,
       ...application.applicationProfile

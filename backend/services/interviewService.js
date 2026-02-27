@@ -18,6 +18,7 @@ const FormData = require('form-data');
 const InterviewSession = require('../models/InterviewSession');
 const JobApplication = require('../models/JobApplication');
 const logger = require('../utils/logger');
+const { AppError } = require('../utils/errorHandler');
 
 // ── Configuration ────────────────────────────────────────────────────────────
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -225,6 +226,14 @@ async function transcribeAudio(audioBuffer, mimeType = 'audio/webm') {
  * Create a new interview session and load context from the job application.
  */
 async function createSession(applicationId, candidateId) {
+  const latestSession = await InterviewSession.findOne({ applicationId, candidateId })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (latestSession && ['completed', 'terminated', 'abandoned', 'completing'].includes(latestSession.status)) {
+    throw new AppError('Interview already completed for this application. Retakes are not allowed.', 409);
+  }
+
   // Load application data for context  
   const application = await JobApplication.findOne({ applicationId })
     .populate('jobId')
@@ -286,19 +295,19 @@ async function startSession(sessionId) {
   if (!session) throw new Error('Session not found');
 
   if (session.status === 'in_progress' || session.status === 'started') {
-    logger.warn(`[Interview] Active session re-opened via start endpoint: ${sessionId}. Auto-completing session.`);
-    const summary = await completeSession(sessionId, {
-      cheatingEvents: session.integrity?.cheatingEvents || [],
-      totalCheatingScore: session.integrity?.totalCheatingScore || 0,
-      terminationReason: '',
-    });
+    logger.info(`[Interview] Active session resumed via start endpoint: ${sessionId}.`);
+
+    const lastTurn = session.turns?.length ? session.turns[session.turns.length - 1] : null;
+    const pendingTurn = (session.turns || []).slice().reverse().find((turn) => !turn.answeredAt);
+    const resumeTurn = pendingTurn || lastTurn;
 
     return {
       sessionId: session._id,
-      ended: true,
-      status: summary.status,
-      reason: 'Session auto-completed because an active interview was reopened.',
-      summary,
+      resumed: true,
+      status: session.status,
+      question: resumeTurn?.question || '',
+      turnIndex: resumeTurn?.index ?? Math.max((session.turns?.length || 1) - 1, 0),
+      phase: resumeTurn?.phase || session.interviewState?.currentPhase || 'main',
     };
   }
 

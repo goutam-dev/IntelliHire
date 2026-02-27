@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { randomUUID } = require('crypto');
 
 /**
  * InterviewSession Model
@@ -47,6 +48,12 @@ const cheatingEventSchema = new mongoose.Schema({
 }, { _id: false });
 
 const interviewSessionSchema = new mongoose.Schema({
+  sessionId: {
+    type: String,
+    default: () => randomUUID(),
+    unique: true,
+    index: true,
+  },
   applicationId: {
     type: String,
     required: true,

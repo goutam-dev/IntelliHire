@@ -349,6 +349,21 @@ const MyApplications = () => {
                       {application.status === 'Interview Scheduled' && (() => {
                         const active = isInterviewWindowActive(application);
                         const deadline = formatInterviewDeadline(application);
+                        const interviewLocked = Boolean(application.interviewLocked);
+                        const ctaDisabled = interviewLocked || !active;
+                        const ctaTitle = interviewLocked
+                          ? 'Interview already submitted. Results are under review.'
+                          : active
+                            ? 'Give your interview now'
+                            : deadline
+                              ? `Deadline was ${deadline}`
+                              : 'Interview deadline not set';
+                        const ctaLabel = interviewLocked
+                          ? 'Interview Submitted'
+                          : active
+                            ? 'Give Interview'
+                            : 'Interview Deadline Passed';
+
                         return (
                           <div className="flex flex-col items-end gap-1">
                             {deadline && (
@@ -357,8 +372,13 @@ const MyApplications = () => {
                                 Interview deadline: {deadline}
                               </span>
                             )}
+                            {interviewLocked && (
+                              <span className="text-xs text-slate-500">
+                                Your interview is under review.
+                              </span>
+                            )}
                             <button
-                              disabled={!active}
+                              disabled={ctaDisabled}
                               onClick={() =>
                                 navigate(`/candidate/interview/${application.applicationId}`, {
                                   state: {
@@ -368,15 +388,15 @@ const MyApplications = () => {
                                   },
                                 })
                               }
-                              title={active ? 'Give your interview now' : deadline ? `Deadline was ${deadline}` : 'Interview deadline not set'}
+                              title={ctaTitle}
                               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                                active
+                                !ctaDisabled
                                   ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow'
                                   : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                               }`}
                             >
                               <Video className="w-4 h-4" />
-                              {active ? 'Give Interview' : 'Interview Deadline Passed'}
+                              {ctaLabel}
                             </button>
                           </div>
                         );

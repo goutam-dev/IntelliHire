@@ -345,7 +345,8 @@ export function useInterviewEngine({
       askNextRef.current?.(result.question, result.turnIndex);
     } catch (err) {
       console.error('[Interview] Initialization failed:', err);
-      setError(`Failed to start interview: ${err.message}`);
+      const backendErrorMessage = err?.response?.data?.error || err?.response?.data?.message;
+      setError(`Failed to start interview: ${backendErrorMessage || err.message}`);
       setEngineState(ENGINE_STATE.ERROR);
     }
   }, [applicationId]);
