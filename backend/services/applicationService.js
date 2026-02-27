@@ -10,7 +10,8 @@ const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/err
 const logger = require('../utils/logger');
 const path = require('path');
 const fs = require('fs');
-const { processApplicationVideo } = require('../utils/videoProcessor');
+const { extractAudio, createSilentVideo } = require('../utils/videoProcessor');
+const voiceProctoringService = require('./voiceProctoringService');
 
 /**
  * Application service - handles all application-related business logic
@@ -145,7 +146,7 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
   // Verify ownership
   const user = await User.findOne({ clerkUserId: userId });
   if (!user) throw new ForbiddenError('User not found');
-  
+
   const employerProfile = await EmployerProfile.findOne({ user: user._id });
   if (!employerProfile) throw new ForbiddenError('Employer profile not found');
 
@@ -157,7 +158,7 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
   }
 
   // Build base query
-  const query = { jobId: jobId }; 
+  const query = { jobId: jobId };
   if (status && status !== 'all') {
     query.status = status;
   }
@@ -165,8 +166,8 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
   // Fetch all matching applications with full population
   let applications = await JobApplication.find(query)
     .populate({
-      path: 'candidateId', 
-      select: 'fullName email phoneNumber' 
+      path: 'candidateId',
+      select: 'fullName email phoneNumber'
     })
     .populate({ path: 'jobId', select: 'title department' })
     .lean();
@@ -177,7 +178,7 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
       ...app,
       candidate: {
         user: app.candidateId,
-        ...app.applicationProfile 
+        ...app.applicationProfile
       },
       job: app.jobId
     };
@@ -185,10 +186,10 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
 
   // Enrich with AI scores
   const applicationIds = applications.map(app => app._id);
-  const resumeAnalyses = await ResumeAnalysis.find({ 
-    applicationId: { $in: applicationIds } 
+  const resumeAnalyses = await ResumeAnalysis.find({
+    applicationId: { $in: applicationIds }
   }).select('applicationId supervisorVerdict matchingScore').lean();
-  
+
   // Create a map for quick lookup
   const scoreMap = {};
   resumeAnalyses.forEach(analysis => {
@@ -198,7 +199,7 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
       matchingScore: analysis.matchingScore?.overall_score
     };
   });
-  
+
   // Add AI scores to applications
   applications = applications.map(app => ({
     ...app,
@@ -237,7 +238,7 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
   // Verify ownership
   const user = await User.findOne({ clerkUserId: userId });
   if (!user) throw new ForbiddenError('User not found');
-  
+
   const employerProfile = await EmployerProfile.findOne({ user: user._id });
   if (!employerProfile) throw new ForbiddenError('Employer profile not found');
 
@@ -247,17 +248,17 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
 
   // Track old status for stats update
   const oldStatus = application.status;
-  
+
   application.status = status;
   if (feedback) application.employerNotes = feedback;
-  else if (notes) application.employerNotes = notes; 
-  
+  else if (notes) application.employerNotes = notes;
+
   await application.save();
 
   // Update candidate profile stats if status changed
   if (oldStatus !== status) {
     const statUpdates = {};
-    
+
     // Decrement old status count
     if (oldStatus === 'Applied') {
       statUpdates['stats.pending'] = -1;
@@ -266,7 +267,7 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
     } else if (oldStatus === 'Rejected') {
       statUpdates['stats.rejected'] = -1;
     }
-    
+
     // Increment new status count
     if (status === 'Applied') {
       statUpdates['stats.pending'] = (statUpdates['stats.pending'] || 0) + 1;
@@ -275,7 +276,7 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
     } else if (status === 'Rejected') {
       statUpdates['stats.rejected'] = (statUpdates['stats.rejected'] || 0) + 1;
     }
-    
+
     if (Object.keys(statUpdates).length > 0) {
       await CandidateProfile.findOneAndUpdate(
         { user: application.candidateId },
@@ -309,7 +310,7 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
   // Verify ownership for ALL applications
   const user = await User.findOne({ clerkUserId: userId });
   if (!user) throw new ForbiddenError('User not found');
-  
+
   const employerProfile = await EmployerProfile.findOne({ user: user._id });
   if (!employerProfile) throw new ForbiddenError('Employer profile not found');
 
@@ -318,9 +319,9 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
 
   for (const app of applications) {
     if (!app.jobId || app.jobId.employer.toString() !== employerProfile._id.toString()) {
-       // Skip or throw? Let's skip to avoid breaking bulk op if one is bad, or throw to be strict.
-       // Strict is safer.
-       throw new ForbiddenError(`You do not have permission to update application ${app._id}`);
+      // Skip or throw? Let's skip to avoid breaking bulk op if one is bad, or throw to be strict.
+      // Strict is safer.
+      throw new ForbiddenError(`You do not have permission to update application ${app._id}`);
     }
   }
 
@@ -367,7 +368,7 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   // Verify ownership
   const user = await User.findOne({ clerkUserId: userId });
   if (!user) throw new ForbiddenError('User not found');
-  
+
   const employerProfile = await EmployerProfile.findOne({ user: user._id });
   if (!employerProfile) throw new ForbiddenError('Employer profile not found');
 
@@ -379,7 +380,7 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   application.interviewWindowStart = startDate;
   application.interviewWindowEnd = endDate;
   application.employerNotes = `Interview window: ${startDate.toDateString()} – ${endDate.toDateString()}. ${instructions || ''}`.trim();
-  
+
   await application.save();
 
   const populated = await application.populate([
@@ -401,15 +402,15 @@ const checkApplicationStatus = async (candidateId, jobId) => {
     candidateId,
     status: { $ne: 'Withdrawn' }
   })
-  .sort({ appliedAt: -1 })
-  .populate({
-    path: 'jobId',
-    select: 'title employer',
-    populate: {
-      path: 'employer',
-      select: 'companyName'
-    }
-  });
+    .sort({ appliedAt: -1 })
+    .populate({
+      path: 'jobId',
+      select: 'title employer',
+      populate: {
+        path: 'employer',
+        select: 'companyName'
+      }
+    });
 
   if (existingApplication && existingApplication.jobId && existingApplication.jobId.employer) {
     existingApplication.jobId.company = existingApplication.jobId.employer.companyName;
@@ -436,7 +437,7 @@ const checkApplicationStatus = async (candidateId, jobId) => {
  */
 const getProfileDataForApplication = async (candidateId) => {
   const profile = await CandidateProfile.findOne({ user: candidateId }).populate('user');
-  
+
   if (!profile) {
     throw new NotFoundError('Profile not found');
   }
@@ -487,8 +488,8 @@ const submitApplication = async (candidateId, applicationData, files) => {
   } = applicationData;
 
   // Parse applicationProfile if it's a string
-  let parsedApplicationProfile = typeof applicationProfile === 'string' 
-    ? JSON.parse(applicationProfile) 
+  let parsedApplicationProfile = typeof applicationProfile === 'string'
+    ? JSON.parse(applicationProfile)
     : applicationProfile;
 
   // Check if job exists and is active
@@ -496,7 +497,7 @@ const submitApplication = async (candidateId, applicationData, files) => {
   if (!job) {
     throw new NotFoundError('Job not found');
   }
-  
+
   if (job.status !== 'active') {
     throw new ValidationError('This job is no longer accepting applications');
   }
@@ -514,13 +515,13 @@ const submitApplication = async (candidateId, applicationData, files) => {
 
   // Handle resume
   let resumeData;
-  
+
   if (useExistingResume === 'true' || useExistingResume === true) {
     const profile = await CandidateProfile.findOne({ user: candidateId });
     if (!profile || !profile.resume || !profile.resume.fileUrl) {
       throw new ValidationError('No existing resume found in profile');
     }
-    
+
     // Copy the resume file to application-specific folder to ensure it persists
     // even if candidate deletes their profile resume
     const sourceFilePath = path.join(__dirname, '..', profile.resume.fileUrl);
@@ -528,20 +529,20 @@ const submitApplication = async (candidateId, applicationData, files) => {
     const fileExtension = path.extname(profile.resume.fileName || 'resume.pdf');
     const newFilename = `app-${candidateId}-${timestamp}${fileExtension}`;
     const destPath = path.join(__dirname, '..', 'uploads', 'applications', newFilename);
-    
+
     // Ensure applications directory exists
     const appDir = path.join(__dirname, '..', 'uploads', 'applications');
     if (!fs.existsSync(appDir)) {
       fs.mkdirSync(appDir, { recursive: true });
     }
-    
+
     // Copy file if source exists
     if (fs.existsSync(sourceFilePath)) {
       fs.copyFileSync(sourceFilePath, destPath);
     } else {
       throw new ValidationError('Resume file not found in profile');
     }
-    
+
     resumeData = {
       filename: newFilename,
       originalName: profile.resume.fileName || 'resume.pdf',
@@ -553,20 +554,20 @@ const submitApplication = async (candidateId, applicationData, files) => {
     if (!file) {
       throw new ValidationError('Resume file is required');
     }
-    
+
     // Move uploaded file to application-specific folder for consistency
     const timestamp = Date.now();
     const fileExtension = path.extname(file.originalname);
     const newFilename = `app-${candidateId}-${timestamp}${fileExtension}`;
     const sourcePath = file.path;
     const destPath = path.join(__dirname, '..', 'uploads', 'applications', newFilename);
-    
+
     // Ensure applications directory exists
     const appDir = path.join(__dirname, '..', 'uploads', 'applications');
     if (!fs.existsSync(appDir)) {
       fs.mkdirSync(appDir, { recursive: true });
     }
-    
+
     // Move file from temp location to applications folder
     if (fs.existsSync(sourcePath)) {
       fs.renameSync(sourcePath, destPath);
@@ -594,19 +595,19 @@ const submitApplication = async (candidateId, applicationData, files) => {
     if (!profile || !profile.video || !profile.video.fileUrl) {
       throw new ValidationError('No existing video introduction found in profile. Please upload a video.');
     }
-    
+
     const sourceFilePath = path.join(__dirname, '..', profile.video.fileUrl);
     const timestamp = Date.now();
     const fileExtension = path.extname(profile.video.fileName || 'video.mp4');
     const newFilename = `appvid-${candidateId}-${timestamp}${fileExtension}`;
     const destPath = path.join(appVideosDir, newFilename);
-    
+
     if (fs.existsSync(sourceFilePath)) {
       fs.copyFileSync(sourceFilePath, destPath);
     } else {
       throw new ValidationError('Profile video file not found. Please re-upload your video.');
     }
-    
+
     videoData = {
       filename: newFilename,
       originalName: profile.video.fileName || 'video.mp4',
@@ -619,17 +620,17 @@ const submitApplication = async (candidateId, applicationData, files) => {
     if (!videoFile) {
       throw new ValidationError('Video introduction is required for job applications');
     }
-    
+
     const timestamp = Date.now();
     const fileExtension = path.extname(videoFile.originalname);
     const newFilename = `appvid-${candidateId}-${timestamp}${fileExtension}`;
     const sourcePath = videoFile.path;
     const destPath = path.join(appVideosDir, newFilename);
-    
+
     if (fs.existsSync(sourcePath)) {
       fs.renameSync(sourcePath, destPath);
     }
-    
+
     videoData = {
       filename: newFilename,
       originalName: videoFile.originalname,
@@ -659,35 +660,55 @@ const submitApplication = async (candidateId, applicationData, files) => {
     // returned so the candidate is not kept waiting.
     if (videoData && videoData.filePath) {
       const absoluteVideoPath = path.join(__dirname, '..', videoData.filePath);
-      const baseName         = path.basename(videoData.filename, path.extname(videoData.filename));
-      const audioOutDir      = path.join(__dirname, '..', 'uploads', 'application-audio');
-      const silentOutDir     = path.join(__dirname, '..', 'uploads', 'application-videos-silent');
+      const baseName = path.basename(videoData.filename, path.extname(videoData.filename));
+      const audioOutDir = path.join(__dirname, '..', 'uploads', 'application-audio');
+      const silentOutDir = path.join(__dirname, '..', 'uploads', 'application-videos-silent');
 
       // Fire-and-forget: don't await so the HTTP response is not delayed
       setImmediate(async () => {
         try {
-          const { audioPath, silentVideoPath } = await processApplicationVideo(
-            absoluteVideoPath,
-            baseName,
-            audioOutDir,
-            silentOutDir
-          );
+          const audioPath = path.join(audioOutDir, `${baseName}.wav`);
+          const silentVideoPath = path.join(silentOutDir, `${baseName}-silent.mp4`);
 
-          // Persist relative paths back to the application document
+          // 1) Extract audio first so enrollment can start ASAP
+          await extractAudio(absoluteVideoPath, audioPath);
+
+          // Persist audio path immediately
           await JobApplication.findByIdAndUpdate(jobApplication._id, {
             $set: {
               audioFile: {
                 filename: path.basename(audioPath),
                 filePath: `/uploads/application-audio/${path.basename(audioPath)}`,
                 createdAt: new Date()
-              },
-              silentVideoFile: {
-                filename: path.basename(silentVideoPath),
-                filePath: `/uploads/application-videos-silent/${path.basename(silentVideoPath)}`,
-                createdAt: new Date()
               }
             }
           });
+
+          // 2) Kick voice enrollment right after audio extraction
+          try {
+            await voiceProctoringService.enrollSpeaker(
+              jobApplication.applicationId,
+              audioPath
+            );
+          } catch (enrollError) {
+            logger.warn(`[submitApplication] Voice enrollment threw unexpectedly: ${enrollError.message}`);
+          }
+
+          // 3) Continue silent video generation independently (non-blocking for enrollment)
+          try {
+            await createSilentVideo(absoluteVideoPath, silentVideoPath);
+            await JobApplication.findByIdAndUpdate(jobApplication._id, {
+              $set: {
+                silentVideoFile: {
+                  filename: path.basename(silentVideoPath),
+                  filePath: `/uploads/application-videos-silent/${path.basename(silentVideoPath)}`,
+                  createdAt: new Date()
+                }
+              }
+            });
+          } catch (silentError) {
+            logger.warn(`[submitApplication] Silent video creation failed for application ${jobApplication._id}: ${silentError.message}`);
+          }
 
           logger.info(`[submitApplication] Video processing complete for application ${jobApplication._id}`);
         } catch (processingError) {
@@ -709,13 +730,13 @@ const submitApplication = async (candidateId, applicationData, files) => {
     // Update candidate profile stats
     await CandidateProfile.findOneAndUpdate(
       { user: candidateId },
-      { 
+      {
         $inc: { 'stats.totalApplications': 1, 'stats.pending': 1 },
         $set: { lastProfileUpdateAt: new Date() }
       },
       { upsert: true }
     );
-    
+
     await jobApplication.populate({
       path: 'jobId',
       select: 'title location employer',
@@ -822,16 +843,16 @@ const getApplicationById = async (candidateId, applicationId) => {
     applicationId,
     candidateId
   })
-  .populate({
-    path: 'jobId',
-    select: 'title location salaryRange employmentType description requirements benefits employer',
-    populate: {
-      path: 'employer',
-      select: 'companyName'
-    }
-  })
-  .populate('candidateId', 'fullName email phoneNumber')
-  .lean();
+    .populate({
+      path: 'jobId',
+      select: 'title location salaryRange employmentType description requirements benefits employer',
+      populate: {
+        path: 'employer',
+        select: 'companyName'
+      }
+    })
+    .populate('candidateId', 'fullName email phoneNumber')
+    .lean();
 
   if (application && application.jobId && application.jobId.employer) {
     application.jobId.company = application.jobId.employer.companyName;
@@ -896,10 +917,10 @@ const withdrawApplication = async (candidateId, applicationId) => {
     } else if (application.status === 'Rejected') {
       statUpdates['stats.rejected'] = -1;
     }
-    
+
     await CandidateProfile.findOneAndUpdate(
       { user: candidateId },
-      { 
+      {
         $inc: statUpdates,
         $set: { lastProfileUpdateAt: new Date() }
       }

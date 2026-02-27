@@ -81,6 +81,14 @@ const jobApplicationSchema = new mongoose.Schema({
     filePath: { type: String },  // relative: /uploads/application-videos-silent/<name>-silent.mp4
     createdAt: { type: Date }
   },
+  // Voice verification enrollment — generated from audioFile by the Python voice service
+  voiceEnrollment: {
+    speakerId: { type: String, default: null },    // applicationId echoed back from Python /api/enroll
+    embeddingPath: { type: String, default: null },    // embeddings/<speaker_id>.pt on the Python service
+    enrolledAt: { type: Date, default: null },
+    status: { type: String, enum: ['pending', 'enrolled', 'failed'], default: 'pending' },
+    errorMessage: { type: String, default: null },
+  },
   coverLetter: {
     type: String,
     maxlength: 500
@@ -139,11 +147,11 @@ jobApplicationSchema.index({ applicationId: 1 }, { unique: true }); // Unique ap
 jobApplicationSchema.index({ 'applicationProfile.personalInfo.email': 1 }); // For email search
 
 // Virtual for application age
-jobApplicationSchema.virtual('appliedAgo').get(function() {
+jobApplicationSchema.virtual('appliedAgo').get(function () {
   const now = new Date();
   const diffTime = Math.abs(now - this.appliedAt);
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 1) return '1 day ago';
   if (diffDays < 7) return `${diffDays} days ago`;
   if (diffDays < 30) return `${Math.ceil(diffDays / 7)} weeks ago`;
@@ -154,7 +162,7 @@ jobApplicationSchema.virtual('appliedAgo').get(function() {
 jobApplicationSchema.set('toJSON', { virtuals: true });
 
 // Pre-save middleware to update lastUpdated
-jobApplicationSchema.pre('save', function(next) {
+jobApplicationSchema.pre('save', function (next) {
   this.lastUpdated = new Date();
   next();
 });

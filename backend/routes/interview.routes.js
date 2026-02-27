@@ -44,4 +44,13 @@ router.post(
   interviewController.transcribeAudio
 );
 
+// ── Voice Proctoring ──────────────────────────────────────────────────────────
+// Chunk endpoint receives raw float32 PCM from the browser (3s = ~192kb at 16kHz).
+// The backend splits each chunk into 512-sample (32ms) frames before forwarding
+// to the Python WebSocket — this is what Silero VAD requires.
+const rawBody = express.raw({ type: 'application/octet-stream', limit: '256kb' });
+router.post('/sessions/:sessionId/voice-proctoring/start', auth, interviewController.startVoiceProctoring);
+router.post('/sessions/:sessionId/voice-proctoring/chunk', auth, rawBody, interviewController.streamAudioChunk);
+router.post('/sessions/:sessionId/voice-proctoring/stop', auth, interviewController.stopVoiceProctoring);
+
 module.exports = router;

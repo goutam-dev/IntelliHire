@@ -19,6 +19,7 @@ const InterviewSession = require('../models/InterviewSession');
 const JobApplication = require('../models/JobApplication');
 const logger = require('../utils/logger');
 const { AppError } = require('../utils/errorHandler');
+const voiceProctoringService = require('./voiceProctoringService');
 
 // ── Configuration ────────────────────────────────────────────────────────────
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -478,7 +479,17 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
  * Finalize the interview — generate closing summary and detailed evaluation.
  */
 async function completeSession(sessionId, { cheatingEvents = [], totalCheatingScore = 0, terminationReason = '' } = {}) {
-  const session = await InterviewSession.findById(sessionId);
+  let session = await InterviewSession.findById(sessionId);
+  if (!session) throw new Error('Session not found');
+
+  // Flush voice proctoring before finalizing so mismatch/session stats are up to date.
+  try {
+    await voiceProctoringService.stopVerificationWS(sessionId, String(session.candidateId));
+  } catch (err) {
+    logger.warn(`[Interview] Voice proctoring stop failed during completeSession: ${err.message}`);
+  }
+
+  session = await InterviewSession.findById(sessionId);
   if (!session) throw new Error('Session not found');
 
   session.completedAt = new Date();
@@ -663,6 +674,7 @@ function formatSessionSummary(session) {
     totalQuestions: session.turns.length,
     totalAnswered: session.turns.filter(t => !t.isUnanswered).length,
     scoring: session.scoring,
+    // Screen-proctoring events (tab switch, fullscreen exit, etc.)
     integrity: {
       verdict: session.integrity.integrityVerdict,
       totalScore: session.integrity.totalCheatingScore,
@@ -670,6 +682,9 @@ function formatSessionSummary(session) {
       events: session.integrity.cheatingEvents,
       terminationReason: session.integrity.terminationReason,
     },
+    // Voice-proctoring events (speaker mismatch during interview)
+    // Completely separate from integrity above — mismatches never terminate the session.
+    voiceProctoring: voiceProctoringService.formatVoiceProctoringReport(session),
     turns: session.turns.map(t => ({
       index: t.index,
       phase: t.phase,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -247,6 +247,22 @@ const JobApplication = () => {
   // UI states
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // In-page video recorder state (used for application video)
+  const [isRecorderOpen, setIsRecorderOpen] = useState(false);
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState("");
+  const [recordingError, setRecordingError] = useState("");
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [hasMicTrack, setHasMicTrack] = useState(true);
+  const [recordingInfo, setRecordingInfo] = useState('');
+  const recorderVideoRef = useRef(null);
+  const recorderStreamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const micAudioCtxRef = useRef(null);
+  const micAnalyserRef = useRef(null);
+  const micRafRef = useRef(null);
+
   const handleResumePreview = () => {
     console.log('Resume data:', profileData?.resume); // Debug log
     
@@ -474,11 +490,228 @@ const JobApplication = () => {
       return;
     }
 
+    if (recordedVideoUrl) {
+      URL.revokeObjectURL(recordedVideoUrl);
+      setRecordedVideoUrl('');
+    }
+
     setApplicationForm((prev) => ({
       ...prev,
       newVideoFile: file,
     }));
   };
+
+  const cleanupRecorderStream = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+    mediaRecorderRef.current = null;
+    recordedChunksRef.current = [];
+
+    if (recorderStreamRef.current) {
+      recorderStreamRef.current.getTracks().forEach((track) => track.stop());
+      recorderStreamRef.current = null;
+    }
+
+    if (recorderVideoRef.current) {
+      recorderVideoRef.current.srcObject = null;
+    }
+
+    if (micRafRef.current) {
+      cancelAnimationFrame(micRafRef.current);
+      micRafRef.current = null;
+    }
+
+    if (micAudioCtxRef.current) {
+      micAudioCtxRef.current.close().catch(() => {});
+      micAudioCtxRef.current = null;
+    }
+
+    micAnalyserRef.current = null;
+    setAudioLevel(0);
+    setHasMicTrack(true);
+    setRecordingInfo('');
+  }, []);
+
+  const handleOpenRecorder = async () => {
+    setRecordingError("");
+    setRecordingInfo('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user',
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
+
+      const audioTracks = stream.getAudioTracks();
+      const micPresent = audioTracks.length > 0;
+      setHasMicTrack(micPresent);
+
+      if (!micPresent) {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecordingError('Microphone track was not detected. Please enable microphone permission and try again.');
+        return;
+      }
+
+      recorderStreamRef.current = stream;
+      setIsRecorderOpen(true);
+
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        const audioCtx = new AudioContextClass();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.7;
+        source.connect(analyser);
+
+        micAudioCtxRef.current = audioCtx;
+        micAnalyserRef.current = analyser;
+
+        const data = new Uint8Array(analyser.fftSize);
+        const tick = () => {
+          const node = micAnalyserRef.current;
+          if (!node) return;
+          node.getByteTimeDomainData(data);
+          let sumSq = 0;
+          for (let i = 0; i < data.length; i += 1) {
+            const centered = (data[i] - 128) / 128;
+            sumSq += centered * centered;
+          }
+          const rms = Math.sqrt(sumSq / data.length);
+          const normalized = Math.min(1, rms * 8);
+          setAudioLevel(normalized);
+          micRafRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+      }
+    } catch (err) {
+      setRecordingError('Could not access camera/microphone. Please allow permissions and try again.');
+    }
+  };
+
+  const handleStartRecording = () => {
+    const stream = recorderStreamRef.current;
+    if (!stream) {
+      setRecordingError('Recorder is not initialized.');
+      return;
+    }
+
+    if (!hasMicTrack) {
+      setRecordingError('Microphone is not available. Please enable it before recording.');
+      return;
+    }
+
+    const supportedTypes = [
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9,opus',
+      'video/mp4',
+      'video/webm',
+    ];
+    const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+
+    try {
+      recordedChunksRef.current = [];
+      const recorderOptions = mimeType
+        ? {
+            mimeType,
+            audioBitsPerSecond: 128000,
+            videoBitsPerSecond: 1500000,
+          }
+        : {
+            audioBitsPerSecond: 128000,
+            videoBitsPerSecond: 1500000,
+          };
+      const recorder = new MediaRecorder(stream, recorderOptions);
+      mediaRecorderRef.current = recorder;
+      setRecordingInfo(`Recording format: ${recorder.mimeType || mimeType || 'browser-default'}`);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        setIsRecordingVideo(false);
+        const finalMimeType = recorder.mimeType || 'video/webm';
+        const blob = new Blob(recordedChunksRef.current, { type: finalMimeType });
+
+        if (!blob.size) {
+          setRecordingError('Recording failed. Please try again.');
+          return;
+        }
+
+        if (blob.size > 50 * 1024 * 1024) {
+          setRecordingError('Recorded video exceeds 50MB. Please record a shorter introduction.');
+          return;
+        }
+
+        const extension = finalMimeType.includes('mp4') ? 'mp4' : 'webm';
+        const file = new File([blob], `application-intro-${Date.now()}.${extension}`, {
+          type: finalMimeType,
+        });
+
+        if (recordedVideoUrl) {
+          URL.revokeObjectURL(recordedVideoUrl);
+        }
+        const previewUrl = URL.createObjectURL(blob);
+        setRecordedVideoUrl(previewUrl);
+
+        setApplicationForm((prev) => ({
+          ...prev,
+          videoOption: 'new',
+          newVideoFile: file,
+        }));
+      };
+
+      recorder.start(250);
+      setIsRecordingVideo(true);
+      setRecordingError('');
+    } catch {
+      setRecordingError('Could not start recording. Please try again.');
+    }
+  };
+
+  const handleStopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+  };
+
+  const handleCloseRecorder = () => {
+    cleanupRecorderStream();
+    setIsRecorderOpen(false);
+    setIsRecordingVideo(false);
+  };
+
+  useEffect(() => {
+    if (isRecorderOpen && recorderVideoRef.current && recorderStreamRef.current) {
+      recorderVideoRef.current.srcObject = recorderStreamRef.current;
+    }
+  }, [isRecorderOpen]);
+
+  useEffect(() => {
+    return () => {
+      cleanupRecorderStream();
+      if (recordedVideoUrl) {
+        URL.revokeObjectURL(recordedVideoUrl);
+      }
+    };
+  }, [cleanupRecorderStream, recordedVideoUrl]);
 
   const handleCoverLetterChange = (e) => {
     const value = e.target.value;
@@ -1558,6 +1791,98 @@ const JobApplication = () => {
                         </div>
                       </label>
                     </div>
+
+                    <div className="mt-3 text-center text-xs text-slate-500">or</div>
+
+                    <div className="mt-3 border border-purple-200 rounded-lg p-4 bg-purple-50/40">
+                      <div className="text-xs text-slate-600 mb-3">
+                        Best quality for voice verification: record in a quiet room, keep laptop/phone mic near you, and speak clearly for 20-40 seconds.
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">Record video here</p>
+                          <p className="text-xs text-slate-600">Uses your current camera + microphone setup for this device/environment.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={isRecorderOpen ? handleCloseRecorder : handleOpenRecorder}
+                          className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm transition-colors"
+                        >
+                          {isRecorderOpen ? 'Close Recorder' : 'Open Recorder'}
+                        </button>
+                      </div>
+
+                      {recordingError && (
+                        <div className="mt-3 p-2.5 rounded-md border border-red-200 bg-red-50 text-red-700 text-xs">
+                          {recordingError}
+                        </div>
+                      )}
+
+                      {isRecorderOpen && (
+                        <div className="mt-4 space-y-3">
+                          <video
+                            ref={recorderVideoRef}
+                            autoPlay
+                            muted
+                            playsInline
+                            className="w-full max-h-72 rounded-lg border border-slate-200 bg-black"
+                          />
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className={hasMicTrack ? 'text-emerald-700 font-medium' : 'text-red-700 font-medium'}>
+                                {hasMicTrack ? 'Mic detected' : 'Mic not detected'}
+                              </span>
+                              <span className="text-slate-500">Live mic level</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                              <div
+                                className={`h-full transition-all duration-75 ${audioLevel > 0.04 ? 'bg-emerald-500' : 'bg-slate-400'}`}
+                                style={{ width: `${Math.round(Math.min(1, audioLevel) * 100)}%` }}
+                              />
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              Speak now and ensure the bar moves before recording.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {!isRecordingVideo ? (
+                              <button
+                                type="button"
+                                onClick={handleStartRecording}
+                                disabled={!hasMicTrack}
+                                className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-sm transition-colors"
+                              >
+                                Start Recording
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleStopRecording}
+                                className="px-3 py-2 bg-slate-900 text-white rounded-lg hover:bg-black text-sm transition-colors"
+                              >
+                                Stop Recording
+                              </button>
+                            )}
+                            {isRecordingVideo && <span className="text-xs text-red-600 font-medium">Recording…</span>}
+                          </div>
+                          {recordingInfo && (
+                            <p className="text-[11px] text-slate-500">{recordingInfo}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {recordedVideoUrl && (
+                      <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <p className="text-xs text-emerald-700 font-medium mb-2">Recorded preview</p>
+                        <video
+                          controls
+                          src={recordedVideoUrl}
+                          className="w-full max-h-64 rounded border border-emerald-200 bg-black"
+                        />
+                      </div>
+                    )}
+
                     {applicationForm.newVideoFile && (
                       <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
                         <div className="flex items-center gap-2">

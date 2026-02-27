@@ -83,6 +83,8 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   try {
     const ext = path.extname(file.originalname).toLowerCase();
+    const mime = (file.mimetype || '').toLowerCase();
+    const normalizedMime = mime.split(';')[0].trim();
     
     if (file.fieldname === 'resume') {
       // Check both mimetype and extension
@@ -99,10 +101,16 @@ const fileFilter = (req, file, cb) => {
         cb(new Error('Only JPG, PNG, GIF, and WEBP images are allowed for profile photos'), false);
       }
     } else if (file.fieldname === 'profileVideo' || file.fieldname === 'applicationVideo') {
-      if (ALLOWED_VIDEO_MIMETYPES.includes(file.mimetype) && ALLOWED_VIDEO_EXTENSIONS.includes(ext)) {
+      const fallbackMimes = new Set(['application/octet-stream', 'text/plain', '']);
+      const mimeAllowed =
+        ALLOWED_VIDEO_MIMETYPES.includes(normalizedMime) ||
+        normalizedMime.startsWith('video/') ||
+        fallbackMimes.has(normalizedMime);
+
+      if (mimeAllowed && ALLOWED_VIDEO_EXTENSIONS.includes(ext)) {
         cb(null, true);
       } else {
-        cb(new Error('Only MP4, WEBM, MOV, and AVI video files are allowed'), false);
+        cb(new Error(`Only MP4, WEBM, MOV, and AVI video files are allowed (received: ${file.mimetype || 'unknown'})`), false);
       }
     } else {
       cb(new Error('Invalid file field name'), false);

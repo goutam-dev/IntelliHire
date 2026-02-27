@@ -1,13 +1,26 @@
 /**
  * interviewController.js
  * 
- * Thin controller — delegates all logic to interviewService.
+ * Thin controller — delegates all logic to interviewService and voiceProctoringService.
  * Handles request validation, auth checks, and response formatting.
  */
 
 const interviewService = require('../services/interviewService');
+const voiceProctoringService = require('../services/voiceProctoringService');
+const JobApplication = require('../models/JobApplication');
+const InterviewSession = require('../models/InterviewSession');
 const { asyncHandler } = require('../utils/errorHandler');
 const logger = require('../utils/logger');
+const fs = require('fs');
+const path = require('path');
+
+async function authorizeVoiceSession(sessionId, candidateId) {
+  if (!candidateId) return null;
+  const session = await InterviewSession.findById(sessionId, 'applicationId candidateId status voiceProctoring').lean();
+  if (!session) return null;
+  if (String(session.candidateId) !== String(candidateId)) return null;
+  return session;
+}
 
 /**
  * POST /api/interview/sessions
@@ -146,4 +159,143 @@ exports.getSession = asyncHandler(async (req, res) => {
 
   const session = await interviewService.getSession(sessionId, candidateId);
   res.json({ success: true, data: session });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  VOICE PROCTORING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/interview/sessions/:sessionId/voice-proctoring/start
+ * Open a WebSocket to the Python voice verification service for this session.
+ * Requires the application to have a voiceEnrollment.speakerId.
+ */
+exports.startVoiceProctoring = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const { elapsedSeconds = 0 } = req.body;
+  const candidateId = req.auth?.userId;
+
+  if (!candidateId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const session = await authorizeVoiceSession(sessionId, candidateId);
+  if (!session) {
+    return res.status(404).json({ success: false, message: 'Session not found' });
+  }
+
+  if (!['created', 'started', 'in_progress', 'completing'].includes(session.status)) {
+    return res.status(400).json({ success: false, message: `Cannot start voice proctoring in status: ${session.status}` });
+  }
+
+  logger.info(`[VoiceProctoring] startVoiceProctoring: sessionId=${sessionId} applicationId=${session.applicationId}`);
+
+  // Load application to get speakerId
+  let application = await JobApplication.findOne(
+    { applicationId: session.applicationId },
+    'voiceEnrollment applicationId audioFile'
+  );
+
+  if (!application?.voiceEnrollment?.speakerId) {
+    // If enrollment is pending but audio already exists, trigger on-demand enrollment.
+    if (application?.voiceEnrollment?.status === 'pending' && application?.audioFile?.filePath) {
+      const relativeAudioPath = String(application.audioFile.filePath).replace(/^[/\\]+/, '');
+      const absoluteAudioPath = path.join(__dirname, '..', relativeAudioPath);
+
+      if (fs.existsSync(absoluteAudioPath)) {
+        voiceProctoringService.enrollSpeaker(application.applicationId, absoluteAudioPath)
+          .catch((err) => logger.warn(`[VoiceProctoring] On-demand enrollment failed: ${err.message}`));
+      }
+    }
+
+    // Reload once in case speakerId was populated between read and now.
+    application = await JobApplication.findOne(
+      { applicationId: session.applicationId },
+      'voiceEnrollment applicationId audioFile'
+    );
+
+    if (application?.voiceEnrollment?.speakerId) {
+      // Continue below and connect WS.
+    } else {
+    logger.warn(`[VoiceProctoring] No speakerId for applicationId=${session.applicationId} (status=${application?.voiceEnrollment?.status})`);
+    return res.json({
+      success: true,
+      data: {
+        started: false,
+        reason: application?.voiceEnrollment?.status === 'failed'
+          ? 'Voice enrollment failed during application — proctoring unavailable'
+            : 'Voice enrollment not yet complete. Please wait a few seconds and retry.',
+      },
+    });
+    }
+  }
+
+  if (voiceProctoringService.isSessionActive(sessionId, candidateId)) {
+    logger.info(`[VoiceProctoring] Session already active: ${sessionId}`);
+    return res.json({ success: true, data: { started: true, resumed: true } });
+  }
+
+  // Connect to Python WS (non-blocking — resolves once WS is 'ready' or times out)
+  voiceProctoringService.connectVerificationWS(
+    sessionId,
+    application.voiceEnrollment.speakerId,
+    elapsedSeconds,
+    { candidateId }
+  ).catch((err) => {
+    logger.warn(`[VoiceProctoring] connectVerificationWS error (session=${sessionId}): ${err.message}`);
+  });
+
+  logger.info(`[VoiceProctoring] Started for session=${sessionId} speaker=${application.voiceEnrollment.speakerId}`);
+  res.json({ success: true, data: { started: true, speakerId: application.voiceEnrollment.speakerId } });
+});
+
+/**
+ * POST /api/interview/sessions/:sessionId/voice-proctoring/chunk
+ * Forward a raw float32 PCM audio chunk (2048 bytes = 512 samples at 16kHz) to the Python WS.
+ * Body must be raw binary (Content-Type: application/octet-stream).
+ */
+exports.streamAudioChunk = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const candidateId = req.auth?.userId;
+  const chunkBuffer = req.body; // express.raw() middleware parses this
+
+  if (!candidateId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const session = await authorizeVoiceSession(sessionId, candidateId);
+  if (!session) {
+    return res.status(404).json({ success: false, message: 'Session not found' });
+  }
+
+  if (!Buffer.isBuffer(chunkBuffer) || chunkBuffer.length === 0) {
+    return res.status(400).json({ success: false, message: 'Expected raw audio buffer' });
+  }
+
+  const forwarded = voiceProctoringService.processAudioChunk(sessionId, chunkBuffer, candidateId);
+
+  // 200 always — silence failures to keep interview flowing
+  res.json({ success: true, data: { forwarded } });
+});
+
+/**
+ * POST /api/interview/sessions/:sessionId/voice-proctoring/stop
+ * Gracefully stop voice proctoring — sends STOP to the Python service, waits for session_end.
+ */
+exports.stopVoiceProctoring = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const candidateId = req.auth?.userId;
+
+  if (!candidateId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const session = await authorizeVoiceSession(sessionId, candidateId);
+  if (!session) {
+    return res.status(404).json({ success: false, message: 'Session not found' });
+  }
+
+  await voiceProctoringService.stopVerificationWS(sessionId, candidateId);
+
+  res.json({ success: true, data: { stopped: true } });
 });

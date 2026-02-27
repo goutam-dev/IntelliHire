@@ -147,7 +147,9 @@ const interviewSessionSchema = new mongoose.Schema({
     recommendations: [String],
   },
 
-  // ── Integrity / Anti-Cheating ────────────────────────────────────────────
+  // ── Integrity / Anti-Cheating (Screen Events) ───────────────────────────────
+  // Tracks tab switches, fullscreen exits, window blur etc.
+  // Voice mismatch events are stored separately in voiceProctoring below.
   integrity: {
     cheatingEvents: [cheatingEventSchema],
     totalCheatingScore: { type: Number, default: 0 },
@@ -157,6 +159,31 @@ const interviewSessionSchema = new mongoose.Schema({
       default: 'clean',
     },
     terminationReason: { type: String, default: '' },
+  },
+
+  // ── Voice Proctoring (Speaker Verification) ──────────────────────────────────
+  // Completely separate from integrity above.
+  // Voice mismatches NEVER terminate or pause the interview — they are only logged.
+  voiceProctoring: {
+    speakerId:             { type: String, default: null },
+    enrollmentStatus:      { type: String, enum: ['not_enrolled', 'enrolled', 'failed'], default: 'not_enrolled' },
+    mismatches: [{
+      timestamp:           { type: Number },  // seconds since interview start
+      wallClockTime:       { type: Date },
+      rawScore:            { type: Number },
+      smoothedScore:       { type: Number },
+      segmentDuration:     { type: Number },
+      clipPath:            { type: String },  // relative path to saved WAV clip
+      _id: false,
+    }],
+    totalMismatches:        { type: Number, default: 0 },
+    totalSegmentsAnalyzed:  { type: Number, default: 0 },
+    matchCount:             { type: Number, default: 0 },
+    unsureCount:            { type: Number, default: 0 },
+    sessionStats:           { type: mongoose.Schema.Types.Mixed, default: null },
+    wsSessionId:            { type: String, default: null },
+    startedAt:              { type: Date, default: null },
+    stoppedAt:              { type: Date, default: null },
   },
 
 }, {

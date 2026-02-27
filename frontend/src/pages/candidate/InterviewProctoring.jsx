@@ -17,7 +17,7 @@ import React, {
 import { useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Shield, AlertTriangle, Camera, Mic, Monitor,
+  Shield, AlertTriangle, Camera, Mic, Monitor, Mic2,
   CheckCircle, XCircle, Circle, Loader2, Volume2,
   Radio, Clock, TrendingUp, MessageSquare, Award,
 } from 'lucide-react';
@@ -25,6 +25,7 @@ import {
 import { useInterviewEngine, ENGINE_STATE } from '../../hooks/useInterviewEngine';
 import { useVAD } from '../../hooks/useVAD';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
+import { useVoiceProctoring } from '../../hooks/useVoiceProctoring';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -381,10 +382,22 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     stopVAD: stopVAD,
   });
 
+  // Voice Proctoring — runs in parallel with the interview, non-blocking
+  const {
+    isActive: vpActive,
+    enrollmentStatus: vpEnrollmentStatus,
+    mismatchCount: vpMismatchCount,
+    startProctoring,
+    stopProctoring,
+  } = useVoiceProctoring(cameraStream, engine.engineState === ENGINE_STATE.LISTENING);
+  const vpStartedRef = useRef(false);
+
   // ── Refs ───────────────────────────────────────────────────────────────────
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const initializedRef = useRef(false);
+  const summaryHandledRef = useRef(false);
 
   // ── Audio analyser for waveform (separate from VAD) ────────────────────────
   const [waveformAnalyser, setWaveformAnalyser] = useState(null);
@@ -461,6 +474,8 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
   // ── Initialize interview engine ────────────────────────────────────────────
   useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
     engine.initialize();
   }, []); // eslint-disable-line
 
@@ -485,10 +500,38 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
   // ── Transition to summary when engine is done ──────────────────────────────
   useEffect(() => {
-    if (engine.engineState === ENGINE_STATE.DONE && engine.summary) {
-      onComplete(engine.summary, cheatingReportRef.current, totalCheatingScoreRef.current, screenshotCapturesRef.current);
-    }
-  }, [engine.engineState, engine.summary, onComplete]);
+    if (engine.engineState !== ENGINE_STATE.DONE || !engine.summary) return;
+    if (summaryHandledRef.current) return;
+    summaryHandledRef.current = true;
+
+    (async () => {
+      // Stop voice proctoring and pass all data up
+      await stopProctoring();
+      onComplete(
+        engine.summary,
+        cheatingReportRef.current,
+        totalCheatingScoreRef.current,
+        screenshotCapturesRef.current,
+        vpMismatchCount
+      );
+    })();
+  }, [engine.engineState, engine.summary, onComplete, stopProctoring, vpMismatchCount]);
+
+  // ── Start voice proctoring once candidate-answer phase starts ──────────────
+  // We wait until engineState === LISTENING so AI TTS/question audio is not
+  // sent into speaker verification.
+  // on the first sessionId we see.  The engine may return a resumed/stale
+  // session ID from getActiveSession, then create a NEW session internally;
+  // by the time we hit LISTENING, engine.sessionId is 100% the correct, final
+  // interview session that will be used for transcribe / answer / complete.
+  useEffect(() => {
+    if (vpStartedRef.current) return;
+    if (!engine.sessionId) return;
+    if (engine.engineState !== ENGINE_STATE.LISTENING) return;
+
+    vpStartedRef.current = true;
+    startProctoring(engine.sessionId, engine.elapsedSeconds);
+  }, [engine.sessionId, engine.engineState, startProctoring, engine.elapsedSeconds]);
 
   // ── Anti-cheating: recordCheatingEvent ─────────────────────────────────────
   const recordCheatingEvent = useCallback((eventType, message) => {
@@ -779,6 +822,13 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                 'bg-slate-800 border-slate-700/50 text-slate-400'
               }`}>
               <AlertTriangle size={11} /> {totalCheatingScore}/{CHEATING_THRESHOLD}
+            </div>
+          )}
+          {/* Voice Proctoring Status Badge — non-intrusive, informational only */}
+          {vpActive && (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-violet-400 bg-slate-800 border border-violet-500/30 rounded-full px-3 py-1.5">
+              <Mic2 size={11} className="animate-pulse" />
+              Voice{vpMismatchCount > 0 ? ` · ${vpMismatchCount} flag${vpMismatchCount > 1 ? 's' : ''}` : ''}
             </div>
           )}
           <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
@@ -1128,11 +1178,19 @@ function ScreenshotRow({ screenshots }) {
   );
 }
 
-function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingScore = 0, screenshotCaptures = {} }) {
+function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingScore = 0, screenshotCaptures = {}, localVoiceMismatches = 0 }) {
   const scoring = summary?.scoring || {};
   const turns = summary?.turns || [];
   const avgScore = scoring.averageScore;
   const scored = turns.filter(t => t.evaluation?.score != null);
+
+  // Voice proctoring data — from server summary (populated by voiceProctoringService)
+  const vp = summary?.voiceProctoring || {};
+  const vpTotal = vp.totalMismatches ?? localVoiceMismatches;
+  const vpAnalyzed = vp.totalSegmentsAnalyzed ?? 0;
+  const vpMatches = vp.matchCount ?? 0;
+  const vpEnrolled = vp.enrollmentStatus;
+  const vpMismatches = vp.mismatches ?? [];
 
   const scoreColor = avgScore >= 7 ? 'text-emerald-400' : avgScore >= 5 ? 'text-amber-400' : 'text-red-400';
   const verdict = scoring.overallVerdict || (avgScore >= 7 ? 'Strong Performance' : avgScore >= 5 ? 'Moderate Performance' : 'Needs Improvement');
@@ -1217,6 +1275,66 @@ function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingSc
               </ul>
             </div>
           )}
+
+          {/* Voice Verification Report */}
+          <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-800/70 border-b border-slate-700/40">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                <Mic2 size={13} /> Voice Verification Report
+              </div>
+              <span className={`text-sm font-bold ${vpEnrolled !== 'enrolled' ? 'text-slate-500' :
+                vpTotal === 0 ? 'text-emerald-400' :
+                  vpTotal < 3 ? 'text-amber-400' : 'text-red-400'
+                }`}>
+                {vpEnrolled !== 'enrolled'
+                  ? (vpEnrolled === 'failed' ? 'Enrollment Failed' : 'Not Enrolled')
+                  : vpTotal === 0 ? 'Clean'
+                    : vpTotal < 3 ? `${vpTotal} Flag${vpTotal > 1 ? 's' : ''}`
+                      : `${vpTotal} Mismatches`}
+              </span>
+            </div>
+            {vpEnrolled !== 'enrolled' ? (
+              <div className="px-5 py-4 flex items-center gap-2 text-slate-500 text-sm">
+                <Circle size={15} />
+                {vpEnrolled === 'failed'
+                  ? 'Voice enrollment failed at application time — speaker verification was unavailable.'
+                  : 'Voice enrollment was not completed — voice proctoring was not active.'}
+              </div>
+            ) : vpTotal === 0 ? (
+              <div className="px-5 py-4 flex items-center gap-2 text-emerald-400 text-sm">
+                <CheckCircle size={16} /> Voice matched throughout the session. No mismatches detected.
+              </div>
+            ) : (
+              <div className="px-5 py-4 space-y-3">
+                <div className="flex gap-6 text-xs text-slate-400">
+                  <span>Segments analyzed: <span className="text-slate-200 font-mono">{vpAnalyzed}</span></span>
+                  <span>Matches: <span className="text-emerald-400 font-mono">{vpMatches}</span></span>
+                  <span>Mismatches: <span className="text-red-400 font-mono">{vpTotal}</span></span>
+                </div>
+                {vpMismatches.length > 0 && (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700">
+                    {vpMismatches.map((m, i) => (
+                      <div key={i} className="flex items-center gap-3 bg-slate-900/50 rounded-lg px-3 py-2 text-xs border border-red-500/20">
+                        <XCircle size={12} className="text-red-400 flex-shrink-0" />
+                        <span className="text-slate-400 font-mono">{typeof m.timestamp === 'number' ? `t=${m.timestamp.toFixed(1)}s` : '—'}</span>
+                        <span className="text-red-300/80">score {typeof m.rawScore === 'number' ? m.rawScore.toFixed(3) : '—'}</span>
+                        <span className="text-slate-500">({typeof m.segmentDuration === 'number' ? `${m.segmentDuration.toFixed(1)}s segment` : ''})</span>
+                        {m.clipUrl && (
+                          <a href={m.clipUrl} target="_blank" rel="noopener noreferrer"
+                            className="ml-auto text-sky-400 hover:text-sky-300 text-[10px] font-semibold">
+                            ▶ Clip
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-slate-600 italic">
+                  Voice mismatches are flagged for reviewer attention only — the interview was not interrupted.
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Integrity Report */}
           <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden">
@@ -1337,6 +1455,7 @@ export default function InterviewProctoring() {
   const [summaryCheatReport, setSummaryCheatReport] = useState([]);
   const [summaryCheatScore, setSummaryCheatScore] = useState(0);
   const [summaryScreenshots, setSummaryScreenshots] = useState({});
+  const [summaryVoiceMismatches, setSummaryVoiceMismatches] = useState(0);
 
   const handleAcceptTerms = useCallback(async () => {
     try {
@@ -1357,7 +1476,7 @@ export default function InterviewProctoring() {
     setPhase(PHASE.ERROR);
   }, []);
 
-  const handleInterviewComplete = useCallback((summary, cheatingReport = [], totalCheatingScore = 0, screenshotCaptures = {}) => {
+  const handleInterviewComplete = useCallback((summary, cheatingReport = [], totalCheatingScore = 0, screenshotCaptures = {}, voiceMismatches = 0) => {
     try {
       if (document.exitFullscreen) document.exitFullscreen();
       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
@@ -1366,6 +1485,7 @@ export default function InterviewProctoring() {
     setSummaryCheatReport(cheatingReport);
     setSummaryCheatScore(totalCheatingScore);
     setSummaryScreenshots(screenshotCaptures);
+    setSummaryVoiceMismatches(voiceMismatches);
     setPhase(PHASE.SUMMARY);
   }, []);
 
@@ -1389,7 +1509,14 @@ export default function InterviewProctoring() {
         )}
         {phase === PHASE.SUMMARY && (
           <motion.div key="summary" variants={fadeIn} initial="hidden" animate="visible" exit="hidden">
-            <SummaryScreen jobTitle={jobTitle} summary={summaryData} cheatingReport={summaryCheatReport} totalCheatingScore={summaryCheatScore} screenshotCaptures={summaryScreenshots} />
+            <SummaryScreen
+              jobTitle={jobTitle}
+              summary={summaryData}
+              cheatingReport={summaryCheatReport}
+              totalCheatingScore={summaryCheatScore}
+              screenshotCaptures={summaryScreenshots}
+              localVoiceMismatches={summaryVoiceMismatches}
+            />
           </motion.div>
         )}
         {phase === PHASE.ERROR && (
