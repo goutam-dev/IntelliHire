@@ -1,0 +1,63 @@
+# ─── Direct dependencies ──────────────────────────────────────────────────────
+numpy==1.26.4
+scipy==1.17.0
+torch==2.1.2
+torchaudio==2.1.2
+sounddevice==0.5.5
+soundfile==0.13.1
+pyannote.audio==3.1.1
+
+# ─── HuggingFace stack (models.py patch + model download) ────────────────────
+huggingface-hub==1.3.0
+hf-xet==1.2.0
+safetensors==0.7.0
+filelock==3.20.3
+fsspec==2026.2.0
+regex==2026.1.15
+
+# ─── HTTP clients (huggingface-hub uses httpx) ────────────────────────────────
+requests==2.32.5
+httpx==0.28.1
+httpcore==1.0.9
+anyio==4.12.1
+h11==0.16.0
+h2==4.3.0
+hpack==4.1.0
+hyperframe==6.1.0
+certifi==2026.1.4
+charset-normalizer==3.4.4
+idna==3.11
+urllib3==2.6.3
+
+# ─── pyannote.audio deps ──────────────────────────────────────────────────────
+matplotlib==3.9.0
+PyYAML==6.0.3
+ruamel.yaml==0.18.17
+ruamel.yaml.clib==0.2.15
+tenacity==8.2.3
+toml==0.10.2
+click==8.3.1
+pillow==12.1.0
+joblib==1.5.3
+
+# ─── PyTorch / stdlib deps ────────────────────────────────────────────────────
+sympy==1.14.0
+mpmath==1.3.0
+networkx==3.6.1
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+typing_extensions==4.15.0
+packaging==26.0
+tqdm==4.67.3
+
+# ─── C-extension / OS deps ───────────────────────────────────────────────────
+cffi==2.0.0
+pycparser==3.0
+colorama==0.4.6
+
+# ─── Service layer (FastAPI + WebSocket server) ───────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+aiofiles>=23.2.1
+websockets>=12.0
