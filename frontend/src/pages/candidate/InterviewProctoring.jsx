@@ -331,12 +331,11 @@ function PermissionsScreen({ onGranted, onDenied }) {
             const isActive = idx === stepIndex && (status === 'idle' || status === 'requesting');
             return (
               <div key={step.id}
-                className={`flex items-start gap-4 p-4 rounded-xl border transition-colors duration-300 ${
-                  isActive ? 'border-sky-500/40 bg-sky-500/5' :
+                className={`flex items-start gap-4 p-4 rounded-xl border transition-colors duration-300 ${isActive ? 'border-sky-500/40 bg-sky-500/5' :
                   status === 'granted' ? 'border-emerald-500/30 bg-emerald-500/5' :
-                  status === 'denied' ? 'border-red-500/30 bg-red-500/5' :
-                  'border-slate-700/50 bg-slate-800/40'
-                }`}>
+                    status === 'denied' ? 'border-red-500/30 bg-red-500/5' :
+                      'border-slate-700/50 bg-slate-800/40'
+                  }`}>
                 <div className="mt-0.5">{iconForStatus(status)}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white">{step.label}</p>
@@ -406,6 +405,8 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   const isPausedRef = useRef(false);
   const isTerminatingRef = useRef(false);
   const lastViolationAtRef = useRef({});
+  // Stores screenshots: { [eventType]: [dataURL, ...] }
+  const screenshotCapturesRef = useRef({});
 
   // ── Attach camera to video element ─────────────────────────────────────────
   useEffect(() => {
@@ -453,7 +454,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
           const el = document.documentElement;
           const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
           if (req) await req.call(el);
-        } catch {}
+        } catch { }
       }
     })();
   }, []);
@@ -463,10 +464,29 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     engine.initialize();
   }, []); // eslint-disable-line
 
+  // ── Screenshot capture utility ─────────────────────────────────────────────
+  const captureScreenshot = useCallback(async () => {
+    try {
+      const track = streams.screen?.getVideoTracks?.()[0];
+      if (!track || track.readyState === 'ended') return null;
+      // Use ImageCapture API to grab a frame from the screen-share track
+      const imageCapture = new ImageCapture(track);
+      const bitmap = await imageCapture.grabFrame();
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0);
+      bitmap.close();
+      return canvas.toDataURL('image/jpeg', 0.6);
+    } catch {
+      return null;
+    }
+  }, [streams.screen]);
+
   // ── Transition to summary when engine is done ──────────────────────────────
   useEffect(() => {
     if (engine.engineState === ENGINE_STATE.DONE && engine.summary) {
-      onComplete(engine.summary, cheatingReportRef.current, totalCheatingScoreRef.current);
+      onComplete(engine.summary, cheatingReportRef.current, totalCheatingScoreRef.current, screenshotCapturesRef.current);
     }
   }, [engine.engineState, engine.summary, onComplete]);
 
@@ -477,6 +497,22 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     const nowIso = new Date().toISOString();
     const newTotal = totalCheatingScoreRef.current + points;
     totalCheatingScoreRef.current = newTotal;
+
+    // Delay screenshot capture so the OS finishes switching windows/apps.
+    // Capturing immediately would grab the proctoring page itself (still visible
+    // at the moment of the event); after ~1 second the screen-share frame shows
+    // whatever the candidate actually switched to.
+    setTimeout(() => {
+      captureScreenshot().then((dataUrl) => {
+        if (dataUrl) {
+          const prev = screenshotCapturesRef.current[eventType] || [];
+          screenshotCapturesRef.current = {
+            ...screenshotCapturesRef.current,
+            [eventType]: [...prev, dataUrl],
+          };
+        }
+      });
+    }, 1000);
 
     const existingIndex = cheatingReportRef.current.findIndex(r => r.eventType === eventType);
     let updatedReport;
@@ -508,7 +544,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       setCheatingWarning({ score: newTotal, message, eventType, points });
       setTimeout(() => setCheatingWarning(null), 4500);
     }
-  }, [engine]);
+  }, [engine, captureScreenshot]);
 
   useEffect(() => { recordCheatingEventRef.current = recordCheatingEvent; }, [recordCheatingEvent]);
 
@@ -661,7 +697,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       const el = document.documentElement;
       const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
       if (req) await req.call(el);
-    } catch {}
+    } catch { }
 
     // Wait a tick for fullscreen to take effect
     await new Promise(r => setTimeout(r, 300));
@@ -738,11 +774,10 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
             </div>
           )}
           {totalCheatingScore > 0 && (
-            <div className={`flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5 border ${
-              totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-900/50 border-red-500/40 text-red-400' :
+            <div className={`flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5 border ${totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-900/50 border-red-500/40 text-red-400' :
               totalCheatingScore >= CHEATING_THRESHOLD * 0.4 ? 'bg-amber-900/50 border-amber-500/40 text-amber-400' :
-              'bg-slate-800 border-slate-700/50 text-slate-400'
-            }`}>
+                'bg-slate-800 border-slate-700/50 text-slate-400'
+              }`}>
               <AlertTriangle size={11} /> {totalCheatingScore}/{CHEATING_THRESHOLD}
             </div>
           )}
@@ -845,10 +880,9 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
               <motion.div key={`eval-${engine.evaluations.length}`} initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
                 className="mt-4 max-w-2xl w-full flex items-center gap-3 bg-slate-900/50 border border-slate-700/30 rounded-xl px-4 py-2.5">
-                <div className={`text-xs font-bold px-2 py-0.5 rounded-full bg-slate-800 ${
-                  engine.evaluations[engine.evaluations.length - 1].score >= 7 ? 'text-emerald-400' :
+                <div className={`text-xs font-bold px-2 py-0.5 rounded-full bg-slate-800 ${engine.evaluations[engine.evaluations.length - 1].score >= 7 ? 'text-emerald-400' :
                   engine.evaluations[engine.evaluations.length - 1].score >= 5 ? 'text-amber-400' : 'text-red-400'
-                }`}>
+                  }`}>
                   {engine.evaluations[engine.evaluations.length - 1].score ?? '—'}/10
                 </div>
                 <p className="text-xs text-slate-400 flex-1 leading-relaxed">
@@ -904,10 +938,9 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                 </div>
                 <div className="flex gap-1 flex-wrap">
                   {engine.evaluations.map((ev, i) => (
-                    <span key={i} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                      ev.score >= 7 ? 'bg-emerald-900/60 text-emerald-400' :
+                    <span key={i} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ev.score >= 7 ? 'bg-emerald-900/60 text-emerald-400' :
                       ev.score >= 5 ? 'bg-amber-900/60 text-amber-400' : 'bg-red-900/60 text-red-400'
-                    }`}>{ev.score}</span>
+                      }`}>{ev.score}</span>
                   ))}
                 </div>
               </div>
@@ -952,10 +985,9 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                   <p className="text-red-400 font-bold text-base">Interview Paused</p>
                   <p className="text-red-500/70 text-xs mt-0.5">Violation detected — session frozen</p>
                 </div>
-                <div className={`ml-auto px-4 py-1.5 rounded-full border text-xs font-bold ${
-                  totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-900/60 border-red-500/40 text-red-400' :
+                <div className={`ml-auto px-4 py-1.5 rounded-full border text-xs font-bold ${totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-900/60 border-red-500/40 text-red-400' :
                   'bg-slate-800 border-slate-700/50 text-slate-400'
-                }`}>{totalCheatingScore}/{CHEATING_THRESHOLD} pts</div>
+                  }`}>{totalCheatingScore}/{CHEATING_THRESHOLD} pts</div>
               </div>
               <div className="px-7 py-6 space-y-5">
                 <div className="flex items-start gap-3 bg-slate-900/80 border border-slate-700/40 rounded-xl px-4 py-3.5">
@@ -981,10 +1013,9 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                     <p className="text-amber-400 text-xs font-bold font-mono">{totalCheatingScore} / {CHEATING_THRESHOLD}</p>
                   </div>
                   <div className="h-1.5 bg-slate-700/60 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${
-                      totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-500' :
+                    <div className={`h-full rounded-full ${totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-500' :
                       totalCheatingScore >= CHEATING_THRESHOLD * 0.4 ? 'bg-amber-500' : 'bg-emerald-500'
-                    }`} style={{ width: `${Math.min(100, (totalCheatingScore / CHEATING_THRESHOLD) * 100)}%` }} />
+                      }`} style={{ width: `${Math.min(100, (totalCheatingScore / CHEATING_THRESHOLD) * 100)}%` }} />
                   </div>
                 </div>
                 <button onClick={handleReturnToFullscreen}
@@ -1028,7 +1059,76 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 //  PHASE 4: SUMMARY SCREEN
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingScore = 0 }) {
+// ── Screenshot lightbox ───────────────────────────────────────────────────────
+function ScreenshotLightbox({ src, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div className="relative max-w-5xl w-full mx-4" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-0 text-slate-400 hover:text-white text-sm font-medium flex items-center gap-1"
+        >
+          <XCircle size={18} /> Close
+        </button>
+        <img
+          src={src}
+          alt="Violation screenshot"
+          className="w-full rounded-xl border border-slate-600/60 shadow-2xl"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Screenshot row expander ───────────────────────────────────────────────────
+function ScreenshotRow({ screenshots }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const [lightboxSrc, setLightboxSrc] = React.useState(null);
+  if (!screenshots || screenshots.length === 0) return null;
+  return (
+    <>
+      <tr>
+        <td colSpan={3} className="pb-3 pt-1">
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="flex items-center gap-1.5 text-[10px] font-semibold text-sky-400 hover:text-sky-300 transition-colors"
+          >
+            <Camera size={11} />
+            {expanded ? 'Hide' : 'Show'} {screenshots.length} screenshot{screenshots.length > 1 ? 's' : ''}
+          </button>
+          {expanded && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {screenshots.map((src, i) => (
+                <button
+                  key={i}
+                  onClick={() => setLightboxSrc(src)}
+                  className="relative group rounded-lg overflow-hidden border border-slate-600/60 hover:border-sky-500/60 transition-colors focus:outline-none"
+                  title={`Screenshot ${i + 1}`}
+                >
+                  <img
+                    src={src}
+                    alt={`Screenshot ${i + 1}`}
+                    className="h-20 w-auto object-cover block"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                    <Monitor size={16} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <span className="absolute bottom-1 right-1.5 text-[9px] font-bold text-white/70">#{i + 1}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </td>
+      </tr>
+      {lightboxSrc && <ScreenshotLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+    </>
+  );
+}
+
+function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingScore = 0, screenshotCaptures = {} }) {
   const scoring = summary?.scoring || {};
   const turns = summary?.turns || [];
   const avgScore = scoring.averageScore;
@@ -1040,10 +1140,10 @@ function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingSc
   const integrityPct = Math.min(100, Math.round((totalCheatingScore / CHEATING_THRESHOLD) * 100));
   const integrityColor = totalCheatingScore === 0 ? 'text-emerald-400' :
     totalCheatingScore < CHEATING_THRESHOLD * 0.4 ? 'text-sky-400' :
-    totalCheatingScore < CHEATING_THRESHOLD * 0.7 ? 'text-amber-400' : 'text-red-400';
+      totalCheatingScore < CHEATING_THRESHOLD * 0.7 ? 'text-amber-400' : 'text-red-400';
   const integrityLabel = totalCheatingScore === 0 ? 'Clean' :
     totalCheatingScore < CHEATING_THRESHOLD * 0.4 ? 'Minor Flags' :
-    totalCheatingScore >= CHEATING_THRESHOLD ? 'Terminated' : 'Moderate Flags';
+      totalCheatingScore >= CHEATING_THRESHOLD ? 'Terminated' : 'Moderate Flags';
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -1136,13 +1236,21 @@ function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingSc
                       <th className="text-right pb-2 font-semibold">Points</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-700/30">
+                  <tbody>
                     {cheatingReport.map(row => (
-                      <tr key={row.eventType} className="text-slate-300">
-                        <td className="py-2">{row.label}</td>
-                        <td className="py-2 text-center font-mono">{row.count}</td>
-                        <td className="py-2 text-right font-mono text-red-400">+{row.totalPoints}</td>
-                      </tr>
+                      <React.Fragment key={row.eventType}>
+                        <tr className="text-slate-300 border-b border-slate-700/20">
+                          <td className="py-2 flex items-center gap-1.5">
+                            {(screenshotCaptures[row.eventType]?.length > 0) && (
+                              <Camera size={11} className="text-sky-400 flex-shrink-0" />
+                            )}
+                            {row.label}
+                          </td>
+                          <td className="py-2 text-center font-mono">{row.count}</td>
+                          <td className="py-2 text-right font-mono text-red-400">+{row.totalPoints}</td>
+                        </tr>
+                        <ScreenshotRow screenshots={screenshotCaptures[row.eventType]} />
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -1163,10 +1271,9 @@ function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingSc
                   <div key={i} className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <p className="text-sm text-slate-200 font-medium leading-snug flex-1">{t.question}</p>
-                      <span className={`text-sm font-bold flex-shrink-0 ${
-                        (t.evaluation?.score ?? 0) >= 7 ? 'text-emerald-400' :
+                      <span className={`text-sm font-bold flex-shrink-0 ${(t.evaluation?.score ?? 0) >= 7 ? 'text-emerald-400' :
                         (t.evaluation?.score ?? 0) >= 5 ? 'text-amber-400' : 'text-red-400'
-                      }`}>{t.evaluation?.score ?? '—'}/10</span>
+                        }`}>{t.evaluation?.score ?? '—'}/10</span>
                     </div>
                     <p className="text-xs text-slate-400">{t.evaluation?.feedback}</p>
                     {t.answer && !t.answer.startsWith('(no response') && (
@@ -1180,7 +1287,7 @@ function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingSc
 
           <div className="text-center">
             <p className="text-sm text-slate-400">Your session data has been securely submitted for review.</p>
-            <button onClick={() => { try { window.close(); } catch {} window.location.href = '/'; }}
+            <button onClick={() => { try { window.close(); } catch { } window.location.href = '/'; }}
               className="mt-5 inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-colors">
               Close Session
             </button>
@@ -1229,13 +1336,14 @@ export default function InterviewProctoring() {
   const [summaryData, setSummaryData] = useState(null);
   const [summaryCheatReport, setSummaryCheatReport] = useState([]);
   const [summaryCheatScore, setSummaryCheatScore] = useState(0);
+  const [summaryScreenshots, setSummaryScreenshots] = useState({});
 
   const handleAcceptTerms = useCallback(async () => {
     try {
       const el = document.documentElement;
       const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
       if (req) await req.call(el);
-    } catch {}
+    } catch { }
     setPhase(PHASE.PERMISSIONS);
   }, []);
 
@@ -1249,14 +1357,15 @@ export default function InterviewProctoring() {
     setPhase(PHASE.ERROR);
   }, []);
 
-  const handleInterviewComplete = useCallback((summary, cheatingReport = [], totalCheatingScore = 0) => {
+  const handleInterviewComplete = useCallback((summary, cheatingReport = [], totalCheatingScore = 0, screenshotCaptures = {}) => {
     try {
       if (document.exitFullscreen) document.exitFullscreen();
       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-    } catch {}
+    } catch { }
     setSummaryData(summary);
     setSummaryCheatReport(cheatingReport);
     setSummaryCheatScore(totalCheatingScore);
+    setSummaryScreenshots(screenshotCaptures);
     setPhase(PHASE.SUMMARY);
   }, []);
 
@@ -1280,7 +1389,7 @@ export default function InterviewProctoring() {
         )}
         {phase === PHASE.SUMMARY && (
           <motion.div key="summary" variants={fadeIn} initial="hidden" animate="visible" exit="hidden">
-            <SummaryScreen jobTitle={jobTitle} summary={summaryData} cheatingReport={summaryCheatReport} totalCheatingScore={summaryCheatScore} />
+            <SummaryScreen jobTitle={jobTitle} summary={summaryData} cheatingReport={summaryCheatReport} totalCheatingScore={summaryCheatScore} screenshotCaptures={summaryScreenshots} />
           </motion.div>
         )}
         {phase === PHASE.ERROR && (
