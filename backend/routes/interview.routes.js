@@ -53,4 +53,9 @@ router.post('/sessions/:sessionId/voice-proctoring/start', auth, interviewContro
 router.post('/sessions/:sessionId/voice-proctoring/chunk', auth, rawBody, interviewController.streamAudioChunk);
 router.post('/sessions/:sessionId/voice-proctoring/stop', auth, interviewController.stopVoiceProctoring);
 
+// ── Face Proctoring (Unified face + object analysis) ────────────────────────
+router.post('/sessions/:sessionId/face-proctoring/start', auth, interviewController.startFaceProctoring);
+router.post('/sessions/:sessionId/face-proctoring/frame', auth, interviewController.streamFaceFrame);
+router.post('/sessions/:sessionId/face-proctoring/stop', auth, interviewController.stopFaceProctoring);
+
 module.exports = router;

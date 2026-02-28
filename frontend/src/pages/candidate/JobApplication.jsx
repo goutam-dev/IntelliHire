@@ -543,8 +543,9 @@ const JobApplication = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30, min: 24 },
           facingMode: 'user',
         },
         audio: {
@@ -628,11 +629,11 @@ const JobApplication = () => {
         ? {
             mimeType,
             audioBitsPerSecond: 128000,
-            videoBitsPerSecond: 1500000,
+            videoBitsPerSecond: 3500000,
           }
         : {
             audioBitsPerSecond: 128000,
-            videoBitsPerSecond: 1500000,
+            videoBitsPerSecond: 3500000,
           };
       const recorder = new MediaRecorder(stream, recorderOptions);
       mediaRecorderRef.current = recorder;

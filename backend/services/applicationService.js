@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const { extractAudio, createSilentVideo } = require('../utils/videoProcessor');
 const voiceProctoringService = require('./voiceProctoringService');
+const faceProctoringService = require('./faceProctoringService');
 
 /**
  * Application service - handles all application-related business logic
@@ -692,6 +693,17 @@ const submitApplication = async (candidateId, applicationData, files) => {
             );
           } catch (enrollError) {
             logger.warn(`[submitApplication] Voice enrollment threw unexpectedly: ${enrollError.message}`);
+          }
+
+          // 2.1) Kick face enrollment from application video (independent of voice)
+          // Face enrollment is additive and non-fatal; failures are persisted in faceEnrollment.
+          try {
+            await faceProctoringService.enrollFaceFromVideo(
+              jobApplication.applicationId,
+              absoluteVideoPath
+            );
+          } catch (faceEnrollError) {
+            logger.warn(`[submitApplication] Face enrollment threw unexpectedly: ${faceEnrollError.message}`);
           }
 
           // 3) Continue silent video generation independently (non-blocking for enrollment)

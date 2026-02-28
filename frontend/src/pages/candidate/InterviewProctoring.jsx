@@ -26,6 +26,7 @@ import { useInterviewEngine, ENGINE_STATE } from '../../hooks/useInterviewEngine
 import { useVAD } from '../../hooks/useVAD';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { useVoiceProctoring } from '../../hooks/useVoiceProctoring';
+import * as faceProctoringApi from '../../services/api/faceProctoringApi';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -391,6 +392,16 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     stopProctoring,
   } = useVoiceProctoring(cameraStream, engine.engineState === ENGINE_STATE.LISTENING);
   const vpStartedRef = useRef(false);
+  const fpStartedRef = useRef(false);
+  const fpFrameInFlightRef = useRef(false);
+  const fpCanvasRef = useRef(null);
+  const fpFrameIntervalRef = useRef(null);
+  const fpRetryTimerRef = useRef(null);
+  const fpRetryCountRef = useRef(0);
+  const fpForwardFailCountRef = useRef(0);
+  const [fpActive, setFpActive] = useState(false);
+  const [fpEnrollmentStatus, setFpEnrollmentStatus] = useState('unknown');
+  const pauseInterviewRef = useRef(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const videoRef = useRef(null);
@@ -408,6 +419,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   const [cheatingWarning, setCheatingWarning] = useState(null);
   const [proctoringViolation, setProctoringViolation] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [pauseMode, setPauseMode] = useState('lockdown');
   const [pauseReason, setPauseReason] = useState('');
   const [resumeConditions, setResumeConditions] = useState(getResumeConditions());
   const [videoRecording, setVideoRecording] = useState(false);
@@ -506,6 +518,9 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
     (async () => {
       // Stop voice proctoring and pass all data up
+      try {
+        if (engine.sessionId) await faceProctoringApi.stopFaceProctoring(engine.sessionId);
+      } catch { }
       await stopProctoring();
       onComplete(
         engine.summary,
@@ -532,6 +547,170 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     vpStartedRef.current = true;
     startProctoring(engine.sessionId, engine.elapsedSeconds);
   }, [engine.sessionId, engine.engineState, startProctoring, engine.elapsedSeconds]);
+
+  // ── Start face proctoring once answer phase begins ─────────────────────────
+  useEffect(() => {
+    if (fpStartedRef.current) return;
+    if (!engine.sessionId) return;
+    if (engine.engineState !== ENGINE_STATE.LISTENING) return;
+
+    fpStartedRef.current = true;
+    faceProctoringApi.startFaceProctoring(engine.sessionId, engine.elapsedSeconds)
+      .then((result) => {
+        const data = result?.data || {};
+        if (data.started) {
+          setFpActive(true);
+          setFpEnrollmentStatus('enrolled');
+          fpRetryCountRef.current = 0;
+          fpForwardFailCountRef.current = 0;
+        } else {
+          setFpActive(false);
+          setFpEnrollmentStatus('not_enrolled');
+
+          const reason = String(data?.reason || '').toLowerCase();
+          const shouldRetry = reason.includes('not yet complete') || reason.includes('wait');
+          if (shouldRetry && fpRetryCountRef.current < 15) {
+            fpRetryCountRef.current += 1;
+            fpRetryTimerRef.current = setTimeout(() => {
+              fpStartedRef.current = false;
+              setFpEnrollmentStatus(prev => (prev === 'retrying' ? 'not_enrolled' : 'retrying'));
+            }, 8000);
+          }
+        }
+      })
+      .catch(() => {
+        setFpActive(false);
+        setFpEnrollmentStatus('failed');
+      });
+  }, [engine.sessionId, engine.engineState, engine.elapsedSeconds, fpEnrollmentStatus]);
+
+  const pauseInterview = useCallback((reason, mode = 'lockdown') => {
+    if (isPausedRef.current || isTerminatingRef.current) return;
+    isPausedRef.current = true;
+    engine.pause();
+    setPauseMode(mode);
+    setIsPaused(true);
+    setPauseReason(
+      reason || (mode === 'no_face'
+        ? 'Face not visible. Please turn on camera, face the camera, and stay clearly visible to continue.'
+        : 'Interview paused. Return to fullscreen to continue.')
+    );
+    setResumeConditions(getResumeConditions());
+  }, [engine.pause]);
+
+  useEffect(() => {
+    pauseInterviewRef.current = pauseInterview;
+  }, [pauseInterview]);
+
+  const captureFaceFrame = useCallback(async () => {
+    const ensureCanvas = (width, height) => {
+      if (!fpCanvasRef.current) fpCanvasRef.current = document.createElement('canvas');
+      const canvas = fpCanvasRef.current;
+      canvas.width = width;
+      canvas.height = height;
+      return canvas;
+    };
+
+    const drawToDataUrl = (source, width, height) => {
+      const canvas = ensureCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(source, 0, 0, width, height);
+      return canvas.toDataURL('image/jpeg', 0.6);
+    };
+
+    const video = videoRef.current;
+    if (video && video.readyState >= 2) {
+      const width = Math.min(640, video.videoWidth || 640);
+      const height = Math.max(360, Math.round((width * 9) / 16));
+      return drawToDataUrl(video, width, height);
+    }
+
+    try {
+      const track = cameraStream?.getVideoTracks?.()?.[0];
+      if (!track || track.readyState === 'ended') return null;
+      if (typeof ImageCapture === 'undefined') return null;
+
+      const imageCapture = new ImageCapture(track);
+      const bitmap = await imageCapture.grabFrame();
+      const width = Math.min(640, bitmap.width || 640);
+      const height = Math.max(360, Math.round((width * 9) / 16));
+      const dataUrl = drawToDataUrl(bitmap, width, height);
+      bitmap.close();
+      return dataUrl;
+    } catch {
+      return null;
+    }
+  }, [cameraStream]);
+
+  // ── Stream face/object analysis frames periodically ─────────────────────────
+  useEffect(() => {
+    if (!fpActive) return;
+    if (!engine.sessionId) return;
+
+    fpFrameIntervalRef.current = setInterval(async () => {
+      if (isPausedRef.current || isTerminatingRef.current) return;
+      if (fpFrameInFlightRef.current) return;
+
+      const image = await captureFaceFrame();
+      if (!image) return;
+
+      fpFrameInFlightRef.current = true;
+      try {
+        const frameResponse = await faceProctoringApi.sendFaceFrame(engine.sessionId, image);
+        const frameData = frameResponse?.data || {};
+
+        if (frameData.forwarded === false) {
+          fpForwardFailCountRef.current += 1;
+
+          if (fpForwardFailCountRef.current >= 3) {
+            setFpActive(false);
+            fpStartedRef.current = false;
+            setFpEnrollmentStatus('retrying');
+          }
+          return;
+        }
+
+        fpForwardFailCountRef.current = 0;
+
+        const faceSignal = frameData.faceSignal;
+
+        if (faceSignal?.kind === 'formal_face_alert' && faceSignal?.isNoFace) {
+          pauseInterviewRef.current?.(
+            'Face not visible. Please turn on camera, face the camera, and stay clearly visible to continue.',
+            'no_face'
+          );
+        }
+      } catch {
+        // Non-blocking by design
+      } finally {
+        fpFrameInFlightRef.current = false;
+      }
+    }, 1500);
+
+    return () => {
+      if (fpRetryTimerRef.current) {
+        clearTimeout(fpRetryTimerRef.current);
+        fpRetryTimerRef.current = null;
+      }
+      if (fpFrameIntervalRef.current) {
+        clearInterval(fpFrameIntervalRef.current);
+        fpFrameIntervalRef.current = null;
+      }
+    };
+  }, [fpActive, engine.sessionId, captureFaceFrame]);
+
+  useEffect(() => {
+    return () => {
+      if (fpFrameIntervalRef.current) {
+        clearInterval(fpFrameIntervalRef.current);
+        fpFrameIntervalRef.current = null;
+      }
+      if (engine.sessionId) {
+        faceProctoringApi.stopFaceProctoring(engine.sessionId).catch(() => { });
+      }
+    };
+  }, [engine.sessionId]);
 
   // ── Anti-cheating: recordCheatingEvent ─────────────────────────────────────
   const recordCheatingEvent = useCallback((eventType, message) => {
@@ -587,7 +766,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       setCheatingWarning({ score: newTotal, message, eventType, points });
       setTimeout(() => setCheatingWarning(null), 4500);
     }
-  }, [engine, captureScreenshot]);
+  }, [engine.terminate, captureScreenshot]);
 
   useEffect(() => { recordCheatingEventRef.current = recordCheatingEvent; }, [recordCheatingEvent]);
 
@@ -601,19 +780,10 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       return true;
     };
 
-    const pauseInterview = (reason) => {
-      if (isPausedRef.current || isTerminatingRef.current) return;
-      isPausedRef.current = true;
-      engine.pause();
-      setIsPaused(true);
-      setPauseReason(reason || 'Interview paused. Return to fullscreen to continue.');
-      setResumeConditions(getResumeConditions());
-    };
-
     const flagAndPause = (eventType, message, pauseDetail) => {
       if (isTerminatingRef.current) return;
       if (shouldRecord(eventType)) recordCheatingEventRef.current?.(eventType, message);
-      pauseInterview(pauseDetail);
+      pauseInterview(pauseDetail, 'lockdown');
     };
 
     const handleVisibilityChange = () => {
@@ -685,7 +855,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       if (screenTrack) screenTrack.removeEventListener('ended', handleScreenShareEnded);
       clearInterval(monitorId);
     };
-  }, [streams, engine]); // eslint-disable-line
+  }, [streams.screen, engine.terminate, pauseInterview]);
 
   // ── Keyboard / clipboard lockdown ──────────────────────────────────────────
   useEffect(() => {
@@ -751,9 +921,10 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
     isPausedRef.current = false;
     setIsPaused(false);
+    setPauseMode('lockdown');
     setPauseReason('');
     engine.resume();
-  }, [engine]);
+  }, [engine.resume]);
 
   // ── Computed values ────────────────────────────────────────────────────────
   const formattedTime = useMemo(() => {
@@ -791,6 +962,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   }, [engine.engineState]);
 
   const timeWarning = engine.elapsedSeconds >= INTERVIEW_MIN_SECONDS - 5 * 60 && engine.elapsedSeconds < INTERVIEW_MAX_SECONDS;
+  const isNoFacePause = pauseMode === 'no_face';
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
@@ -829,6 +1001,11 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
             <div className="flex items-center gap-1.5 text-xs font-medium text-violet-400 bg-slate-800 border border-violet-500/30 rounded-full px-3 py-1.5">
               <Mic2 size={11} className="animate-pulse" />
               Voice{vpMismatchCount > 0 ? ` · ${vpMismatchCount} flag${vpMismatchCount > 1 ? 's' : ''}` : ''}
+            </div>
+          )}
+          {fpEnrollmentStatus === 'enrolled' && fpActive && (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-sky-400 bg-slate-800 border border-sky-500/30 rounded-full px-3 py-1.5">
+              <Camera size={11} className="animate-pulse" /> Face/Object
             </div>
           )}
           <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
@@ -1033,17 +1210,30 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                 </div>
                 <div>
                   <p className="text-red-400 font-bold text-base">Interview Paused</p>
-                  <p className="text-red-500/70 text-xs mt-0.5">Violation detected — session frozen</p>
+                  <p className="text-red-500/70 text-xs mt-0.5">{isNoFacePause ? 'Face not detected — session paused' : 'Violation detected — session frozen'}</p>
                 </div>
-                <div className={`ml-auto px-4 py-1.5 rounded-full border text-xs font-bold ${totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-900/60 border-red-500/40 text-red-400' :
-                  'bg-slate-800 border-slate-700/50 text-slate-400'
-                  }`}>{totalCheatingScore}/{CHEATING_THRESHOLD} pts</div>
+                {!isNoFacePause && (
+                  <div className={`ml-auto px-4 py-1.5 rounded-full border text-xs font-bold ${totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-900/60 border-red-500/40 text-red-400' :
+                    'bg-slate-800 border-slate-700/50 text-slate-400'
+                    }`}>{totalCheatingScore}/{CHEATING_THRESHOLD} pts</div>
+                )}
               </div>
               <div className="px-7 py-6 space-y-5">
                 <div className="flex items-start gap-3 bg-slate-900/80 border border-slate-700/40 rounded-xl px-4 py-3.5">
-                  <Monitor className="text-slate-400 flex-shrink-0 mt-0.5" size={18} />
-                  <p className="text-slate-200 text-sm">{pauseReason || 'Return to fullscreen to continue.'}</p>
+                  {isNoFacePause
+                    ? <Camera className="text-slate-400 flex-shrink-0 mt-0.5" size={18} />
+                    : <Monitor className="text-slate-400 flex-shrink-0 mt-0.5" size={18} />}
+                  <p className="text-slate-200 text-sm">{pauseReason || (isNoFacePause
+                    ? 'Face not visible. Please face the camera and stay visible.'
+                    : 'Return to fullscreen to continue.')}</p>
                 </div>
+                {isNoFacePause && (
+                  <div className="bg-slate-900/80 border border-slate-700/40 rounded-xl px-4 py-3">
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Make sure camera is ON, your face is centered, and your full face remains visible in good lighting.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Resume conditions</p>
                   {[
@@ -1057,17 +1247,19 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                     </div>
                   ))}
                 </div>
-                <div className="bg-amber-950/50 border border-amber-800/40 rounded-xl px-4 py-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-amber-400 text-xs font-semibold">Integrity Score</p>
-                    <p className="text-amber-400 text-xs font-bold font-mono">{totalCheatingScore} / {CHEATING_THRESHOLD}</p>
+                {!isNoFacePause && (
+                  <div className="bg-amber-950/50 border border-amber-800/40 rounded-xl px-4 py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-amber-400 text-xs font-semibold">Integrity Score</p>
+                      <p className="text-amber-400 text-xs font-bold font-mono">{totalCheatingScore} / {CHEATING_THRESHOLD}</p>
+                    </div>
+                    <div className="h-1.5 bg-slate-700/60 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-500' :
+                        totalCheatingScore >= CHEATING_THRESHOLD * 0.4 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`} style={{ width: `${Math.min(100, (totalCheatingScore / CHEATING_THRESHOLD) * 100)}%` }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-slate-700/60 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-500' :
-                      totalCheatingScore >= CHEATING_THRESHOLD * 0.4 ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`} style={{ width: `${Math.min(100, (totalCheatingScore / CHEATING_THRESHOLD) * 100)}%` }} />
-                  </div>
-                </div>
+                )}
                 <button onClick={handleReturnToFullscreen}
                   className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2.5">
                   <Monitor size={16} /> Return to Fullscreen &amp; Resume
@@ -1191,6 +1383,13 @@ function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingSc
   const vpMatches = vp.matchCount ?? 0;
   const vpEnrolled = vp.enrollmentStatus;
   const vpMismatches = vp.mismatches ?? [];
+
+  const fp = summary?.faceProctoring || {};
+  const fpEnrollment = fp.enrollmentStatus || 'not_enrolled';
+  const fpFaceAlerts = fp.faceAlerts || [];
+  const fpObjectAlerts = fp.objectAlerts || [];
+  const fpTotalFace = fp.totalFaceAlerts ?? fpFaceAlerts.length;
+  const fpTotalObject = fp.totalObjectAlerts ?? fpObjectAlerts.length;
 
   const scoreColor = avgScore >= 7 ? 'text-emerald-400' : avgScore >= 5 ? 'text-amber-400' : 'text-red-400';
   const verdict = scoring.overallVerdict || (avgScore >= 7 ? 'Strong Performance' : avgScore >= 5 ? 'Moderate Performance' : 'Needs Improvement');
@@ -1331,6 +1530,83 @@ function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingSc
                 )}
                 <p className="text-xs text-slate-600 italic">
                   Voice mismatches are flagged for reviewer attention only — the interview was not interrupted.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Face/Object Verification Report */}
+          <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-800/70 border-b border-slate-700/40">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                <Camera size={13} /> Face &amp; Object Verification Report
+              </div>
+              <span className={`text-sm font-bold ${fpEnrollment !== 'enrolled' ? 'text-slate-500' :
+                (fpTotalFace + fpTotalObject) === 0 ? 'text-emerald-400' : 'text-amber-400'
+                }`}>
+                {fpEnrollment !== 'enrolled'
+                  ? (fpEnrollment === 'failed' ? 'Enrollment Failed' : 'Not Enrolled')
+                  : (fpTotalFace + fpTotalObject) === 0
+                    ? 'Clean'
+                    : `${fpTotalFace + fpTotalObject} Alert${(fpTotalFace + fpTotalObject) > 1 ? 's' : ''}`}
+              </span>
+            </div>
+
+            {fpEnrollment !== 'enrolled' ? (
+              <div className="px-5 py-4 flex items-center gap-2 text-slate-500 text-sm">
+                <Circle size={15} />
+                Face enrollment was not completed — face/object proctoring was not active.
+              </div>
+            ) : (fpTotalFace + fpTotalObject) === 0 ? (
+              <div className="px-5 py-4 flex items-center gap-2 text-emerald-400 text-sm">
+                <CheckCircle size={16} /> No face/object violations detected.
+              </div>
+            ) : (
+              <div className="px-5 py-4 space-y-3">
+                <div className="flex gap-6 text-xs text-slate-400">
+                  <span>Face alerts: <span className="text-amber-300 font-mono">{fpTotalFace}</span></span>
+                  <span>Object alerts: <span className="text-amber-300 font-mono">{fpTotalObject}</span></span>
+                </div>
+
+                {fpFaceAlerts.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Face Alerts</p>
+                    {fpFaceAlerts.map((item, i) => (
+                      <div key={`face-${i}`} className="flex items-center gap-3 bg-slate-900/50 rounded-lg px-3 py-2 text-xs border border-amber-500/20">
+                        <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
+                        <span className="text-slate-400 font-mono">{typeof item.timestamp === 'number' ? `t=${item.timestamp.toFixed(1)}s` : '—'}</span>
+                        <span className="text-amber-300/90">{item.violationType || item.status || 'face_alert'}</span>
+                        {typeof item.similarity === 'number' && <span className="text-slate-500">sim {item.similarity.toFixed(3)}</span>}
+                        {item.snapshotUrl && (
+                          <a href={item.snapshotUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-sky-400 hover:text-sky-300 text-[10px] font-semibold">
+                            View Proof
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {fpObjectAlerts.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Object Alerts</p>
+                    {fpObjectAlerts.map((item, i) => (
+                      <div key={`obj-${i}`} className="flex items-center gap-3 bg-slate-900/50 rounded-lg px-3 py-2 text-xs border border-orange-500/20">
+                        <AlertTriangle size={12} className="text-orange-400 flex-shrink-0" />
+                        <span className="text-slate-400 font-mono">{typeof item.timestamp === 'number' ? `t=${item.timestamp.toFixed(1)}s` : '—'}</span>
+                        <span className="text-orange-300/90">{Array.isArray(item.alertTypes) && item.alertTypes.length > 0 ? item.alertTypes.join(', ') : 'object_alert'}</span>
+                        {item.snapshotUrl && (
+                          <a href={item.snapshotUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-sky-400 hover:text-sky-300 text-[10px] font-semibold">
+                            View Proof
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-xs text-slate-600 italic">
+                  Face mismatch frames become violations only when the formal alert threshold is crossed.
                 </p>
               </div>
             )}

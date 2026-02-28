@@ -186,6 +186,41 @@ const interviewSessionSchema = new mongoose.Schema({
     stoppedAt:              { type: Date, default: null },
   },
 
+  // ── Face/Object Proctoring (Unified analysis service) ───────────────────────
+  // Separate from integrity and voice; alerts are logged with proof snapshots.
+  // Face verification failures become violations only when formal alert threshold is crossed.
+  faceProctoring: {
+    enrollmentStatus: { type: String, enum: ['not_enrolled', 'enrolled', 'failed'], default: 'not_enrolled' },
+    candidateId: { type: String, default: null },
+    startedAt: { type: Date, default: null },
+    stoppedAt: { type: Date, default: null },
+    wsSessionId: { type: String, default: null },
+
+    faceAlerts: [{
+      timestamp: { type: Number },
+      wallClockTime: { type: Date },
+      violationType: { type: String },
+      status: { type: String },
+      similarity: { type: Number },
+      livenessScore: { type: Number },
+      numFaces: { type: Number },
+      snapshotPath: { type: String },
+      _id: false,
+    }],
+    totalFaceAlerts: { type: Number, default: 0 },
+
+    objectAlerts: [{
+      timestamp: { type: Number },
+      wallClockTime: { type: Date },
+      alertTypes: [{ type: String }],
+      personCount: { type: Number },
+      suspiciousObjects: [{ type: mongoose.Schema.Types.Mixed }],
+      snapshotPath: { type: String },
+      _id: false,
+    }],
+    totalObjectAlerts: { type: Number, default: 0 },
+  },
+
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

@@ -7,6 +7,7 @@
 
 const interviewService = require('../services/interviewService');
 const voiceProctoringService = require('../services/voiceProctoringService');
+const faceProctoringService = require('../services/faceProctoringService');
 const JobApplication = require('../models/JobApplication');
 const InterviewSession = require('../models/InterviewSession');
 const { asyncHandler } = require('../utils/errorHandler');
@@ -16,7 +17,7 @@ const path = require('path');
 
 async function authorizeVoiceSession(sessionId, candidateId) {
   if (!candidateId) return null;
-  const session = await InterviewSession.findById(sessionId, 'applicationId candidateId status voiceProctoring').lean();
+  const session = await InterviewSession.findById(sessionId, 'applicationId candidateId status voiceProctoring faceProctoring').lean();
   if (!session) return null;
   if (String(session.candidateId) !== String(candidateId)) return null;
   return session;
@@ -296,6 +297,151 @@ exports.stopVoiceProctoring = asyncHandler(async (req, res) => {
   }
 
   await voiceProctoringService.stopVerificationWS(sessionId, candidateId);
+
+  res.json({ success: true, data: { stopped: true } });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  FACE PROCTORING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/interview/sessions/:sessionId/face-proctoring/start
+ * Open a WebSocket to the Unified Face Analysis service for this session.
+ */
+exports.startFaceProctoring = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const { elapsedSeconds = 0 } = req.body;
+  const candidateId = req.auth?.userId;
+
+  if (!candidateId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const session = await authorizeVoiceSession(sessionId, candidateId);
+  if (!session) {
+    return res.status(404).json({ success: false, message: 'Session not found' });
+  }
+
+  if (!['created', 'started', 'in_progress', 'completing'].includes(session.status)) {
+    return res.status(400).json({ success: false, message: `Cannot start face proctoring in status: ${session.status}` });
+  }
+
+  let application = await JobApplication.findOne(
+    { applicationId: session.applicationId },
+    'applicationId faceEnrollment silentVideoFile video'
+  );
+
+  const hasEmbedding = Array.isArray(application?.faceEnrollment?.canonicalEmbedding)
+    && application.faceEnrollment.canonicalEmbedding.length > 0;
+
+  if (!hasEmbedding) {
+    const relativeVideoPath = application?.silentVideoFile?.filePath || application?.video?.filePath;
+
+    if (application?.faceEnrollment?.status === 'pending' && relativeVideoPath) {
+      const cleaned = String(relativeVideoPath).replace(/^[/\\]+/, '');
+      const absoluteVideoPath = path.join(__dirname, '..', cleaned);
+
+      if (fs.existsSync(absoluteVideoPath)) {
+        faceProctoringService.enrollFaceFromVideo(application.applicationId, absoluteVideoPath)
+          .catch((err) => logger.warn(`[FaceProctoring] On-demand enrollment failed: ${err.message}`));
+      }
+    }
+
+    application = await JobApplication.findOne(
+      { applicationId: session.applicationId },
+      'applicationId faceEnrollment'
+    );
+
+    const embeddingReady = Array.isArray(application?.faceEnrollment?.canonicalEmbedding)
+      && application.faceEnrollment.canonicalEmbedding.length > 0;
+
+    if (!embeddingReady) {
+      return res.json({
+        success: true,
+        data: {
+          started: false,
+          reason: application?.faceEnrollment?.status === 'failed'
+            ? 'Face enrollment failed during application — proctoring unavailable'
+            : 'Face enrollment not yet complete. Please wait a few seconds and retry.',
+        },
+      });
+    }
+  }
+
+  if (faceProctoringService.isSessionActive(sessionId, candidateId)) {
+    return res.json({ success: true, data: { started: true, resumed: true } });
+  }
+
+  const canonicalEmbedding = application.faceEnrollment.canonicalEmbedding;
+  const faceCandidateId = application.faceEnrollment.candidateId || application.applicationId;
+
+  faceProctoringService.connectVerificationWS(
+    sessionId,
+    faceCandidateId,
+    canonicalEmbedding,
+    elapsedSeconds,
+    { candidateId }
+  ).catch((err) => {
+    logger.warn(`[FaceProctoring] connectVerificationWS error (session=${sessionId}): ${err.message}`);
+  });
+
+  res.json({
+    success: true,
+    data: {
+      started: true,
+      candidateId: faceCandidateId,
+    },
+  });
+});
+
+/**
+ * POST /api/interview/sessions/:sessionId/face-proctoring/frame
+ * Forward a base64 camera frame to unified face analysis WS.
+ */
+exports.streamFaceFrame = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const candidateId = req.auth?.userId;
+  const { image } = req.body || {};
+
+  if (!candidateId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const session = await authorizeVoiceSession(sessionId, candidateId);
+  if (!session) {
+    return res.status(404).json({ success: false, message: 'Session not found' });
+  }
+
+  if (!image || typeof image !== 'string') {
+    return res.status(400).json({ success: false, message: 'image base64 is required' });
+  }
+
+  const frameResult = faceProctoringService.processFrame(sessionId, image, candidateId);
+  if (!frameResult?.forwarded) {
+    logger.warn(`[FaceProctoring] Frame not forwarded: session=${sessionId} candidate=${candidateId}`);
+  }
+  res.json({ success: true, data: frameResult });
+});
+
+/**
+ * POST /api/interview/sessions/:sessionId/face-proctoring/stop
+ * Stop unified face proctoring for this session.
+ */
+exports.stopFaceProctoring = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const candidateId = req.auth?.userId;
+
+  if (!candidateId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const session = await authorizeVoiceSession(sessionId, candidateId);
+  if (!session) {
+    return res.status(404).json({ success: false, message: 'Session not found' });
+  }
+
+  await faceProctoringService.stopVerificationWS(sessionId, candidateId);
 
   res.json({ success: true, data: { stopped: true } });
 });

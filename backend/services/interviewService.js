@@ -20,6 +20,7 @@ const JobApplication = require('../models/JobApplication');
 const logger = require('../utils/logger');
 const { AppError } = require('../utils/errorHandler');
 const voiceProctoringService = require('./voiceProctoringService');
+const faceProctoringService = require('./faceProctoringService');
 
 // ── Configuration ────────────────────────────────────────────────────────────
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -489,6 +490,12 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
     logger.warn(`[Interview] Voice proctoring stop failed during completeSession: ${err.message}`);
   }
 
+  try {
+    await faceProctoringService.stopVerificationWS(sessionId, String(session.candidateId));
+  } catch (err) {
+    logger.warn(`[Interview] Face proctoring stop failed during completeSession: ${err.message}`);
+  }
+
   session = await InterviewSession.findById(sessionId);
   if (!session) throw new Error('Session not found');
 
@@ -685,6 +692,9 @@ function formatSessionSummary(session) {
     // Voice-proctoring events (speaker mismatch during interview)
     // Completely separate from integrity above — mismatches never terminate the session.
     voiceProctoring: voiceProctoringService.formatVoiceProctoringReport(session),
+    // Face/Object proctoring events (formal face alerts + object alerts with snapshots)
+    // Separate from integrity above — does not alter screen-violation scoring logic.
+    faceProctoring: faceProctoringService.formatFaceProctoringReport(session),
     turns: session.turns.map(t => ({
       index: t.index,
       phase: t.phase,

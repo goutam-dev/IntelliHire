@@ -89,6 +89,22 @@ const jobApplicationSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'enrolled', 'failed'], default: 'pending' },
     errorMessage: { type: String, default: null },
   },
+  // Face verification enrollment — generated from application video by unified face service
+  faceEnrollment: {
+    candidateId: { type: String, default: null },
+    registrationType: { type: String, default: null },
+    canonicalEmbedding: { type: [Number], default: [] },
+    framesUsed: { type: Number, default: 0 },
+    totalFrames: { type: Number, default: 0 },
+    usableFrames: { type: Number, default: 0 },
+    qualityScore: { type: Number, default: null },
+    embeddingConsistency: { type: Number, default: null },
+    qualityBreakdown: { type: mongoose.Schema.Types.Mixed, default: null },
+    referenceImagePath: { type: String, default: null },
+    enrolledAt: { type: Date, default: null },
+    status: { type: String, enum: ['pending', 'enrolled', 'failed'], default: 'pending' },
+    errorMessage: { type: String, default: null },
+  },
   coverLetter: {
     type: String,
     maxlength: 500
