@@ -1,0 +1,148 @@
+Interview Guard: System Documentation
+This document provides a comprehensive, end-to-end technical explanation of the Interview Guard (Anti-Cheating Face Verification) system.
+
+1. System Overview
+Interview Guard is a real-time face verification and anti-cheating system designed for online remote interviews. It ensures that the registered candidate is the one actually taking the interview and tracks various "cheating" violations continuously via their webcam.
+
+Key Capabilities:
+Video-Based Canonical Registration: Captures a short video clip instead of a single photo to build a highly robust "canonical" face embedding representing the candidate's true identity, filtering out bad frames (blurry, bad angle, etc.).
+Real-Time Continuous Verification: Uses WebSockets to stream webcam frames from the browser to the backend for real-time processing (every 2 seconds).
+Deep Learning Verification: Uses InsightFace (ArcFace buffalo_l model) for industry-leading facial recognition accuracy.
+Advanced Anti-Spoofing & Liveness: Combines a Deep Learning ONNX model (MiniFASNetV2) to detect printed photos or screens, along with temporal analysis (MediaPipe) to track blinks and head movements.
+Sliding-Window Alerts System: Tracks consecutive failures of the same type before raising a formal alert to prevent false positives from brief glitches.
+2. Technology Stack
+Backend Framework: FastAPI (Python)
+Database: SQLite via SQLAlchemy and aiosqlite (Async)
+Face Recognition: InsightFace (buffalo_l / ArcFace) - 512-dimensional L2-normalized embeddings.
+Anti-Spoofing: MiniFASNetV2 (ONNX Runtime)
+Liveness/Landmarks: MediaPipe FaceLandmarker
+Image Processing: OpenCV (cv2), NumPy
+Frontend: Vanilla HTML/CSS/JS (no framework) with WebSockets
+Concurrency: Asyncio, WebSockets for live streaming.
+3. Core Architecture & Data Flow
+A. Candidate Registration Flow (/api/register/video)
+Capture: Frontend captures a 3-second video (at 15 FPS) and extracts base64 JPEG frames.
+Submission: Frames are sent to the backend.
+Filtering & Scoring (
+app/video_registration.py
+):
+Extracts face embeddings for each frame using 
+FaceEngine
+.
+Filters out frames with no face, multiple faces, small face size, low detection confidence, high yaw angle, or high blur (Laplacian variance).
+Scores remaining frames based on a weighted combination of size (25%), sharpness (25%), confidence (20%), pose (20%), and eye openness (10%).
+Canonical Embedding:
+Takes the top-K (up to 10) highest-scoring frames.
+Computes the L2-normalized centroid (mean) of these embeddings.
+Checks pairwise consistency to ensure the candidate didn't swap or move erratically.
+Storage: The canonical embedding (as bytes), metadata, and the single best frame are saved to the 
+candidates
+ SQLite table.
+B. Real-Time Interview Monitoring (/ws/verify/{session_id})
+Session Start: Admin starts a session; a new 
+InterviewSession
+ record is created.
+WebSocket Connection: The browser connects to the WebSocket endpoint.
+Continuous Streaming: Every 2 seconds, the browser grabs a frame from the webcam, downscales it, and sends it as base64 over the WebSocket.
+Processing Pipeline (
+app/routes.py
+ -> 
+face_engine.py
+ & 
+liveness.py
+):
+Face Detection & Embedding: face_engine detects faces and gets the ArcFace embedding of the primary face.
+Similarity: Computes Cosine Similarity against the candidate's registered canonical embedding. (Threshold: 0.45).
+Liveness: 
+LivenessDetector
+ checks if the face is real (not a photo) and tracks blinks/movement.
+Alert Logic:
+Determines status: mismatch, no_face, multiple_faces, liveness_fail, or low_quality.
+Uses a sliding window: A violation is only recorded if 6 consecutive frames fail with the exact same error type.
+Logging: Result is pushed to verification_logs DB table and returned to the frontend via WebSocket. If an alert triggers, a snapshot of the violation is saved to disk.
+4. Key Component Deep Dive
+4.1. 
+app/face_engine.py
+ (Core Recognition)
+A singleton wrapper around the insightface library.
+Model: buffalo_l (provides detection, landmarks, and ArcFace embeddings).
+get_embedding()
+: Detects faces, picks the largest one, enforces minimum size (80x80) and confidence thresholds, and returns the 512-dim embedding.
+compare_embeddings()
+: Calculates the dot product between two L2-normalized arrays (equivalent to Cosine Similarity). Range is -1 to 1.
+verify()
+: The main pipeline function that combines detection, embedding extraction, and comparison against the registered identity.
+4.2. 
+app/anti_spoof.py
+ & 
+app/liveness.py
+ (Liveness)
+AntiSpoofPredictor
+: Uses MiniFASNetV2 via ONNX Runtime. It crops the face using a specific scale (2.7), feeds it to the model, and extracts a softmax score representing [fake_prob, real_prob].
+LivenessDetector
+ (The Coordinator):
+Uses the 
+AntiSpoofPredictor
+ output as the base deep-learning liveness score.
+Maintains a temporal buffer of the last few scores to smooth out frame-by-frame jitter.
+Generates a MediaPipe FaceLandmarker pipeline to get 3D facial landmarks and blendshapes.
+Tracks Eye Aspect Ratio (EAR) via blendshapes to count blinks over time.
+Tracks Head Pose variance across the last 50 frames to detect natural movement.
+Applies a temporal bonus/penalty (±0.03 - 0.05) to the final score based on blinks and movement after the first 8-15 seconds of the interview to confidently block video replay attacks.
+4.3. 
+app/video_registration.py
+ (Identity Canonicalization)
+analyze_frame()
+: Grades a single frame looking at blur, yaw (nose deviation vs eye width), and InsightFace detection confidence.
+score_frame_quality()
+: Generates the 0-1 quality metric.
+compute_canonical_embedding()
+: Safely averages multiple ArcFace embeddings. It explicitly calculates the pairwise cosine distance matrix to ensure all frames are tightly clustered (meaning it's definitely the same person sitting still), throwing an error if the spread exceeds 0.6.
+4.4. 
+app/database.py
+ (Data Models)
+Uses async SQLite (aiosqlite) to avoid blocking the FastApi event loop.
+
+Candidate
+: Stores name, email, face_embedding (Binary), and registration metadata.
+InterviewSession
+: Links to a Candidate. Tracks start_time, end_time, pass rates, and total checks.
+VerificationLog
+: Granular log of every frame processed in a session, including timestamps, similarity scores, liveness status, and paths to any generated violation snapshot images.
+4.5. 
+app/routes.py
+ (API & WebSocket)
+REST Endpoints: Manage CRUD for candidates and sessions.
+WebSocket (/ws/verify/{session_id}):
+Maintains the consecutive_same_type counter.
+Dispatches base64 frames to the ML engines.
+Determines the highest priority failure (No Face -> Multiple Faces -> Mismatch -> Liveness).
+Triggers DB writes and violation snapshots (saving images to disk) when the consecutive failure threshold is hit.
+5. Frontend Implementation (
+static/js/app.js
+)
+The frontend is a lightweight Single Page Application (SPA) with three main views: Registration, Monitor, and Dashboard.
+
+Video Registration (
+startVideoCapture()
+):
+Accesses webcam via navigator.mediaDevices.getUserMedia.
+Records frames for 3 seconds into a buffer.
+Sends the batch of frames to the backend as a JSON array of base64 strings.
+WebSocket Monitor (
+connectWebSocket()
+):
+Opens a connection to /ws/verify/{id}.
+A setInterval loop runs every 2 seconds, drawing the current <video> frame to a hidden <canvas>, encoding as JPEG (0.8 quality), and sending it to the server.
+Processes incoming JSON responses to dynamically update progress bars (Similarity & Liveness), display active bounded boxes over the user's face, and populate a scrolling live log.
+Dashboard: Fetches session history and aggregates pass/fail rates for administrative review.
+6. Configuration Parameters (
+app/config.py
+)
+The entire system is tunable from exactly one place. Important constants include:
+
+FACE_MATCH_THRESHOLD = 0.45: The cosine similarity threshold for recognizing the candidate.
+LIVENESS_THRESHOLD = 0.5: Minimum combined score to pass liveness.
+CONSECUTIVE_SAME_TYPE_TO_ALERT = 6: The "forgiveness" window. At 2-sec intervals, this means ~12 seconds of continuous failure is required to trigger a hard violation.
+VERIFICATION_INTERVAL_MS = 2000: Speed of the websocket loop.
+VIDEO_REG_MAX_YAW_DEGREES = 30: Rejects faces turned too far sideways during registration.

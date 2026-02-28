@@ -1,0 +1,7 @@
+data/registrations/
+data/violations/
+venv/
+app\__pycache__/
+dataset/
+310venv/
+__pychache__/
