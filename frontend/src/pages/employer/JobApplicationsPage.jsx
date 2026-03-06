@@ -72,20 +72,22 @@ const JobApplicationsPage = () => {
     loadProfile();
   }, [dispatch, getToken]);
 
-  const fetchApplications = async () => {
-    setLoading(true);
+  const fetchApplications = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const params = { status, search, sort };
       const data = await applicationApi.getApplicationsByJob(jobId, params);
       setApplications(data);
+      return data; // return fresh data so callers don't rely on stale closure
     } catch (err) {
       console.warn('Falling back to mock applications:', err.message);
       // Fallback to mock data for local development
       setApplications(mockApplications);
       setError('Showing mock data due to API error.');
+      return mockApplications;
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -125,13 +127,13 @@ const JobApplicationsPage = () => {
     try {
       const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired', interview: 'Interview Scheduled' };
       const status = map[type];
-      
+
       await applicationApi.bulkUpdateApplicationStatus(selectedIds, {
         status,
         feedback: payload.feedback,
         notes: payload.notes
       });
-      
+
       setSelectedIds([]);
       refresh();
     } catch (err) {
@@ -209,35 +211,36 @@ const JobApplicationsPage = () => {
 
   const handleBatchAnalyze = async () => {
     if (analyzingBatch) return;
-    
+
     const confirmed = window.confirm(
       `This will analyze all ${applications.length} applications using AI. This may take a few minutes. Continue?`
     );
-    
+
     if (!confirmed) return;
-    
+
     setAnalyzingBatch(true);
     setBatchProgress({ current: 0, total: applications.length, status: 'Starting...' });
-    
+
     try {
       const result = await batchAnalyzeApplications(jobId);
       const totalApps = result.data?.totalApplications || applications.length;
-      
+
       setBatchProgress({ current: 0, total: totalApps, status: 'Analyzing resumes...' });
-      
+
       // Start polling for progress
       const interval = setInterval(async () => {
         try {
-          await refresh();
-          
-          // Count how many have been analyzed
-          const analyzed = applications.filter(app => app.aiScore != null).length;
+          // Use fresh data returned from fetchApplications instead of stale closure
+          const freshApps = await fetchApplications(true); // silent = no loading spinner
+
+          // Count how many have been analyzed using fresh data
+          const analyzed = (freshApps || []).filter(app => app.aiScore != null).length;
           setBatchProgress(prev => ({
             ...prev,
             current: analyzed,
             status: analyzed >= totalApps ? 'Complete!' : 'Analyzing resumes...'
           }));
-          
+
           // Stop polling when all are analyzed
           if (analyzed >= totalApps) {
             clearInterval(interval);
@@ -251,9 +254,9 @@ const JobApplicationsPage = () => {
           console.error('Polling error:', err);
         }
       }, 3000); // Poll every 3 seconds
-      
+
       setPollingInterval(interval);
-      
+
     } catch (err) {
       console.error('Batch analysis error:', err);
       alert('Failed to analyze applications: ' + (err.message || 'Unknown error'));
@@ -266,11 +269,11 @@ const JobApplicationsPage = () => {
     setAnalyzingIds(prev => new Set(prev).add(applicationId));
     try {
       await analyzeResume(applicationId);
-      
-      // Auto-refresh to show updated score
+
+      // Auto-refresh to show updated score — use returned fresh data (not stale closure)
       const refreshInterval = setInterval(async () => {
-        await refresh();
-        const app = applications.find(a => a._id === applicationId);
+        const freshApps = await fetchApplications(true); // silent = no loading spinner
+        const app = (freshApps || []).find(a => a._id === applicationId);
         if (app?.aiScore != null) {
           clearInterval(refreshInterval);
           setAnalyzingIds(prev => {
@@ -280,7 +283,7 @@ const JobApplicationsPage = () => {
           });
         }
       }, 2000);
-      
+
       // Timeout after 60 seconds
       setTimeout(() => {
         clearInterval(refreshInterval);
@@ -290,7 +293,7 @@ const JobApplicationsPage = () => {
           return next;
         });
       }, 60000);
-      
+
     } catch (err) {
       console.error('Analysis error:', err);
       alert('Failed to analyze resume. Please try again.');
@@ -344,7 +347,7 @@ const JobApplicationsPage = () => {
         <Handshake className="h-4 w-4" /> Accept
       </button>
       <div className="ml-auto flex items-center gap-2">
-        <button 
+        <button
           onClick={handleBatchAnalyze}
           disabled={analyzingBatch || applications.length === 0}
           className="inline-flex items-center gap-2 rounded-lg border-2 border-violet-300 bg-gradient-to-r from-violet-50 to-purple-50 px-4 py-2 text-sm font-semibold text-violet-700 hover:border-violet-400 hover:from-violet-100 hover:to-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
@@ -371,7 +374,7 @@ const JobApplicationsPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <EmployerHeader 
+      <EmployerHeader
         userName={user?.fullName || employerProfile?.user?.fullName || 'User'}
         companyName={employerProfile?.companyName || 'Company'}
         userImage={user?.imageUrl}
@@ -519,7 +522,7 @@ const JobApplicationsPage = () => {
                   </div>
                   <h3 className="text-xl font-bold text-slate-900 mb-2">AI Analysis in Progress</h3>
                   <p className="text-sm text-slate-600 mb-6">{batchProgress.status}</p>
-                  
+
                   {/* Progress Bar */}
                   <div className="relative w-full h-3 bg-slate-200 rounded-full overflow-hidden mb-3">
                     <motion.div
@@ -529,7 +532,7 @@ const JobApplicationsPage = () => {
                       transition={{ duration: 0.5, ease: 'easeOut' }}
                     />
                   </div>
-                  
+
                   {/* Progress Text */}
                   <div className="flex justify-between items-center text-sm mb-4">
                     <span className="text-slate-600">
@@ -539,7 +542,7 @@ const JobApplicationsPage = () => {
                       {Math.round((batchProgress.current / batchProgress.total) * 100)}%
                     </span>
                   </div>
-                  
+
                   {/* Spinner */}
                   {batchProgress.current < batchProgress.total && (
                     <div className="flex items-center justify-center gap-2 text-slate-500">
@@ -547,7 +550,7 @@ const JobApplicationsPage = () => {
                       <span className="text-xs">This may take a few minutes...</span>
                     </div>
                   )}
-                  
+
                   {/* Success Message */}
                   {batchProgress.current >= batchProgress.total && (
                     <div className="flex items-center justify-center gap-2 text-emerald-600">
