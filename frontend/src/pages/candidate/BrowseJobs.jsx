@@ -528,6 +528,7 @@ const BrowseJobs = () => {
     pagination, 
     filters 
   } = useSelector(state => state.jobs);
+  const { applicationStatuses } = useSelector(state => state.jobApplications);
   
   const [searchTerm, setSearchTerm] = useState(filters.search || '');
   const [showFilters, setShowFilters] = useState(false);
@@ -547,41 +548,12 @@ const BrowseJobs = () => {
   useEffect(() => {
     if (!jobs || jobs.length === 0) return;
 
-    // Use abort controller to cancel pending requests on cleanup
-    const abortController = new AbortController();
-    
+    // Check only missing statuses to avoid re-request storms.
     jobs.forEach(job => {
-      if (job?._id) {
+      if (job?._id && !applicationStatuses[job._id]) {
         dispatch(checkApplicationStatus(job._id));
       }
     });
-
-    return () => {
-      abortController.abort();
-    };
-  }, [dispatch, jobs]);
-
-  // Refresh application statuses when the page becomes visible (user returns from application page)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden && jobs?.length > 0) {
-        // Re-check application statuses when page becomes visible
-        jobs.forEach(job => {
-          if (job?._id) {
-            // Force refresh by clearing cache first
-            dispatch(forceRefreshApplicationStatus({ jobId: job._id }));
-            dispatch(checkApplicationStatus(job._id));
-          }
-        });
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    // Cleanup event listener on unmount
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
   }, [dispatch, jobs]);
 
   // Handle force refresh when returning from application page

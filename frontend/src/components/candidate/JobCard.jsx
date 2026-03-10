@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { checkApplicationStatus, forceRefreshApplicationStatus } from '../../store/slices/jobApplicationsSlice';
 import { 
   MapPin, 
   DollarSign, 
@@ -68,29 +67,6 @@ const JobCard = ({ job, index }) => {
       applicationId: applicationStatus?.application?.applicationId
     });
   }, [applicationStatus, job._id]);
-
-  // Check application status when component mounts or when status is missing
-  useEffect(() => {
-    if (job._id && !applicationStatus) {
-      console.log(`JobCard ${job._id} - Checking application status...`);
-      dispatch(checkApplicationStatus(job._id));
-    }
-  }, [dispatch, job._id, applicationStatus]);
-
-  // Force refresh application status when page becomes visible (handles navigation back from application page)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden && job._id) {
-        console.log(`JobCard ${job._id} - Page visible, refreshing status...`);
-        // Force refresh by clearing cached status first
-        dispatch(forceRefreshApplicationStatus({ jobId: job._id }));
-        dispatch(checkApplicationStatus(job._id));
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [dispatch, job._id]);
 
   const handleViewDetails = () => {
     setIsExpanded(!isExpanded);

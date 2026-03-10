@@ -11,6 +11,18 @@ export const checkApplicationStatus = createAsyncThunk(
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || error.message);
     }
+  },
+  {
+    condition: (jobId, { getState }) => {
+      const state = getState()?.jobApplications;
+      if (!state || !jobId) return false;
+
+      // Skip duplicate checks if status already exists or request is in-flight.
+      if (state.applicationStatuses?.[jobId]) return false;
+      if (state.statusChecksInFlight?.[jobId]) return false;
+
+      return true;
+    },
   }
 );
 
@@ -70,6 +82,7 @@ export const withdrawApplication = createAsyncThunk(
 const initialState = {
   // Application status checks
   applicationStatuses: {}, // { jobId: { hasApplied: boolean, application: {...} } }
+  statusChecksInFlight: {},
   
   // Profile data for applications
   profileData: null,
@@ -130,6 +143,9 @@ const jobApplicationsSlice = createSlice({
       if (state.applicationStatuses[jobId]) {
         delete state.applicationStatuses[jobId];
       }
+      if (state.statusChecksInFlight[jobId]) {
+        delete state.statusChecksInFlight[jobId];
+      }
     },
     clearApplicationsCache: (state) => {
       // Clear applications cache to force fresh fetch
@@ -146,17 +162,28 @@ const jobApplicationsSlice = createSlice({
   extraReducers: (builder) => {
     builder
       // Check application status
-      .addCase(checkApplicationStatus.pending, (state) => {
+      .addCase(checkApplicationStatus.pending, (state, action) => {
         state.loading.checkingStatus = true;
         state.error = null;
+        const jobId = action.meta.arg;
+        if (jobId) {
+          state.statusChecksInFlight[jobId] = true;
+        }
       })
       .addCase(checkApplicationStatus.fulfilled, (state, action) => {
         state.loading.checkingStatus = false;
         const { jobId, ...statusData } = action.payload;
+        if (jobId && state.statusChecksInFlight[jobId]) {
+          delete state.statusChecksInFlight[jobId];
+        }
         state.applicationStatuses[jobId] = statusData;
       })
       .addCase(checkApplicationStatus.rejected, (state, action) => {
         state.loading.checkingStatus = false;
+        const jobId = action.meta.arg;
+        if (jobId && state.statusChecksInFlight[jobId]) {
+          delete state.statusChecksInFlight[jobId];
+        }
         state.error = action.payload;
       })
       

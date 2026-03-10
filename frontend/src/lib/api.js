@@ -7,6 +7,34 @@ import axios from 'axios';
 // Validate environment variables
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+let isAuthRecoveryInProgress = false;
+
+const shouldForceSignOut = (error) => {
+  const status = error?.response?.status;
+  const errorMessage = String(
+    error?.response?.data?.error ||
+    error?.response?.data?.message ||
+    ''
+  ).toLowerCase();
+
+  // Never sign out on transient failures.
+  if (!status || status === 429 || status >= 500) {
+    return false;
+  }
+
+  if (status !== 401) {
+    return false;
+  }
+
+  // Sign out only for definitive auth/session invalidation messages.
+  return (
+    errorMessage.includes('no session token') ||
+    errorMessage.includes('invalid session') ||
+    errorMessage.includes('authentication failed') ||
+    errorMessage.includes('invalid token') ||
+    errorMessage.includes('session token')
+  );
+};
 
 // Warn in development if critical env vars are missing
 if (import.meta.env.MODE === 'development') {
@@ -84,12 +112,24 @@ api.interceptors.response.use(
       const { status } = error.response;
       
       // Handle 401 Unauthorized
-      if (status === 401) {
-        // Token expired or invalid - redirect to sign in
+      if (status === 401 && shouldForceSignOut(error) && !isAuthRecoveryInProgress) {
+        isAuthRecoveryInProgress = true;
+
+        // Only sign out when backend confirms session/token is truly invalid.
         if (window.Clerk) {
-          window.Clerk.signOut();
+          window.Clerk.signOut().catch((signOutError) => {
+            console.error('Clerk signOut failed during auth recovery:', signOutError);
+          }).finally(() => {
+            window.location.href = '/sign-in';
+          });
+          return Promise.reject(error);
         }
+
         window.location.href = '/sign-in';
+      }
+
+      if (status === 429) {
+        console.warn('Rate limited by API. Keeping current session and retrying later.');
       }
       
       // Handle 403 Forbidden
