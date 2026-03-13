@@ -302,6 +302,24 @@ async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding,
       }
 
       if (object.new_alert_fired) {
+        const objectAlertTypes = Array.isArray(object.alert_types) ? object.alert_types : [];
+        const objectPersonCount = Number(object.person_count || 0);
+        const objectSuspiciousObjects = Array.isArray(object.suspicious_objects) ? object.suspicious_objects : [];
+
+        // Track latest object alert so processFrame() can deliver it once to the frontend
+        const sessionEntry = activeSessions.get(String(sessionId)) || {};
+        activeSessions.set(String(sessionId), {
+          ...sessionEntry,
+          latestObjectAlert: {
+            id: `obj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            alertTypes: objectAlertTypes,
+            personCount: objectPersonCount,
+            suspiciousObjects: objectSuspiciousObjects,
+            timestamp: elapsed,
+          },
+          deliveredObjectAlertIds: sessionEntry.deliveredObjectAlertIds || new Set(),
+        });
+
         const objectSnapshotPath = snapshots.object
           ? saveBase64Snapshot(
               snapshots.object,
@@ -313,9 +331,9 @@ async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding,
         await appendObjectAlert(sessionId, {
           timestamp: elapsed,
           wallClockTime,
-          alertTypes: Array.isArray(object.alert_types) ? object.alert_types : [],
-          personCount: Number(object.person_count || 0),
-          suspiciousObjects: Array.isArray(object.suspicious_objects) ? object.suspicious_objects : [],
+          alertTypes: objectAlertTypes,
+          personCount: objectPersonCount,
+          suspiciousObjects: objectSuspiciousObjects,
           snapshotPath: objectSnapshotPath,
         });
       }
@@ -393,9 +411,28 @@ function processFrame(sessionId, imageBase64, candidateId) {
       }
     }
 
+    // Deliver object alerts once — same dedup pattern as faceSignal
+    let objectSignal = null;
+    const objAlert = active.latestObjectAlert;
+    if (objAlert?.id) {
+      if (!active.deliveredObjectAlertIds) active.deliveredObjectAlertIds = new Set();
+      if (!active.deliveredObjectAlertIds.has(objAlert.id)) {
+        active.deliveredObjectAlertIds.add(objAlert.id);
+        objectSignal = {
+          kind: 'object_alert',
+          alertId: objAlert.id,
+          alertTypes: objAlert.alertTypes || [],
+          personCount: objAlert.personCount || 0,
+          suspiciousObjects: objAlert.suspiciousObjects || [],
+          timestamp: objAlert.timestamp,
+        };
+      }
+    }
+
     return {
       forwarded: true,
       faceSignal,
+      objectSignal,
       latestFaceStatus: active.latestFaceStatus || null,
       latestFaceViolationType: active.latestFaceViolationType || null,
     };
@@ -403,6 +440,7 @@ function processFrame(sessionId, imageBase64, candidateId) {
     return {
       forwarded: false,
       faceSignal: null,
+      objectSignal: null,
     };
   }
 }

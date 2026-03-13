@@ -50,3 +50,15 @@ export async function stopVoiceProctoring(sessionId) {
     );
     return response.data;
 }
+
+/**
+ * Get live voice proctoring mismatch count (in-memory, no DB hit).
+ * Used by the frontend poll to detect new mismatches and show toast warnings.
+ * @param {string} sessionId
+ */
+export async function getVoiceProctoringStatus(sessionId) {
+    const response = await api.get(
+        `${API_BASE}/sessions/${sessionId}/voice-proctoring/status`
+    );
+    return response.data;
+}

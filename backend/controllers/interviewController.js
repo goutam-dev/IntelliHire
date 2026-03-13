@@ -301,6 +301,23 @@ exports.stopVoiceProctoring = asyncHandler(async (req, res) => {
   res.json({ success: true, data: { stopped: true } });
 });
 
+/**
+ * GET /api/interview/sessions/:sessionId/voice-proctoring/status
+ * Returns the live in-memory voice mismatch count — no DB hit.
+ * The frontend polls this every ~10s to detect new mismatches and show a toast.
+ */
+exports.getVoiceProctoringStatus = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const candidateId = req.auth?.userId;
+
+  if (!candidateId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const mismatchCount = voiceProctoringService.getMismatchCount(sessionId);
+  res.json({ success: true, data: { mismatchCount } });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  FACE PROCTORING
 // ═══════════════════════════════════════════════════════════════════════════════

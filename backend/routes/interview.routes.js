@@ -52,6 +52,7 @@ const rawBody = express.raw({ type: 'application/octet-stream', limit: '256kb' }
 router.post('/sessions/:sessionId/voice-proctoring/start', auth, interviewController.startVoiceProctoring);
 router.post('/sessions/:sessionId/voice-proctoring/chunk', auth, rawBody, interviewController.streamAudioChunk);
 router.post('/sessions/:sessionId/voice-proctoring/stop', auth, interviewController.stopVoiceProctoring);
+router.get('/sessions/:sessionId/voice-proctoring/status', auth, interviewController.getVoiceProctoringStatus);
 
 // ── Face Proctoring (Unified face + object analysis) ────────────────────────
 router.post('/sessions/:sessionId/face-proctoring/start', auth, interviewController.startFaceProctoring);

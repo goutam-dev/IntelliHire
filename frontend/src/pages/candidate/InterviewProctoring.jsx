@@ -27,6 +27,7 @@ import { useVAD } from '../../hooks/useVAD';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { useVoiceProctoring } from '../../hooks/useVoiceProctoring';
 import * as faceProctoringApi from '../../services/api/faceProctoringApi';
+import * as voiceProctoringApi from '../../services/api/voiceProctoringApi';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -64,11 +65,10 @@ const TERMS_LIST = [
   { id: 1, title: 'Recording Consent', body: 'By proceeding you give IntelliHire irrevocable consent to record your audio, video, and screen activity for the entire duration of this interview session.' },
   { id: 2, title: 'Audio & Video Capture', body: 'Your microphone and camera must remain active at all times. Disabling either device mid-session will terminate the interview.' },
   { id: 3, title: 'Screen Recording', body: 'Your full screen will be recorded. Switching tabs or opening unauthorized applications will be logged as suspicious behaviour.' },
-  { id: 4, title: 'Eye-Contact Tracking', body: 'AI-powered gaze analysis is active. Maintain eye contact with the screen at all times.' },
-  { id: 5, title: 'Single Occupancy', body: 'You must be alone in the room. Background movement detection is active.' },
-  { id: 6, title: 'Communication Standards', body: 'Respond in clear spoken English only. No external assistance, notes, or secondary devices are permitted.' },
-  { id: 7, title: 'Data & Privacy', body: 'Session data is encrypted and retained for 90 days in compliance with data-protection regulations.' },
-  { id: 8, title: 'Termination', body: 'Repeated integrity violations will result in automatic session termination and disqualification.' },
+  { id: 4, title: 'Single Occupancy', body: 'You must be alone in the room. Background movement detection is active.' },
+  { id: 5, title: 'Communication Standards', body: 'Respond in clear spoken English only. No external assistance, notes, or secondary devices are permitted.' },
+  { id: 6, title: 'Data & Privacy', body: 'Session data is encrypted and retained for 90 days in compliance with data-protection regulations.' },
+  { id: 7, title: 'Termination', body: 'Repeated integrity violations will result in automatic session termination and disqualification.' },
 ];
 
 // ── Animations ───────────────────────────────────────────────────────────────
@@ -140,6 +140,105 @@ function EnergyBar({ level, isSpeaking }) {
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PROCTORING TOAST SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const TOAST_DURATION_MS = 7000; // 7 seconds — long enough to read a full message
+
+const TOAST_STYLES = {
+  face: {
+    border: 'border-amber-500/50',
+    bg: 'bg-amber-950/95',
+    iconBg: 'bg-amber-500/15 border-amber-500/30',
+    iconColor: 'text-amber-400',
+    titleColor: 'text-amber-300',
+    msgColor: 'text-amber-400/80',
+    bar: 'bg-amber-500',
+  },
+  object: {
+    border: 'border-orange-500/50',
+    bg: 'bg-orange-950/95',
+    iconBg: 'bg-orange-500/15 border-orange-500/30',
+    iconColor: 'text-orange-400',
+    titleColor: 'text-orange-300',
+    msgColor: 'text-orange-400/80',
+    bar: 'bg-orange-500',
+  },
+  voice: {
+    border: 'border-violet-500/50',
+    bg: 'bg-violet-950/95',
+    iconBg: 'bg-violet-500/15 border-violet-500/30',
+    iconColor: 'text-violet-400',
+    titleColor: 'text-violet-300',
+    msgColor: 'text-violet-400/80',
+    bar: 'bg-violet-500',
+  },
+};
+
+function SingleToast({ toast, onDismiss }) {
+  const style = TOAST_STYLES[toast.category] || TOAST_STYLES.face;
+  const IconComp = toast.icon;
+
+  return (
+    <motion.div
+      layout
+      key={toast.id}
+      initial={{ opacity: 0, x: 80, scale: 0.95 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 80, scale: 0.92, transition: { duration: 0.22 } }}
+      transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+      className={`relative w-80 rounded-xl border shadow-2xl overflow-hidden backdrop-blur-md ${style.border} ${style.bg}`}
+    >
+      {/* Progress drain bar at top */}
+      <motion.div
+        className={`absolute top-0 left-0 h-0.5 ${style.bar}`}
+        initial={{ width: '100%' }}
+        animate={{ width: '0%' }}
+        transition={{ duration: TOAST_DURATION_MS / 1000, ease: 'linear' }}
+      />
+
+      <div className="flex items-start gap-3 px-4 py-3.5 pt-4">
+        {/* Icon */}
+        <div className={`flex-shrink-0 h-8 w-8 rounded-full border flex items-center justify-center mt-0.5 ${style.iconBg}`}>
+          <IconComp size={15} className={style.iconColor} />
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-xs font-bold tracking-wide uppercase leading-4 ${style.titleColor}`}>{toast.title}</p>
+          <p className={`text-xs mt-1 leading-relaxed ${style.msgColor}`}>{toast.message}</p>
+        </div>
+
+        {/* Dismiss button */}
+        <button
+          onClick={() => onDismiss(toast.id)}
+          className="flex-shrink-0 text-slate-600 hover:text-slate-400 transition-colors mt-0.5"
+          aria-label="Dismiss"
+        >
+          <XCircle size={14} />
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+function ProctoringToastContainer({ toasts, onDismiss }) {
+  if (!toasts.length) return null;
+  return (
+    <div className="fixed bottom-6 right-6 z-[10000] flex flex-col-reverse gap-2.5 pointer-events-none">
+      <AnimatePresence mode="sync">
+        {toasts.map(t => (
+          <div key={t.id} className="pointer-events-auto">
+            <SingleToast toast={t} onDismiss={onDismiss} />
+          </div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  PHASE 1: TERMS MODAL
@@ -433,6 +532,32 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   // Stores screenshots: { [eventType]: [dataURL, ...] }
   const screenshotCapturesRef = useRef({});
 
+  // ── Proctoring toast notifications ─────────────────────────────────────────
+  const [proctoringToasts, setProctoringToasts] = useState([]);
+  const toastTimersRef = useRef({});
+
+  const dismissToast = useCallback((id) => {
+    clearTimeout(toastTimersRef.current[id]);
+    delete toastTimersRef.current[id];
+    setProctoringToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const showProctoringToast = useCallback((category, icon, title, message) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setProctoringToasts(prev => [...prev, { id, category, icon, title, message }]);
+    toastTimersRef.current[id] = setTimeout(() => {
+      setProctoringToasts(prev => prev.filter(t => t.id !== id));
+      delete toastTimersRef.current[id];
+    }, TOAST_DURATION_MS);
+  }, []);
+
+  // Clear all toast timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(toastTimersRef.current).forEach(clearTimeout);
+    };
+  }, []);
+
   // ── Attach camera to video element ─────────────────────────────────────────
   useEffect(() => {
     if (videoRef.current && cameraStream) videoRef.current.srcObject = cameraStream;
@@ -547,6 +672,36 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     vpStartedRef.current = true;
     startProctoring(engine.sessionId, engine.elapsedSeconds);
   }, [engine.sessionId, engine.engineState, startProctoring, engine.elapsedSeconds]);
+
+  // ── Voice mismatch toast (polls backend every 5s) ─────────────────────────
+  // The voice mismatch detection happens entirely server-side via WebSocket.
+  // The frontend has no real-time notification, so we poll the lightweight
+  // /voice-proctoring/status endpoint to check for new mismatches.
+  const vpMismatchPollCountRef = useRef(0);
+  useEffect(() => {
+    if (!engine.sessionId) return;
+
+    const poll = setInterval(async () => {
+      if (isPausedRef.current || isTerminatingRef.current) return;
+      try {
+        const res = await voiceProctoringApi.getVoiceProctoringStatus(engine.sessionId);
+        const serverCount = res?.data?.mismatchCount ?? 0;
+        if (serverCount > vpMismatchPollCountRef.current) {
+          vpMismatchPollCountRef.current = serverCount;
+          showProctoringToast(
+            'voice',
+            Mic2,
+            'Voice Verification Notice',
+            'Your voice pattern does not match the registered candidate profile. Please speak clearly and ensure you are responding in your own voice.'
+          );
+        }
+      } catch {
+        // Non-fatal — silently ignore poll failures
+      }
+    }, 1500); // poll every 1.5 seconds to match face proctoring
+
+    return () => clearInterval(poll);
+  }, [engine.sessionId, showProctoringToast]);
 
   // ── Start face proctoring once answer phase begins ─────────────────────────
   useEffect(() => {
@@ -674,19 +829,56 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
         fpForwardFailCountRef.current = 0;
 
         const faceSignal = frameData.faceSignal;
+        const objectSignal = frameData.objectSignal;
 
+        // no_face → existing pause behaviour (unchanged)
         if (faceSignal?.kind === 'formal_face_alert' && faceSignal?.isNoFace) {
           pauseInterviewRef.current?.(
             'Face not visible. Please turn on camera, face the camera, and stay clearly visible to continue.',
             'no_face'
           );
+        } else if (faceSignal?.kind === 'formal_face_alert' && !faceSignal?.isNoFace) {
+          // Non-no-face face violation → show informative toast
+          const vt = (faceSignal.violationType || faceSignal.status || '').toLowerCase();
+          let faceTitle = 'Face Verification Notice';
+          let faceMsg;
+          if (vt.includes('multiple') || (typeof faceSignal.numFaces === 'number' && faceSignal.numFaces > 1)) {
+            faceMsg = 'Multiple faces detected on camera. Please ensure only you are visible during the interview.';
+          } else if (vt.includes('liveness')) {
+            faceMsg = 'Liveness check could not be completed. Please look directly at the camera and ensure you are in a well-lit environment.';
+          } else if (vt.includes('mismatch') || vt.includes('similarity') || vt.includes('low')) {
+            faceMsg = 'We\'re having difficulty matching your face. Please ensure you are well-lit, facing the camera squarely, and your face is fully visible without obstruction.';
+          } else {
+            faceMsg = 'Face verification issue detected. Please ensure your face is clearly visible, centered, and well-lit in the camera.';
+          }
+          showProctoringToast('face', AlertTriangle, faceTitle, faceMsg);
         }
+
+        // Object alert → show informative toast
+        if (objectSignal?.kind === 'object_alert') {
+          const types = (objectSignal.alertTypes || []).map(t => t.toLowerCase());
+          const suspicious = (objectSignal.suspiciousObjects || []).map(s => s.toLowerCase());
+          const allTypes = [...types, ...suspicious];
+          let objTitle = 'Environment Alert';
+          let objMsg;
+          if (allTypes.some(t => t.includes('phone') || t.includes('cell') || t.includes('mobile'))) {
+            objMsg = 'A mobile phone was detected. Please put all devices away — only your interview computer is permitted.';
+          } else if (allTypes.some(t => t.includes('book') || t.includes('paper') || t.includes('note') || t.includes('document'))) {
+            objMsg = 'Notes or written materials were detected. Please clear your desk — no reference materials are allowed during the interview.';
+          } else if (typeof objectSignal.personCount === 'number' && objectSignal.personCount > 1) {
+            objMsg = 'More than one person detected in the frame. You must be alone during the interview.';
+          } else {
+            objMsg = 'Unauthorized objects or additional persons detected. Please clear your environment and ensure you are alone.';
+          }
+          showProctoringToast('object', Shield, objTitle, objMsg);
+        }
+
       } catch {
         // Non-blocking by design
       } finally {
         fpFrameInFlightRef.current = false;
       }
-    }, 1500);
+    }, 1000); // 1.0s interval for faster face/object alert delivery
 
     return () => {
       if (fpRetryTimerRef.current) {
@@ -698,7 +890,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
         fpFrameIntervalRef.current = null;
       }
     };
-  }, [fpActive, engine.sessionId, captureFaceFrame]);
+  }, [fpActive, engine.sessionId, captureFaceFrame, showProctoringToast, pauseInterview]);
 
   useEffect(() => {
     return () => {
@@ -1293,6 +1485,9 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Proctoring toast notifications ────────────── */}
+      <ProctoringToastContainer toasts={proctoringToasts} onDismiss={dismissToast} />
     </div>
   );
 }

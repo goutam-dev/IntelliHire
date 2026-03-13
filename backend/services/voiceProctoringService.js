@@ -258,6 +258,12 @@ async function connectVerificationWS(sessionId, speakerId, elapsedSeconds = 0, o
                 await InterviewSession.findByIdAndUpdate(sessionId, { $inc: incFields }).catch(() => { });
 
                 if (decision === 'MISMATCH') {
+                    // Increment in-memory counter so the status polling endpoint can return it
+                    const activeSession = activeSessions.get(String(sessionId));
+                    if (activeSession) {
+                        activeSession._mismatchCount = (activeSession._mismatchCount || 0) + 1;
+                    }
+
                     // Compute wall-clock time and interview-relative timestamp
                     const wallClockTime = new Date();
                     const interviewTimestamp = elapsedAtStart + (timestamp || 0);
@@ -507,6 +513,11 @@ module.exports = {
     stopVerificationWS,
     appendMismatch,
     formatVoiceProctoringReport,
+    // Get live in-memory mismatch count for the polling status endpoint
+    getMismatchCount: (sessionId) => {
+        const session = activeSessions.get(String(sessionId));
+        return session?._mismatchCount ?? 0;
+    },
     // Expose for controller health checks
     isSessionActive: (sessionId, candidateId) => {
         const session = activeSessions.get(String(sessionId));
