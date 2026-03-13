@@ -180,7 +180,11 @@ const ApplicationDetails = () => {
                 if (deadline) deadline.setHours(23, 59, 59, 999);
                 const active = deadline ? now <= deadline : true;
                 const interviewLocked = Boolean(application.interviewLocked);
-                const ctaDisabled = interviewLocked || !active;
+                const voiceEnrollmentStatus = application.voiceEnrollment?.status;
+                const faceEnrollmentStatus = application.faceEnrollment?.status;
+                const enrollmentsReady = voiceEnrollmentStatus === 'enrolled' && faceEnrollmentStatus === 'enrolled';
+                const enrollmentFailed = voiceEnrollmentStatus === 'failed' || faceEnrollmentStatus === 'failed';
+                const ctaDisabled = interviewLocked || !active || !enrollmentsReady;
                 const ctaLabel = interviewLocked
                   ? 'Interview Submitted'
                   : active
@@ -191,26 +195,35 @@ const ApplicationDetails = () => {
                     {interviewLocked && (
                       <span className="text-xs text-slate-500">Your interview is under review.</span>
                     )}
-                    <button
-                      disabled={ctaDisabled}
-                      onClick={() =>
-                        navigate(`/candidate/interview/${application.applicationId}`, {
-                          state: {
-                            jobTitle: application.jobId?.title,
-                            jobId: application.jobId?._id,
-                            applicationId: application.applicationId,
-                          },
-                        })
-                      }
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                        !ctaDisabled
-                          ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md'
-                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      }`}
-                    >
-                      <Video className="w-4 h-4" />
-                      {ctaLabel}
-                    </button>
+                    {!enrollmentsReady && !interviewLocked && (
+                      <span className="text-xs text-slate-500">
+                        {enrollmentFailed
+                          ? 'Interview setup failed. Please contact support or ask the employer to reschedule.'
+                          : 'Interview setup in progress. Please wait...'}
+                      </span>
+                    )}
+                    {enrollmentsReady && (
+                      <button
+                        disabled={ctaDisabled}
+                        onClick={() =>
+                          navigate(`/candidate/interview/${application.applicationId}`, {
+                            state: {
+                              jobTitle: application.jobId?.title,
+                              jobId: application.jobId?._id,
+                              applicationId: application.applicationId,
+                            },
+                          })
+                        }
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                          !ctaDisabled
+                            ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        <Video className="w-4 h-4" />
+                        {ctaLabel}
+                      </button>
+                    )}
                   </div>
                 );
               })()}

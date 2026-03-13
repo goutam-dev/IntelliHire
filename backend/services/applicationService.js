@@ -99,6 +99,101 @@ const filterBySearch = (applications, search) => {
 
 const TERMINAL_INTERVIEW_STATUSES = ['completed', 'terminated', 'abandoned', 'completing'];
 
+const toAbsoluteUploadPath = (relativePath = '') => {
+  const cleaned = String(relativePath || '').replace(/^[/\\]+/, '');
+  return path.join(__dirname, '..', cleaned);
+};
+
+const processInterviewEnrollmentArtifacts = async (jobApplicationId) => {
+  const application = await JobApplication.findById(jobApplicationId);
+  if (!application) return;
+
+  const relativeVideoPath = application.video?.filePath;
+  if (!relativeVideoPath) {
+    await JobApplication.findByIdAndUpdate(jobApplicationId, {
+      $set: {
+        'voiceEnrollment.status': 'failed',
+        'voiceEnrollment.errorMessage': 'Application video not found for enrollment',
+        'faceEnrollment.status': 'failed',
+        'faceEnrollment.errorMessage': 'Application video not found for enrollment',
+      },
+    }).catch(() => {});
+    return;
+  }
+
+  const absoluteVideoPath = toAbsoluteUploadPath(relativeVideoPath);
+  if (!fs.existsSync(absoluteVideoPath)) {
+    await JobApplication.findByIdAndUpdate(jobApplicationId, {
+      $set: {
+        'voiceEnrollment.status': 'failed',
+        'voiceEnrollment.errorMessage': 'Application video file not found on server',
+        'faceEnrollment.status': 'failed',
+        'faceEnrollment.errorMessage': 'Application video file not found on server',
+      },
+    }).catch(() => {});
+    return;
+  }
+
+  const fileName = application.video?.filename || path.basename(relativeVideoPath);
+  const baseName = path.basename(fileName, path.extname(fileName));
+  const audioOutDir = path.join(__dirname, '..', 'uploads', 'application-audio');
+  const silentOutDir = path.join(__dirname, '..', 'uploads', 'application-videos-silent');
+  const audioPath = path.join(audioOutDir, `${baseName}.wav`);
+  const silentVideoPath = path.join(silentOutDir, `${baseName}-silent.mp4`);
+
+  try {
+    await extractAudio(absoluteVideoPath, audioPath);
+
+    await JobApplication.findByIdAndUpdate(jobApplicationId, {
+      $set: {
+        audioFile: {
+          filename: path.basename(audioPath),
+          filePath: `/uploads/application-audio/${path.basename(audioPath)}`,
+          createdAt: new Date(),
+        },
+      },
+    });
+
+    await createSilentVideo(absoluteVideoPath, silentVideoPath);
+
+    await JobApplication.findByIdAndUpdate(jobApplicationId, {
+      $set: {
+        silentVideoFile: {
+          filename: path.basename(silentVideoPath),
+          filePath: `/uploads/application-videos-silent/${path.basename(silentVideoPath)}`,
+          createdAt: new Date(),
+        },
+      },
+    });
+  } catch (processingError) {
+    logger.error(
+      `[scheduleInterview] Video/audio preparation failed for application ${jobApplicationId}: ${processingError.message}`
+    );
+
+    await JobApplication.findByIdAndUpdate(jobApplicationId, {
+      $set: {
+        'voiceEnrollment.status': 'failed',
+        'voiceEnrollment.errorMessage': processingError.message,
+        'faceEnrollment.status': 'failed',
+        'faceEnrollment.errorMessage': processingError.message,
+      },
+    }).catch(() => {});
+    return;
+  }
+
+  try {
+    await voiceProctoringService.enrollSpeaker(application.applicationId, audioPath);
+  } catch (enrollError) {
+    logger.warn(`[scheduleInterview] Voice enrollment threw unexpectedly: ${enrollError.message}`);
+  }
+
+  try {
+    await faceProctoringService.enrollFaceFromVideo(application.applicationId, absoluteVideoPath);
+  } catch (faceEnrollError) {
+    logger.warn(`[scheduleInterview] Face enrollment threw unexpectedly: ${faceEnrollError.message}`);
+  }
+};
+
 const enrichApplicationsWithInterviewState = async (applications = []) => {
   if (!applications.length) return applications;
 
@@ -382,7 +477,43 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   application.interviewWindowEnd = endDate;
   application.employerNotes = `Interview window: ${startDate.toDateString()} – ${endDate.toDateString()}. ${instructions || ''}`.trim();
 
+  const enrollmentsReady =
+    application.voiceEnrollment?.status === 'enrolled' &&
+    application.faceEnrollment?.status === 'enrolled';
+
+  if (!enrollmentsReady) {
+    application.voiceEnrollment.speakerId = null;
+    application.voiceEnrollment.embeddingPath = null;
+    application.voiceEnrollment.enrolledAt = null;
+    application.voiceEnrollment.status = 'pending';
+    application.voiceEnrollment.errorMessage = null;
+
+    application.faceEnrollment.candidateId = null;
+    application.faceEnrollment.registrationType = null;
+    application.faceEnrollment.canonicalEmbedding = [];
+    application.faceEnrollment.framesUsed = 0;
+    application.faceEnrollment.totalFrames = 0;
+    application.faceEnrollment.usableFrames = 0;
+    application.faceEnrollment.qualityScore = null;
+    application.faceEnrollment.embeddingConsistency = null;
+    application.faceEnrollment.qualityBreakdown = null;
+    application.faceEnrollment.referenceImagePath = null;
+    application.faceEnrollment.enrolledAt = null;
+    application.faceEnrollment.status = 'pending';
+    application.faceEnrollment.errorMessage = null;
+  }
+
   await application.save();
+
+  if (!enrollmentsReady) {
+    setImmediate(() => {
+      processInterviewEnrollmentArtifacts(application._id).catch((err) => {
+        logger.error(
+          `[scheduleInterview] Enrollment pipeline failed for application ${application._id}: ${err.message}`
+        );
+      });
+    });
+  }
 
   const populated = await application.populate([
     { path: 'candidateId', select: 'fullName email phoneNumber' },
@@ -654,85 +785,6 @@ const submitApplication = async (candidateId, applicationData, files) => {
     });
 
     await jobApplication.save();
-
-    // ── Background video processing ─────────────────────────────────────────
-    // Extract WAV audio (voice verification) and strip-audio MP4 (facial
-    // verification) from the application video.  Runs after the response is
-    // returned so the candidate is not kept waiting.
-    if (videoData && videoData.filePath) {
-      const absoluteVideoPath = path.join(__dirname, '..', videoData.filePath);
-      const baseName = path.basename(videoData.filename, path.extname(videoData.filename));
-      const audioOutDir = path.join(__dirname, '..', 'uploads', 'application-audio');
-      const silentOutDir = path.join(__dirname, '..', 'uploads', 'application-videos-silent');
-
-      // Fire-and-forget: don't await so the HTTP response is not delayed
-      setImmediate(async () => {
-        try {
-          const audioPath = path.join(audioOutDir, `${baseName}.wav`);
-          const silentVideoPath = path.join(silentOutDir, `${baseName}-silent.mp4`);
-
-          // 1) Extract audio first so enrollment can start ASAP
-          await extractAudio(absoluteVideoPath, audioPath);
-
-          // Persist audio path immediately
-          await JobApplication.findByIdAndUpdate(jobApplication._id, {
-            $set: {
-              audioFile: {
-                filename: path.basename(audioPath),
-                filePath: `/uploads/application-audio/${path.basename(audioPath)}`,
-                createdAt: new Date()
-              }
-            }
-          });
-
-          // 2) Kick voice enrollment right after audio extraction
-          try {
-            await voiceProctoringService.enrollSpeaker(
-              jobApplication.applicationId,
-              audioPath
-            );
-          } catch (enrollError) {
-            logger.warn(`[submitApplication] Voice enrollment threw unexpectedly: ${enrollError.message}`);
-          }
-
-          // 2.1) Kick face enrollment from application video (independent of voice)
-          // Face enrollment is additive and non-fatal; failures are persisted in faceEnrollment.
-          try {
-            await faceProctoringService.enrollFaceFromVideo(
-              jobApplication.applicationId,
-              absoluteVideoPath
-            );
-          } catch (faceEnrollError) {
-            logger.warn(`[submitApplication] Face enrollment threw unexpectedly: ${faceEnrollError.message}`);
-          }
-
-          // 3) Continue silent video generation independently (non-blocking for enrollment)
-          try {
-            await createSilentVideo(absoluteVideoPath, silentVideoPath);
-            await JobApplication.findByIdAndUpdate(jobApplication._id, {
-              $set: {
-                silentVideoFile: {
-                  filename: path.basename(silentVideoPath),
-                  filePath: `/uploads/application-videos-silent/${path.basename(silentVideoPath)}`,
-                  createdAt: new Date()
-                }
-              }
-            });
-          } catch (silentError) {
-            logger.warn(`[submitApplication] Silent video creation failed for application ${jobApplication._id}: ${silentError.message}`);
-          }
-
-          logger.info(`[submitApplication] Video processing complete for application ${jobApplication._id}`);
-        } catch (processingError) {
-          // Non-fatal: log the error but do not fail the application submission
-          logger.error(
-            `[submitApplication] Video processing failed for application ${jobApplication._id}:`,
-            processingError
-          );
-        }
-      });
-    }
-    // ────────────────────────────────────────────────────────────────────────
 
     // Update job applications count
     await Job.findByIdAndUpdate(jobId, {

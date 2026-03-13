@@ -243,6 +243,19 @@ async function createSession(applicationId, candidateId) {
 
   if (!application) throw new Error('Application not found');
 
+  if (application.status !== 'Interview Scheduled') {
+    throw new AppError('Interview is not available for this application yet.', 403);
+  }
+
+  const voiceReady = application.voiceEnrollment?.status === 'enrolled';
+  const faceReady = application.faceEnrollment?.status === 'enrolled';
+  if (!voiceReady || !faceReady) {
+    throw new AppError(
+      'Interview setup is still in progress. Please wait until audio and video verification are ready.',
+      409
+    );
+  }
+
   const job = application.jobId;
   const profile = application.applicationProfile;
   const resumeSummary = profile?.summary || '';
