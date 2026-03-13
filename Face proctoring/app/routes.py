@@ -233,8 +233,21 @@ async def websocket_analyze(websocket: WebSocket):
 
             alert_type = face_data["alert_type"]
             is_ok = face_data["is_ok"]
+            similarity = float(face_data["verify"].get("similarity", 0.0))
+            liveness_score = float(face_data["liveness"].get("liveness_score", 0.0))
+            num_faces = int(face_data["verify"].get("num_faces", 0))
 
             if is_ok:
+                if current_violation_type is not None or consecutive_same_type > 0:
+                    logger.info(
+                        "[FaceWS][%s] RECOVERY status=ok similarity=%.4f liveness=%.4f num_faces=%d (counter reset from type=%s count=%d)",
+                        candidate_id,
+                        similarity,
+                        liveness_score,
+                        num_faces,
+                        current_violation_type,
+                        consecutive_same_type,
+                    )
                 current_violation_type = None
                 consecutive_same_type = 0
             else:
@@ -244,10 +257,34 @@ async def websocket_analyze(websocket: WebSocket):
                     current_violation_type = alert_type
                     consecutive_same_type = 1
 
+                logger.info(
+                    "[FaceWS][%s] VIOLATION status=%s type=%s similarity=%.4f liveness=%.4f num_faces=%d consecutive=%d/%d",
+                    candidate_id,
+                    face_data["face_status"],
+                    current_violation_type,
+                    similarity,
+                    liveness_score,
+                    num_faces,
+                    consecutive_same_type,
+                    CONSECUTIVE_SAME_TYPE_TO_ALERT,
+                )
+
             formal_face_alert = (
                 consecutive_same_type >= CONSECUTIVE_SAME_TYPE_TO_ALERT
                 and consecutive_same_type % CONSECUTIVE_SAME_TYPE_TO_ALERT == 0
             )
+
+            if formal_face_alert:
+                logger.warning(
+                    "[FaceWS][%s] FORMAL_ALERT type=%s status=%s consecutive=%d similarity=%.4f liveness=%.4f num_faces=%d",
+                    candidate_id,
+                    current_violation_type,
+                    face_data["face_status"],
+                    consecutive_same_type,
+                    similarity,
+                    liveness_score,
+                    num_faces,
+                )
 
             face_snapshot = None
             if formal_face_alert:

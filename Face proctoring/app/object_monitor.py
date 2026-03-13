@@ -107,13 +107,6 @@ class ObjectMonitorSession:
 
             violations["person_count"] = person_count
 
-            if person_count == 0 and config.ALERT_ON_NO_PERSON:
-                violations["no_person"] = True
-                violations["severity"] = "high"
-            elif person_count > config.MAX_ALLOWED_PEOPLE and not config.ALLOW_MULTIPLE_PEOPLE:
-                violations["multiple_people"] = True
-                violations["severity"] = "high"
-
             violations["suspicious_objects"] = detected_objects
 
             if detected_objects and violations["severity"] == "none":

@@ -60,6 +60,7 @@ const getResumeConditions = () => ({
 
 const INTERVIEW_MAX_SECONDS = 30 * 60;
 const INTERVIEW_MIN_SECONDS = 20 * 60;
+const FACE_PROCTORING_FRAME_INTERVAL_MS = 2000;
 
 const TERMS_LIST = [
   { id: 1, title: 'Recording Consent', body: 'By proceeding you give IntelliHire irrevocable consent to record your audio, video, and screen activity for the entire duration of this interview session.' },
@@ -856,8 +857,16 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
         // Object alert → show informative toast
         if (objectSignal?.kind === 'object_alert') {
-          const types = (objectSignal.alertTypes || []).map(t => t.toLowerCase());
-          const suspicious = (objectSignal.suspiciousObjects || []).map(s => s.toLowerCase());
+          const types = (objectSignal.alertTypes || []).map(t => String(t || '').toLowerCase()).filter(Boolean);
+          const suspicious = (objectSignal.suspiciousObjects || [])
+            .map((s) => {
+              if (typeof s === 'string') return s.toLowerCase();
+              if (s && typeof s === 'object') {
+                return String(s.object || s.label || s.type || '').toLowerCase();
+              }
+              return '';
+            })
+            .filter(Boolean);
           const allTypes = [...types, ...suspicious];
           let objTitle = 'Environment Alert';
           let objMsg;
@@ -878,7 +887,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       } finally {
         fpFrameInFlightRef.current = false;
       }
-    }, 1000); // 1.0s interval for faster face/object alert delivery
+    }, FACE_PROCTORING_FRAME_INTERVAL_MS); // 2.0s interval to align with backend 6x threshold (~12s)
 
     return () => {
       if (fpRetryTimerRef.current) {
