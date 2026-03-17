@@ -142,6 +142,111 @@ function EnergyBar({ level, isSpeaking }) {
   );
 }
 
+/** ChatGPT-style word-by-word typewriter synced with TTS speech.
+ *  Uses a timer (~420ms/word to match TTS at rate 0.95) as the primary driver,
+ *  boosted by speechCharIndex boundary events for accuracy when available. */
+function TypewriterText({ text, speechCharIndex }) {
+  const [timerCount, setTimerCount] = useState(0);
+  const scrollRef = useRef(null);
+  const wordsRef = useRef([]);
+  const wordCharIndicesRef = useRef([]);
+
+  // Precompute word positions and start timer whenever text changes
+  useEffect(() => {
+    if (!text) { wordsRef.current = []; wordCharIndicesRef.current = []; setTimerCount(0); return; }
+    const words = text.split(/\s+/);
+    wordsRef.current = words;
+
+    // Build array of starting char index for each word
+    const indices = [];
+    let pos = 0;
+    for (const word of words) {
+      const idx = text.indexOf(word, pos);
+      indices.push(idx >= 0 ? idx : pos);
+      pos = (idx >= 0 ? idx : pos) + word.length;
+    }
+    wordCharIndicesRef.current = indices;
+
+    // Start a timer to reveal words at ~TTS speed (rate 0.95 ≈ 142 wpm ≈ 420ms/word)
+    setTimerCount(0);
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setTimerCount(i);
+      if (i >= words.length) clearInterval(interval);
+    }, 420);
+    return () => clearInterval(interval);
+  }, [text]);
+
+  // Calculate how many words boundary events want to show
+  const boundaryCount = useMemo(() => {
+    if (!text || speechCharIndex < 0) return 0;
+    if (speechCharIndex >= text.length) return wordsRef.current.length;
+    let count = 0;
+    for (const idx of wordCharIndicesRef.current) {
+      if (idx <= speechCharIndex) count++;
+      else break;
+    }
+    return count;
+  }, [text, speechCharIndex]);
+
+  // Use whichever is further ahead: timer or boundary events
+  const visibleCount = Math.max(timerCount, boundaryCount);
+  const isComplete = text && visibleCount >= wordsRef.current.length;
+
+  // Auto-scroll when new words appear
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [visibleCount]);
+
+  if (!text) return null;
+  const words = wordsRef.current;
+
+  return (
+    <div
+      ref={scrollRef}
+      className="w-full max-w-3xl max-h-[50vh] overflow-y-auto px-8 py-6 rounded-2xl bg-slate-900/50 border border-slate-700/40 backdrop-blur-sm"
+      style={{
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'rgba(100,116,139,0.4) transparent',
+        userSelect: 'none',
+      }}
+      onContextMenu={e => e.preventDefault()}
+    >
+      <p className="text-3xl lg:text-4xl font-bold text-white leading-snug">
+        {words.slice(0, visibleCount).map((word, idx) => (
+          <span
+            key={idx}
+            className="inline-block opacity-0 animate-[fadeInWord_0.25s_ease-out_forwards]"
+            style={{ animationDelay: '0ms' }}
+          >
+            {word}{idx < visibleCount - 1 ? '\u00A0' : ''}
+          </span>
+        ))}
+        {!isComplete && visibleCount > 0 && (
+          <span
+            className="inline-block w-[3px] h-[1.1em] bg-emerald-400 ml-1 align-text-bottom rounded-sm"
+            style={{ animation: 'cursorBlink 0.8s steps(2) infinite' }}
+          />
+        )}
+      </p>
+
+      <style>{`
+        @keyframes fadeInWord {
+          from { opacity: 0; transform: translateY(4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes cursorBlink {
+          0%, 100% { opacity: 1; }
+          50%      { opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  PROCTORING TOAST SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1244,14 +1349,13 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
             )}
           </p>
 
-          {/* Current question */}
+          {/* Current question — scrollable container with typing animation */}
           <AnimatePresence mode="wait">
             {engine.currentQuestion ? (
-              <motion.h1 key={engine.currentQuestion} variants={slideUp} initial="hidden" animate="visible" exit="exit"
-                className="text-3xl lg:text-4xl font-bold text-white text-center leading-snug max-w-3xl"
-                style={{ userSelect: 'none' }} onContextMenu={e => e.preventDefault()}>
-                {engine.currentQuestion}
-              </motion.h1>
+              <motion.div key={engine.currentQuestion} variants={slideUp} initial="hidden" animate="visible" exit="exit"
+                className="w-full flex justify-center">
+                <TypewriterText text={engine.currentQuestion} speechCharIndex={engine.speechCharIndex} />
+              </motion.div>
             ) : (
               <motion.div key="loading" variants={fadeIn} initial="hidden" animate="visible" className="flex flex-col items-center gap-3">
                 <Loader2 className="text-slate-500 animate-spin" size={36} />

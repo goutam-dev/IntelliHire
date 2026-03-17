@@ -30,7 +30,7 @@ export const ENGINE_STATE = {
 };
 
 // ── TTS Helper ───────────────────────────────────────────────────────────────
-function speakText(text) {
+function speakText(text, { onBoundary } = {}) {
   return new Promise((resolve) => {
     if (!window.speechSynthesis) {
       setTimeout(resolve, 2000);
@@ -48,7 +48,18 @@ function speakText(text) {
     ) || voices.find(v => v.lang.startsWith('en-'));
     if (preferred) utterance.voice = preferred;
 
-    utterance.onend = resolve;
+    // Fire callback on each word boundary so UI can sync typing animation
+    if (onBoundary) {
+      utterance.onboundary = (e) => {
+        if (e.name === 'word') onBoundary(e.charIndex);
+      };
+    }
+
+    utterance.onend = () => {
+      // Signal that speech is done (charIndex = total length)
+      if (onBoundary) onBoundary(text.length);
+      resolve();
+    };
     utterance.onerror = resolve;
     window.speechSynthesis.speak(utterance);
   });
@@ -87,6 +98,7 @@ export function useInterviewEngine({
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [speechCharIndex, setSpeechCharIndex] = useState(-1); // TTS word boundary sync
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const sessionIdRef = useRef(null);
@@ -179,9 +191,12 @@ export function useInterviewEngine({
     pausedTurnIndexRef.current = turnIndex;
     setLiveTranscript('');
     setFinalTranscript('');
+    setSpeechCharIndex(-1); // reset for new question
 
-    // Speak the question via TTS
-    await speakText(question);
+    // Speak the question via TTS — fire boundary events for typing sync
+    await speakText(question, {
+      onBoundary: (charIdx) => setSpeechCharIndex(charIdx),
+    });
 
     // Guard: if paused or terminated while TTS was running, stop here.
     // pause() cancels TTS which resolves speakText early — this guard catches it.
@@ -462,6 +477,7 @@ export function useInterviewEngine({
     jobTitle,
     sessionConfig,
     currentQuestion,
+    speechCharIndex,
     currentTurnIndex,
     questionCount,
     liveTranscript,
