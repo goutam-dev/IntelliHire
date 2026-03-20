@@ -7,48 +7,19 @@ import { createJob, clearJobData, setValidationErrors } from '../store/slices/jo
 import { fetchEmployerProfile } from '../store/slices/employerSlice';
 import { Input, Select, Textarea, TagsInput } from '../components/forms';
 import EmployerHeader from '../components/layout/EmployerHeader';
+import {
+  JOB_CATEGORIES,
+  EXPERIENCE_LEVELS,
+  EMPLOYMENT_TYPES,
+  EDUCATION_OPTIONS,
+  CURRENCY_OPTIONS,
+} from '../constants/jobConstants';
 
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0 },
 };
-
-const JOB_CATEGORIES = [
-  { value: 'engineering', label: 'Engineering' },
-  { value: 'marketing', label: 'Marketing' },
-  { value: 'sales', label: 'Sales' },
-  { value: 'hr', label: 'HR' },
-  { value: 'design', label: 'Design' },
-  { value: 'product', label: 'Product' },
-  { value: 'operations', label: 'Operations' },
-  { value: 'finance', label: 'Finance' },
-  { value: 'customer-support', label: 'Customer Support' },
-  { value: 'other', label: 'Other' },
-];
-
-const EXPERIENCE_LEVELS = [
-  { value: 'entry', label: 'Entry Level' },
-  { value: 'mid', label: 'Mid-Level' },
-  { value: 'senior', label: 'Senior' },
-  { value: 'expert', label: 'Expert' },
-];
-
-const EMPLOYMENT_TYPES = [
-  { value: 'full-time', label: 'Full-time' },
-  { value: 'part-time', label: 'Part-time' },
-  { value: 'contract', label: 'Contract' },
-  { value: 'remote', label: 'Remote' },
-];
-
-const EDUCATION_OPTIONS = [
-  { value: 'high-school', label: 'High School' },
-  { value: 'associate', label: "Associate's Degree" },
-  { value: 'bachelor', label: "Bachelor's Degree" },
-  { value: 'master', label: "Master's Degree" },
-  { value: 'phd', label: 'PhD' },
-  { value: 'none', label: 'No specific requirement' },
-];
 
 const CreateJobPage = () => {
   const navigate = useNavigate();
@@ -66,6 +37,7 @@ const CreateJobPage = () => {
     educationRequirements: '',
     location: '',
     employmentType: '',
+    salaryCurrency: 'USD',
     salaryMin: '',
     salaryMax: '',
     applicationDeadline: '',
@@ -195,10 +167,9 @@ const CreateJobPage = () => {
         break;
       case 'applicationDeadline':
         if (value) {
-          const deadlineDate = new Date(value);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          if (deadlineDate < today) {
+          // Compare as date strings (YYYY-MM-DD) to avoid UTC vs local timezone issues
+          const todayStr = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD' in local time
+          if (value < todayStr) {
             errors.applicationDeadline = 'Application deadline cannot be in the past';
           } else {
             errors.applicationDeadline = null;
@@ -212,6 +183,36 @@ const CreateJobPage = () => {
     }
 
     dispatch(setValidationErrors(errors));
+  };
+
+  // Field order matching the form layout — used to find the first error field
+  const fieldOrder = [
+    'title',
+    'department',
+    'description',
+    'requiredSkills',
+    'experienceLevel',
+    'educationRequirements',
+    'location',
+    'employmentType',
+    'salaryCurrency',
+    'salaryMin',
+    'salaryMax',
+    'applicationDeadline',
+  ];
+
+  const scrollToFirstError = (errors) => {
+    for (const field of fieldOrder) {
+      if (errors[field]) {
+        const element = document.getElementById(field);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Small delay so scroll finishes before focusing
+          setTimeout(() => element.focus(), 300);
+        }
+        break;
+      }
+    }
   };
 
   const validateForm = (forPublish = false) => {
@@ -262,10 +263,9 @@ const CreateJobPage = () => {
     }
 
     if (formData.applicationDeadline) {
-      const deadlineDate = new Date(formData.applicationDeadline);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (deadlineDate < today) {
+      // Compare as date strings to avoid UTC vs local timezone issues
+      const todayStr = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD' in local time
+      if (formData.applicationDeadline < todayStr) {
         errors.applicationDeadline = 'Application deadline cannot be in the past';
         isValid = false;
       }
@@ -290,6 +290,11 @@ const CreateJobPage = () => {
       });
     }
 
+    // Scroll to the first field with an error
+    if (!isValid) {
+      scrollToFirstError(errors);
+    }
+
     return isValid;
   };
 
@@ -305,7 +310,7 @@ const CreateJobPage = () => {
         ? {
             min: formData.salaryMin ? parseFloat(formData.salaryMin) : undefined,
             max: formData.salaryMax ? parseFloat(formData.salaryMax) : undefined,
-            currency: 'USD',
+            currency: formData.salaryCurrency || 'USD',
           }
         : undefined,
       applicationDeadline: formData.applicationDeadline || undefined,
@@ -337,7 +342,7 @@ const CreateJobPage = () => {
         ? {
             min: formData.salaryMin ? parseFloat(formData.salaryMin) : undefined,
             max: formData.salaryMax ? parseFloat(formData.salaryMax) : undefined,
-            currency: 'USD',
+            currency: formData.salaryCurrency || 'USD',
           }
         : undefined,
       applicationDeadline: formData.applicationDeadline || undefined,
@@ -490,7 +495,15 @@ const CreateJobPage = () => {
               />
 
               {/* Salary Range */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Select
+                  label="Currency"
+                  name="salaryCurrency"
+                  value={formData.salaryCurrency}
+                  onChange={handleChange}
+                  placeholder="Select currency"
+                  options={CURRENCY_OPTIONS}
+                />
                 <Input
                   label="Salary Range (Min)"
                   name="salaryMin"

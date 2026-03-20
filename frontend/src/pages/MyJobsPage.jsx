@@ -24,6 +24,7 @@ import {
 import { fetchEmployerProfile } from '../store/slices/employerSlice';
 import EmployerHeader from '../components/layout/EmployerHeader';
 import TopCandidatesDashboard from '../components/employer/TopCandidatesDashboard';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 
 const statusFilters = [
   { label: 'All', value: 'all' },
@@ -69,6 +70,7 @@ const MyJobsPage = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [topCandidatesModal, setTopCandidatesModal] = useState({ isOpen: false, jobId: null, jobTitle: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, jobId: null });
 
   useEffect(() => {
     const loadData = async () => {
@@ -146,12 +148,14 @@ const MyJobsPage = () => {
     dispatch(updateJobStatus({ jobId: job._id || job.id, status: nextStatus, token }));
   };
 
-  const handleDeleteJob = async (jobId) => {
-    const confirmed = window.confirm('Are you sure you want to delete this job?');
-    if (confirmed) {
-      const token = await getToken();
-      dispatch(deleteJob({ jobId, token }));
-    }
+  const handleDeleteJob = (jobId) => {
+    setDeleteConfirm({ open: true, jobId });
+  };
+
+  const confirmDeleteJob = async () => {
+    const token = await getToken();
+    dispatch(deleteJob({ jobId: deleteConfirm.jobId, token }));
+    setDeleteConfirm({ open: false, jobId: null });
   };
 
   const handleCreateJob = () => {
@@ -407,6 +411,18 @@ const MyJobsPage = () => {
         onClose={closeTopCandidatesModal}
         jobId={topCandidatesModal.jobId}
         jobTitle={topCandidatesModal.jobTitle}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="Delete Job Posting"
+        message="Are you sure you want to delete this job posting? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={confirmDeleteJob}
+        onCancel={() => setDeleteConfirm({ open: false, jobId: null })}
       />
     </div>
   );

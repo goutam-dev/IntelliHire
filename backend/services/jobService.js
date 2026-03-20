@@ -219,8 +219,12 @@ const createJob = async (clerkUserId, jobData) => {
     if (!isValidDate(applicationDeadline)) {
       throw new ValidationError('Invalid application deadline date');
     }
+    // Compare date-only (start of day) to avoid timezone issues
     const deadlineDate = new Date(applicationDeadline);
-    if (deadlineDate < new Date()) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    deadlineDate.setHours(0, 0, 0, 0);
+    if (deadlineDate < today) {
       throw new ValidationError('Application deadline cannot be in the past');
     }
   }

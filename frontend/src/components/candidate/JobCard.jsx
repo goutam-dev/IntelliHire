@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -32,6 +32,7 @@ import {
   UserCheck,
   ArrowRight
 } from 'lucide-react';
+import { getCurrencySymbol } from '../../constants/jobConstants';
 
 const scaleIn = {
   hidden: { opacity: 0, scale: 0.9 },
@@ -59,14 +60,7 @@ const JobCard = ({ job, index }) => {
   const { applicationStatuses } = useSelector(state => state.jobApplications);
   const applicationStatus = applicationStatuses[job._id];
 
-  // Debug logging for application status
-  useEffect(() => {
-    console.log(`JobCard ${job._id} - Status Update:`, {
-      hasApplied: applicationStatus?.hasApplied,
-      status: applicationStatus?.application?.status,
-      applicationId: applicationStatus?.application?.applicationId
-    });
-  }, [applicationStatus, job._id]);
+
 
   const handleViewDetails = () => {
     setIsExpanded(!isExpanded);
@@ -90,7 +84,6 @@ const JobCard = ({ job, index }) => {
 
   const handleBookmark = () => {
     setIsBookmarked(!isBookmarked);
-    // TODO: Implement bookmark functionality
   };
 
   const getSalaryDisplay = () => {
@@ -133,10 +126,13 @@ const JobCard = ({ job, index }) => {
     const now = new Date();
     const posted = new Date(date);
     const diffTime = Math.abs(now - posted);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const diffHours = Math.ceil(diffTime / (1000 * 60 * 60));
+    const diffMinutes = Math.floor(diffTime / (1000 * 60));
+    const diffHours = Math.floor(diffTime / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     
-    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes} ${diffMinutes === 1 ? 'minute' : 'minutes'} ago`;
+    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
     if (diffDays === 1) return '1 day ago';
     if (diffDays < 7) return `${diffDays} days ago`;
     if (diffDays < 30) return `${Math.ceil(diffDays / 7)} weeks ago`;
@@ -300,11 +296,11 @@ const JobCard = ({ job, index }) => {
           <div className="flex items-center gap-4 text-xs text-gray-500">
             <div className="flex items-center gap-1">
               <Eye className="w-3 h-3" />
-              <span>{job.viewsCount || job.metadata?.views || Math.floor(Math.random() * 500) + 50} views</span>
+              <span>{job.viewsCount || job.metadata?.views || 0} views</span>
             </div>
             <div className="flex items-center gap-1">
               <Users className="w-3 h-3" />
-              <span>{job.applicationsCount || job.metadata?.applicants || Math.floor(Math.random() * 50) + 5} applicants</span>
+              <span>{job.applicationsCount || job.metadata?.applicants || 0} applicants</span>
             </div>
           </div>
           {job.applicationDeadline && (
@@ -347,11 +343,6 @@ const JobCard = ({ job, index }) => {
                         <div className="flex items-center justify-between">
                           <span className="text-gray-600">Base Salary:</span>
                           <span className="font-semibold text-gray-900">{salaryInfo.range}</span>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-2 space-y-1">
-                          <p>• Competitive salary based on experience</p>
-                          <p>• Performance-based bonuses</p>
-                          <p>• Comprehensive benefits package</p>
                         </div>
                       </div>
                     </div>
@@ -407,18 +398,7 @@ const JobCard = ({ job, index }) => {
                   </div>
                 )}
 
-                {/* Company Benefits */}
-                <div>
-                  <h4 className="font-semibold text-gray-900 mb-3">Benefits & Perks</h4>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="grid grid-cols-2 gap-2 text-sm text-gray-700">
-                      <div>• Health Insurance</div>
-                      <div>• Career Growth</div>
-                      <div>• Work-Life Balance</div>
-                      <div>• Remote Options</div>
-                    </div>
-                  </div>
-                </div>
+
               </div>
             </motion.div>
           )}

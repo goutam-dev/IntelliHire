@@ -10,8 +10,9 @@ import { batchAnalyzeApplications, analyzeResume } from '../../services/api/resu
 import FiltersBar from '../../components/FiltersBar';
 import ApplicationsTable from '../../components/ApplicationsTable';
 import CandidateModal from '../../components/CandidateModal';
-import { mockApplications } from '../../data/mockApplications';
+
 import EmployerHeader from '../../components/layout/EmployerHeader';
+import ConfirmDialog from '../../components/common/ConfirmDialog';
 
 const StatCard = ({ title, value, icon: Icon, color, delay }) => (
   <motion.div
@@ -56,6 +57,13 @@ const JobApplicationsPage = () => {
   const [batchProgress, setBatchProgress] = useState(null);
   const [pollingInterval, setPollingInterval] = useState(null);
 
+  // Dialog states
+  const [batchAnalyzeDialog, setBatchAnalyzeDialog] = useState(false);
+  const [rejectDialog, setRejectDialog] = useState(false);
+  const [rejectFeedback, setRejectFeedback] = useState('');
+  const [interviewDialog, setInterviewDialog] = useState(false);
+  const [interviewData, setInterviewData] = useState({ date: '', instructions: '' });
+
   const hasSelection = selectedIds.length > 0;
 
   useEffect(() => {
@@ -81,11 +89,10 @@ const JobApplicationsPage = () => {
       setApplications(data);
       return data; // return fresh data so callers don't rely on stale closure
     } catch (err) {
-      console.warn('Falling back to mock applications:', err.message);
-      // Fallback to mock data for local development
-      setApplications(mockApplications);
-      setError('Showing mock data due to API error.');
-      return mockApplications;
+      console.error('Failed to fetch applications:', err.message);
+      setApplications([]);
+      setError('Failed to load applications. Please try again.');
+      return [];
     } finally {
       if (!silent) setLoading(false);
     }
@@ -211,12 +218,11 @@ const JobApplicationsPage = () => {
 
   const handleBatchAnalyze = async () => {
     if (analyzingBatch) return;
+    setBatchAnalyzeDialog(true);
+  };
 
-    const confirmed = window.confirm(
-      `This will analyze all ${applications.length} applications using AI. This may take a few minutes. Continue?`
-    );
-
-    if (!confirmed) return;
+  const confirmBatchAnalyze = async () => {
+    setBatchAnalyzeDialog(false);
 
     setAnalyzingBatch(true);
     setBatchProgress({ current: 0, total: applications.length, status: 'Starting...' });
@@ -319,21 +325,14 @@ const JobApplicationsPage = () => {
         <CheckCircle2 className="h-4 w-4" /> Shortlist
       </button>
       <button
-        onClick={() => {
-          const feedback = prompt('Optional feedback for rejection:');
-          bulkAction('reject', { feedback });
-        }}
+        onClick={() => setRejectDialog(true)}
         className="inline-flex items-center gap-1 rounded-lg bg-rose-600 text-white px-3 py-2 text-sm hover:bg-rose-700 shadow-sm hover:shadow transition-all"
         disabled={!hasSelection}
       >
         <XCircle className="h-4 w-4" /> Reject
       </button>
       <button
-        onClick={() => {
-          const scheduledAt = prompt('Interview date (YYYY-MM-DDTHH:mm):');
-          const instructions = prompt('Interview instructions:');
-          bulkAction('interview', { notes: instructions, feedback: '', scheduledAt });
-        }}
+        onClick={() => setInterviewDialog(true)}
         className="inline-flex items-center gap-1 rounded-lg bg-amber-600 text-white px-3 py-2 text-sm hover:bg-amber-700 shadow-sm hover:shadow transition-all"
         disabled={!hasSelection}
       >
@@ -562,7 +561,82 @@ const JobApplicationsPage = () => {
               </motion.div>
             </motion.div>
           )}
-        </AnimatePresence>      </main>
+        </AnimatePresence>
+
+        {/* Batch Analyze Confirmation Dialog */}
+        <ConfirmDialog
+          open={batchAnalyzeDialog}
+          title="AI Batch Analysis"
+          message={`This will analyze all ${applications.length} applications using AI. This may take a few minutes.`}
+          confirmLabel="Start Analysis"
+          cancelLabel="Cancel"
+          variant="info"
+          onConfirm={confirmBatchAnalyze}
+          onCancel={() => setBatchAnalyzeDialog(false)}
+        />
+
+        {/* Bulk Reject Dialog */}
+        <ConfirmDialog
+          open={rejectDialog}
+          title="Reject Selected Candidates"
+          message={`You are about to reject ${selectedIds.length} candidate(s). Optionally provide feedback below.`}
+          confirmLabel="Reject"
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={() => {
+            bulkAction('reject', { feedback: rejectFeedback });
+            setRejectDialog(false);
+            setRejectFeedback('');
+          }}
+          onCancel={() => { setRejectDialog(false); setRejectFeedback(''); }}
+        >
+          <textarea
+            value={rejectFeedback}
+            onChange={(e) => setRejectFeedback(e.target.value)}
+            placeholder="Optional feedback for the candidates..."
+            className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent resize-none"
+            rows={3}
+          />
+        </ConfirmDialog>
+
+        {/* Bulk Interview Dialog */}
+        <ConfirmDialog
+          open={interviewDialog}
+          title="Schedule Interviews"
+          message={`Schedule interviews for ${selectedIds.length} candidate(s).`}
+          confirmLabel="Schedule"
+          cancelLabel="Cancel"
+          variant="info"
+          onConfirm={() => {
+            bulkAction('interview', { notes: interviewData.instructions, feedback: '', scheduledAt: interviewData.date });
+            setInterviewDialog(false);
+            setInterviewData({ date: '', instructions: '' });
+          }}
+          onCancel={() => { setInterviewDialog(false); setInterviewData({ date: '', instructions: '' }); }}
+        >
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Interview Date</label>
+              <input
+                type="datetime-local"
+                value={interviewData.date}
+                onChange={(e) => setInterviewData(prev => ({ ...prev, date: e.target.value }))}
+                className="w-full rounded-lg border border-slate-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Instructions</label>
+              <textarea
+                value={interviewData.instructions}
+                onChange={(e) => setInterviewData(prev => ({ ...prev, instructions: e.target.value }))}
+                placeholder="Interview instructions for the candidates..."
+                className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                rows={3}
+              />
+            </div>
+          </div>
+        </ConfirmDialog>
+      </main>
     </div>
   );
 };

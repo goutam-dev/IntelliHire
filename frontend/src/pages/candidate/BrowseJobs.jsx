@@ -70,7 +70,7 @@ const scaleIn = {
 };
 
 // Filters Sidebar Component
-const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef }) => {
+const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }) => {
   const dispatch = useDispatch();
   const { filters, filterOptions, filtersLoading } = useSelector(state => state.jobs);
   const [localFilters, setLocalFilters] = useState(filters);
@@ -85,7 +85,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef }) => {
     setLocalFilters(newFilters);
     
     // Apply filters immediately for desktop, or wait for mobile apply button
-    if (window.innerWidth >= 1024) {
+    if (isDesktop) {
       dispatch(setFilters(newFilters));
       const filterPromise = dispatch(fetchJobs({ ...newFilters, page: 1 }));
       
@@ -438,7 +438,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef }) => {
   );
 
   // Return appropriate version based on screen size
-  return window.innerWidth >= 1024 ? desktopSidebar : mobileSidebar;
+  return isDesktop ? desktopSidebar : mobileSidebar;
 };
 
 // Loading Skeleton Component
@@ -560,7 +560,7 @@ const BrowseJobs = () => {
   useEffect(() => {
     if (location.state?.forceRefresh && location.state?.appliedJobId) {
       const appliedJobId = location.state.appliedJobId;
-      console.log('Force refreshing application status for job:', appliedJobId);
+
       
       // Force refresh the specific job's application status by clearing cache first
       dispatch(forceRefreshApplicationStatus({ jobId: appliedJobId }));
@@ -591,7 +591,7 @@ const BrowseJobs = () => {
           setTimeout(() => setIsSearching(false), 300);
         }).catch((error) => {
           if (error.name === 'AbortError') {
-            console.log('Search request aborted');
+            // Search request was aborted — no action needed
           }
         });
       } else {
@@ -754,7 +754,7 @@ const BrowseJobs = () => {
             {/* Filters Sidebar - Desktop */}
             <div className="hidden lg:block">
               <div className="h-full max-h-[calc(100vh-16rem)] overflow-hidden">
-                <FiltersSidebar isOpen={true} onClose={() => {}} jobsContainerRef={jobsContainerRef} />
+                <FiltersSidebar isOpen={true} isDesktop={true} onClose={() => {}} jobsContainerRef={jobsContainerRef} />
               </div>
             </div>
 
@@ -825,7 +825,7 @@ const BrowseJobs = () => {
 
       {/* Mobile Filters */}
       <div className="lg:hidden">
-        <FiltersSidebar isOpen={showFilters} onClose={() => setShowFilters(false)} jobsContainerRef={jobsContainerRef} />
+        <FiltersSidebar isOpen={showFilters} isDesktop={false} onClose={() => setShowFilters(false)} jobsContainerRef={jobsContainerRef} />
       </div>
     </main>
   );

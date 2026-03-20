@@ -89,9 +89,8 @@ const CandidateDashboard = () => {
         setShowSkillsForm(true);
         break;
       case "profile-edit":
-        // Handle profile edit - could open a comprehensive profile edit modal
-        // For now, we'll open the skills form as an example
-        setShowSkillsForm(true);
+        // Navigate to the profile page for a comprehensive edit
+        window.location.href = '/candidate/profile';
         break;
       default:
         break;

@@ -21,6 +21,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import api from '../../lib/api';
+import { getCurrencySymbol } from '../../constants/jobConstants';
 
 const JobDetails = () => {
   const { jobId } = useParams();
@@ -77,8 +78,9 @@ const JobDetails = () => {
       return 'Salary not disclosed';
     }
     
-    const min = salaryRange.min ? `$${salaryRange.min.toLocaleString()}` : '';
-    const max = salaryRange.max ? `$${salaryRange.max.toLocaleString()}` : '';
+    const symbol = getCurrencySymbol(salaryRange.currency || 'USD');
+    const min = salaryRange.min ? `${symbol}${salaryRange.min.toLocaleString()}` : '';
+    const max = salaryRange.max ? `${symbol}${salaryRange.max.toLocaleString()}` : '';
     
     if (min && max) {
       return `${min} - ${max}`;

@@ -1027,10 +1027,10 @@ const FinalCTA = () => (
       <p className="mt-6 text-sm text-slate-500 sm:text-base">
         Have questions or want to collaborate on research? Reach us at{" "}
         <a
-          href="mailto:contact@intellihire.example"
+          href="mailto:contact@intellihire.com"
           className="text-slate-900 underline transition-colors hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-slate-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50"
         >
-          contact@intellihire.example
+          contact@intellihire.com
         </a>
         .
       </p>
@@ -1066,13 +1066,13 @@ const Footer = () => {
         <div className="flex flex-col gap-4 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-4">
             <a
-              href="#final-cta"
+              href="/terms"
               className="transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
             >
               Terms
             </a>
             <a
-              href="#final-cta"
+              href="/privacy"
               className="transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
             >
               Privacy
