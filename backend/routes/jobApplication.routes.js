@@ -2,11 +2,11 @@ const express = require('express');
 const router = express.Router();
 const jobApplicationController = require('../controllers/jobApplicationController');
 const auth = require('../middleware/auth');
-const { videoUpload } = require('../middleware/upload');
+const { applicationUpload } = require('../middleware/upload');
 
 // Accept both resume (PDF) and applicationVideo in a single multipart request
-// videoUpload has the 50MB limit suitable for video files
-const applyFields = videoUpload.fields([
+// applicationUpload allows two files in a single request
+const applyFields = applicationUpload.fields([
   { name: 'resume', maxCount: 1 },
   { name: 'applicationVideo', maxCount: 1 }
 ]);

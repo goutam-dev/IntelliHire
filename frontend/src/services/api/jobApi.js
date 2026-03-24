@@ -21,6 +21,14 @@ export const getJobById = async (jobId) => {
 };
 
 /**
+ * Increment job views
+ */
+export const incrementJobViews = async (jobId) => {
+  const response = await api.post(`/jobs/${jobId}/views`);
+  return response.data;
+};
+
+/**
  * Create a new job
  */
 export const createJob = async (jobData) => {
@@ -63,6 +71,7 @@ export const getFilterOptions = async () => {
 export default {
   getJobs,
   getJobById,
+  incrementJobViews,
   createJob,
   updateJob,
   updateJobStatus,

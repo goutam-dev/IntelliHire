@@ -22,6 +22,14 @@ exports.getJobById = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Increment job views
+ */
+exports.incrementJobViews = asyncHandler(async (req, res) => {
+  const result = await jobService.incrementJobViews(req.params.jobId, req.auth?.userId);
+  res.json(result);
+});
+
+/**
  * Create a new job
  */
 exports.createJob = asyncHandler(async (req, res) => {

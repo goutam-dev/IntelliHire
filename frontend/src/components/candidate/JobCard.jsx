@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -33,6 +33,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { getCurrencySymbol } from '../../constants/jobConstants';
+import jobApi from '../../services/api/jobApi';
 
 const scaleIn = {
   hidden: { opacity: 0, scale: 0.9 },
@@ -52,6 +53,7 @@ const JobCard = ({ job, index }) => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [viewCount, setViewCount] = useState(job.viewsCount || job.metadata?.views || 0);
 
   // Get profile completion data from Redux store
   const { completion, incompleteSections, isComplete } = useSelector(state => state.profileCompletion);
@@ -60,18 +62,52 @@ const JobCard = ({ job, index }) => {
   const { applicationStatuses } = useSelector(state => state.jobApplications);
   const applicationStatus = applicationStatuses[job._id];
 
+  useEffect(() => {
+    setViewCount(job.viewsCount || job.metadata?.views || 0);
+  }, [job._id, job.viewsCount, job.metadata?.views]);
 
+  const trackViewIfNeeded = async () => {
+    const viewSessionKey = `job-view-tracked-${job._id}`;
+    const hasTrackedInSession = typeof window !== 'undefined' && window.sessionStorage.getItem(viewSessionKey);
 
-  const handleViewDetails = () => {
-    setIsExpanded(!isExpanded);
+    if (hasTrackedInSession) {
+      return;
+    }
+
+    try {
+      const result = await jobApi.incrementJobViews(job._id);
+      const nextViews = typeof result?.viewsCount === 'number' ? result.viewsCount : (viewCount + 1);
+      setViewCount(nextViews);
+
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(viewSessionKey, '1');
+      }
+    } catch (error) {
+      console.error('Failed to increment job views:', error);
+    }
   };
 
-  const handleApplyNow = () => {
+
+
+  const handleViewDetails = async () => {
+    const nextExpanded = !isExpanded;
+    setIsExpanded(nextExpanded);
+
+    if (!nextExpanded) {
+      return;
+    }
+
+    await trackViewIfNeeded();
+  };
+
+  const handleApplyNow = async () => {
     // Only allow application if profile is complete
     if (!completion || !isComplete || completion.percentage < 100) {
       // Do nothing - button is disabled for incomplete profiles
       return;
     }
+
+    await trackViewIfNeeded();
 
     // Navigate to job application page with job data
     navigate(`/candidate/apply/${job._id}`, { 
@@ -296,7 +332,7 @@ const JobCard = ({ job, index }) => {
           <div className="flex items-center gap-4 text-xs text-gray-500">
             <div className="flex items-center gap-1">
               <Eye className="w-3 h-3" />
-              <span>{job.viewsCount || job.metadata?.views || 0} views</span>
+              <span>{viewCount} views</span>
             </div>
             <div className="flex items-center gap-1">
               <Users className="w-3 h-3" />
@@ -416,11 +452,11 @@ const JobCard = ({ job, index }) => {
             {isExpanded ? 'Less' : 'Details'}
           </motion.button>
           <motion.button
-            onClick={() => {
+            onClick={async () => {
               if (applicationStatus?.hasApplied) {
                 navigate('/candidate/applications');
               } else if (completion && isComplete && completion.percentage === 100) {
-                handleApplyNow();
+                await handleApplyNow();
               }
             }}
             disabled={(!completion || !isComplete || completion.percentage < 100) && !applicationStatus?.hasApplied}

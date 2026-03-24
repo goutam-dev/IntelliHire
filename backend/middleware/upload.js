@@ -159,6 +159,17 @@ const videoUpload = multer({
   }
 });
 
+// Separate multer instance for job application uploads
+// Allows uploading both resume + applicationVideo in one multipart request
+const applicationUpload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // Keep video-friendly limit
+    files: 2 // resume + applicationVideo
+  }
+});
+
 videoUpload.handleError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
@@ -174,3 +185,4 @@ videoUpload.handleError = (err, req, res, next) => {
 
 module.exports = upload;
 module.exports.videoUpload = videoUpload;
+module.exports.applicationUpload = applicationUpload;

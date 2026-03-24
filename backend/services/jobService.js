@@ -13,7 +13,18 @@ const { validateRequiredFields } = require('../utils/validators');
 /**
  * Build filter object for job queries
  */
-const buildFilters = ({ status, search, employerId }) => {
+const buildFilters = ({
+  status,
+  search,
+  employerId,
+  location,
+  department,
+  experienceLevel,
+  employmentType,
+  salaryMin,
+  salaryMax,
+  postedDate,
+}) => {
   const filters = {};
 
   if (status && status !== 'all') {
@@ -28,10 +39,69 @@ const buildFilters = ({ status, search, employerId }) => {
     filters.$or = [
       { title: { $regex: search, $options: 'i' } },
       { department: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } },
+      { requiredSkills: { $elemMatch: { $regex: search, $options: 'i' } } },
     ];
   }
 
+  if (location) {
+    filters.location = { $regex: `^${location}$`, $options: 'i' };
+  }
+
+  if (department) {
+    filters.department = { $regex: `^${department}$`, $options: 'i' };
+  }
+
+  if (experienceLevel) {
+    filters.experienceLevel = experienceLevel;
+  }
+
+  if (employmentType) {
+    filters.employmentType = employmentType;
+  }
+
+  const min = Number(salaryMin);
+  const max = Number(salaryMax);
+  if (!Number.isNaN(min) && min > 0) {
+    filters['salaryRange.min'] = { $gte: min };
+  }
+  if (!Number.isNaN(max) && max > 0) {
+    filters['salaryRange.max'] = { $lte: max };
+  }
+
+  if (postedDate) {
+    const now = new Date();
+    let fromDate = null;
+
+    if (postedDate === '24h') {
+      fromDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    } else if (postedDate === '7d') {
+      fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (postedDate === '30d') {
+      fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    if (fromDate) {
+      filters.createdAt = { $gte: fromDate };
+    }
+  }
+
   return filters;
+};
+
+const getSortStage = (sortBy = 'createdAt', sortOrder = 'desc') => {
+  const direction = sortOrder === 'asc' ? 1 : -1;
+  const sortMap = {
+    createdAt: { createdAt: direction },
+    publishedAt: { publishedAt: direction, createdAt: -1 },
+    applicationDeadline: { applicationDeadline: direction, createdAt: -1 },
+    title: { title: direction },
+    experienceLevel: { experienceLevel: direction, createdAt: -1 },
+    salaryMin: { 'salaryRange.min': direction, createdAt: -1 },
+    salaryMax: { 'salaryRange.max': direction, createdAt: -1 },
+  };
+
+  return sortMap[sortBy] || sortMap.createdAt;
 };
 
 /**
@@ -63,9 +133,21 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
     filters.employer = new mongoose.Types.ObjectId(filters.employer);
   }
 
+  const hasExplicitPagination = Boolean(queryFilters.page || queryFilters.limit);
+  const page = Math.max(1, Number(queryFilters.page) || 1);
+  const limit = hasExplicitPagination
+    ? Math.min(100, Math.max(1, Number(queryFilters.limit) || 10))
+    : 1000;
+  const skip = (page - 1) * limit;
+  const sortStage = getSortStage(queryFilters.sortBy, queryFilters.sortOrder);
+
+  const totalJobs = await Job.countDocuments(filters);
+
   const jobs = await Job.aggregate([
     { $match: filters },
-    { $sort: { createdAt: -1 } },
+    { $sort: sortStage },
+    { $skip: skip },
+    { $limit: limit },
     {
       $lookup: {
         from: 'jobapplications',
@@ -96,7 +178,31 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
     { $project: { appCounts: 0, employerProfile: 0 } },
   ]);
 
-  return jobs;
+  const totalPages = Math.max(1, Math.ceil(totalJobs / limit));
+
+  return {
+    jobs,
+    pagination: {
+      currentPage: page,
+      totalPages,
+      totalJobs,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+      limit,
+    },
+    filters: {
+      search: queryFilters.search || '',
+      location: queryFilters.location || '',
+      department: queryFilters.department || '',
+      experienceLevel: queryFilters.experienceLevel || '',
+      employmentType: queryFilters.employmentType || '',
+      salaryMin: queryFilters.salaryMin || '',
+      salaryMax: queryFilters.salaryMax || '',
+      postedDate: queryFilters.postedDate || '',
+      sortBy: queryFilters.sortBy || 'createdAt',
+      sortOrder: queryFilters.sortOrder || 'desc',
+    },
+  };
 };
 
 /**
@@ -330,27 +436,79 @@ const getFilterOptions = async () => {
   // Only get options from active jobs
   const activeJobsFilter = { status: 'active' };
 
-  const [locations, departments, experienceLevels, employmentTypes] = await Promise.all([
+  const countByField = async (field) => {
+    return Job.aggregate([
+      { $match: activeJobsFilter },
+      { $group: { _id: `$${field}`, count: { $sum: 1 } } },
+      { $match: { _id: { $ne: null } } },
+      { $project: { _id: 0, value: '$_id', count: 1 } },
+      { $sort: { value: 1 } },
+    ]);
+  };
+
+  const [locations, departmentsFromDb, experienceCounts, employmentCounts] = await Promise.all([
     Job.distinct('location', activeJobsFilter),
-    Job.distinct('department', activeJobsFilter),
-    Job.distinct('experienceLevel', activeJobsFilter),
-    Job.distinct('employmentType', activeJobsFilter),
+    countByField('department'),
+    countByField('experienceLevel'),
+    countByField('employmentType'),
   ]);
 
   // Filter out null/undefined/empty values and sort
   const cleanAndSort = (arr) => arr.filter(val => val && val.trim()).sort();
 
+  const EXPERIENCE_LEVELS = ['entry', 'mid', 'senior', 'expert'];
+  const EMPLOYMENT_TYPES = ['full-time', 'part-time', 'contract', 'remote'];
+
+  const mergeWithDefaults = (defaults, counts) => {
+    const countMap = new Map((counts || []).map(item => [item.value, item.count]));
+    return defaults.map(value => ({
+      value,
+      count: countMap.get(value) || 0,
+    }));
+  };
+
   return {
     locations: cleanAndSort(locations),
-    departments: cleanAndSort(departments),
-    experienceLevels: cleanAndSort(experienceLevels),
-    employmentTypes: cleanAndSort(employmentTypes),
+    departments: departmentsFromDb.filter(item => item?.value && String(item.value).trim()),
+    experienceLevels: mergeWithDefaults(EXPERIENCE_LEVELS, experienceCounts),
+    employmentTypes: mergeWithDefaults(EMPLOYMENT_TYPES, employmentCounts),
   };
+};
+
+/**
+ * Increment job views count
+ */
+const incrementJobViews = async (jobId, viewerClerkUserId = null) => {
+  const job = await Job.findById(jobId).select('status metadata.views').lean();
+
+  if (!job) {
+    throw new NotFoundError('Job not found');
+  }
+
+  if (job.status !== 'active') {
+    throw new NotFoundError('Job not found');
+  }
+
+  if (viewerClerkUserId) {
+    const viewer = await User.findOne({ clerkUserId: viewerClerkUserId }).select('role').lean();
+    if (viewer?.role === 'employer') {
+      return { viewsCount: job.metadata?.views || 0 };
+    }
+  }
+
+  const updatedJob = await Job.findByIdAndUpdate(
+    jobId,
+    { $inc: { 'metadata.views': 1 } },
+    { new: true, projection: { 'metadata.views': 1 } }
+  ).lean();
+
+  return { viewsCount: updatedJob?.metadata?.views || 0 };
 };
 
 module.exports = {
   getJobsByEmployer,
   getJobById,
+  incrementJobViews,
   createJob,
   updateJob,
   updateJobStatus,

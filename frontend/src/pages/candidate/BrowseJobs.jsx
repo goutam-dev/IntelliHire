@@ -75,6 +75,31 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
   const { filters, filterOptions, filtersLoading } = useSelector(state => state.jobs);
   const [localFilters, setLocalFilters] = useState(filters);
 
+  const DEFAULT_EXPERIENCE_LEVELS = ['entry', 'mid', 'senior', 'expert'];
+  const DEFAULT_EMPLOYMENT_TYPES = ['full-time', 'part-time', 'contract', 'remote'];
+
+  const normalizeOptionItems = (items, fallbackValues = []) => {
+    const normalized = (items || []).map((item) => {
+      if (typeof item === 'string') {
+        return { value: item, count: null };
+      }
+      return { value: item?.value, count: item?.count ?? null };
+    }).filter((item) => item.value);
+
+    const existingValues = new Set(normalized.map((item) => item.value));
+    fallbackValues.forEach((value) => {
+      if (!existingValues.has(value)) {
+        normalized.push({ value, count: 0 });
+      }
+    });
+
+    return normalized;
+  };
+
+  const departmentOptions = normalizeOptionItems(filterOptions.departments);
+  const experienceOptions = normalizeOptionItems(filterOptions.experienceLevels, DEFAULT_EXPERIENCE_LEVELS);
+  const employmentOptions = normalizeOptionItems(filterOptions.employmentTypes, DEFAULT_EMPLOYMENT_TYPES);
+
   // Update local filters when global filters change
   useEffect(() => {
     setLocalFilters(filters);
@@ -165,9 +190,9 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
             >
               <option value="">All Departments</option>
-              {filterOptions.departments?.map(department => (
+              {departmentOptions.map(department => (
                 <option key={department.value} value={department.value}>
-                  {department.value} ({department.count})
+                  {department.count === null ? department.value : `${department.value} (${department.count})`}
                 </option>
               ))}
             </select>
@@ -184,9 +209,9 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
             >
               <option value="">All Levels</option>
-              {filterOptions.experienceLevels?.map(level => (
+              {experienceOptions.map(level => (
                 <option key={level.value} value={level.value}>
-                  {level.value} ({level.count})
+                  {level.count === null ? level.value : `${level.value} (${level.count})`}
                 </option>
               ))}
             </select>
@@ -203,11 +228,43 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
             >
               <option value="">All Types</option>
-              {filterOptions.employmentTypes?.map(type => (
+              {employmentOptions.map(type => (
                 <option key={type.value} value={type.value}>
-                  {type.value} ({type.count})
+                  {type.count === null ? type.value : `${type.value} (${type.count})`}
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Sort */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Sort By
+            </label>
+            <select
+              value={localFilters.sortBy}
+              onChange={(e) => handleFilterChange('sortBy', e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+            >
+              <option value="createdAt">Date Posted</option>
+              <option value="salaryMin">Minimum Salary</option>
+              <option value="salaryMax">Maximum Salary</option>
+              <option value="title">Job Title</option>
+              <option value="applicationDeadline">Application Deadline</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Sort Order
+            </label>
+            <select
+              value={localFilters.sortOrder}
+              onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+            >
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
             </select>
           </div>
 
@@ -328,9 +385,9 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
                   >
                     <option value="">All Departments</option>
-                    {filterOptions.departments?.map(department => (
+                    {departmentOptions.map(department => (
                       <option key={department.value} value={department.value}>
-                        {department.value} ({department.count})
+                        {department.count === null ? department.value : `${department.value} (${department.count})`}
                       </option>
                     ))}
                   </select>
@@ -347,9 +404,9 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
                   >
                     <option value="">All Levels</option>
-                    {filterOptions.experienceLevels?.map(level => (
+                    {experienceOptions.map(level => (
                       <option key={level.value} value={level.value}>
-                        {level.value} ({level.count})
+                        {level.count === null ? level.value : `${level.value} (${level.count})`}
                       </option>
                     ))}
                   </select>
@@ -366,11 +423,43 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
                   >
                     <option value="">All Types</option>
-                    {filterOptions.employmentTypes?.map(type => (
+                    {employmentOptions.map(type => (
                       <option key={type.value} value={type.value}>
-                        {type.value} ({type.count})
+                        {type.count === null ? type.value : `${type.value} (${type.count})`}
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                {/* Sort */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Sort By
+                  </label>
+                  <select
+                    value={localFilters.sortBy}
+                    onChange={(e) => handleFilterChange('sortBy', e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+                  >
+                    <option value="createdAt">Date Posted</option>
+                    <option value="salaryMin">Minimum Salary</option>
+                    <option value="salaryMax">Maximum Salary</option>
+                    <option value="title">Job Title</option>
+                    <option value="applicationDeadline">Application Deadline</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Sort Order
+                  </label>
+                  <select
+                    value={localFilters.sortOrder}
+                    onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+                  >
+                    <option value="desc">Descending</option>
+                    <option value="asc">Ascending</option>
                   </select>
                 </div>
 

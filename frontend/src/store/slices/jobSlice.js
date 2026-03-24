@@ -212,7 +212,14 @@ const jobSlice = createSlice({
       })
       .addCase(fetchEmployerJobs.fulfilled, (state, action) => {
         state.jobsLoading = false;
-        state.jobs = action.payload || [];
+        if (action.payload?.jobs) {
+          state.jobs = action.payload.jobs;
+          if (action.payload.pagination) {
+            state.pagination = action.payload.pagination;
+          }
+        } else {
+          state.jobs = action.payload || [];
+        }
         state.jobsError = null;
       })
       .addCase(fetchEmployerJobs.rejected, (state, action) => {

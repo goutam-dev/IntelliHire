@@ -31,12 +31,16 @@ const statusFilters = [
   { label: 'Active', value: 'active' },
   { label: 'Closed', value: 'closed' },
   { label: 'Draft', value: 'draft' },
+  { label: 'Archived', value: 'archived' },
 ];
 
 const sortOptions = [
   { label: 'Newest First', value: 'newest' },
   { label: 'Oldest First', value: 'oldest' },
   { label: 'Most Applications', value: 'applications' },
+  { label: 'Most Views', value: 'views' },
+  { label: 'Title (A-Z)', value: 'title-asc' },
+  { label: 'Title (Z-A)', value: 'title-desc' },
 ];
 
 const StatusBadge = ({ status }) => {
@@ -69,8 +73,34 @@ const MyJobsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [locationFilter, setLocationFilter] = useState('all');
+  const [experienceFilter, setExperienceFilter] = useState('all');
+  const [employmentFilter, setEmploymentFilter] = useState('all');
   const [topCandidatesModal, setTopCandidatesModal] = useState({ isOpen: false, jobId: null, jobTitle: '' });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, jobId: null });
+
+  const getJobSortTimestamp = (job) => {
+    const dateValue = job?.publishedAt || job?.postedAt || job?.createdAt;
+    const timestamp = dateValue ? new Date(dateValue).getTime() : 0;
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+  };
+
+  const uniqueDepartments = useMemo(() => {
+    return [...new Set(jobs.map((job) => job.department).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
+
+  const uniqueLocations = useMemo(() => {
+    return [...new Set(jobs.map((job) => job.location).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
+
+  const uniqueExperienceLevels = useMemo(() => {
+    return [...new Set(jobs.map((job) => job.experienceLevel).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
+
+  const uniqueEmploymentTypes = useMemo(() => {
+    return [...new Set(jobs.map((job) => job.employmentType).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -86,32 +116,57 @@ const MyJobsPage = () => {
 
     if (searchTerm.trim()) {
       const lowerSearch = searchTerm.toLowerCase();
-      list = list.filter((job) => job.title?.toLowerCase().includes(lowerSearch));
+      list = list.filter((job) =>
+        job.title?.toLowerCase().includes(lowerSearch) ||
+        job.department?.toLowerCase().includes(lowerSearch) ||
+        job.location?.toLowerCase().includes(lowerSearch)
+      );
     }
 
     if (statusFilter !== 'all') {
       list = list.filter((job) => job.status === statusFilter);
     }
 
+    if (departmentFilter !== 'all') {
+      list = list.filter((job) => job.department === departmentFilter);
+    }
+
+    if (locationFilter !== 'all') {
+      list = list.filter((job) => job.location === locationFilter);
+    }
+
+    if (experienceFilter !== 'all') {
+      list = list.filter((job) => job.experienceLevel === experienceFilter);
+    }
+
+    if (employmentFilter !== 'all') {
+      list = list.filter((job) => job.employmentType === employmentFilter);
+    }
+
     switch (sortBy) {
       case 'oldest':
-        list.sort(
-          (a, b) => new Date(a.postedAt).getTime() - new Date(b.postedAt).getTime()
-        );
+        list.sort((a, b) => getJobSortTimestamp(a) - getJobSortTimestamp(b));
         break;
       case 'applications':
         list.sort((a, b) => (b.applicationsCount || 0) - (a.applicationsCount || 0));
         break;
+      case 'views':
+        list.sort((a, b) => (b.metadata?.views || 0) - (a.metadata?.views || 0));
+        break;
+      case 'title-asc':
+        list.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        break;
+      case 'title-desc':
+        list.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+        break;
       case 'newest':
       default:
-        list.sort(
-          (a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime()
-        );
+        list.sort((a, b) => getJobSortTimestamp(b) - getJobSortTimestamp(a));
         break;
     }
 
     return list;
-  }, [jobs, searchTerm, statusFilter, sortBy]);
+  }, [jobs, searchTerm, statusFilter, sortBy, departmentFilter, locationFilter, experienceFilter, employmentFilter]);
 
   const stats = useMemo(() => {
     const total = jobs.length;
@@ -216,7 +271,7 @@ const MyJobsPage = () => {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by job title..."
+                  placeholder="Search by title, department, or location..."
                   className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-11 pr-4 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                 />
               </div>
@@ -253,6 +308,52 @@ const MyJobsPage = () => {
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              >
+                <option value="all">All Departments</option>
+                {uniqueDepartments.map((department) => (
+                  <option key={department} value={department}>{department}</option>
+                ))}
+              </select>
+
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              >
+                <option value="all">All Locations</option>
+                {uniqueLocations.map((location) => (
+                  <option key={location} value={location}>{location}</option>
+                ))}
+              </select>
+
+              <select
+                value={experienceFilter}
+                onChange={(e) => setExperienceFilter(e.target.value)}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              >
+                <option value="all">All Experience Levels</option>
+                {uniqueExperienceLevels.map((level) => (
+                  <option key={level} value={level}>{level}</option>
+                ))}
+              </select>
+
+              <select
+                value={employmentFilter}
+                onChange={(e) => setEmploymentFilter(e.target.value)}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              >
+                <option value="all">All Employment Types</option>
+                {uniqueEmploymentTypes.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
             </div>
           </div>
 

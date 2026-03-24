@@ -2,6 +2,7 @@ const express = require('express');
 const {
   listJobs,
   getJobById,
+  incrementJobViews,
   createJob,
   updateJob,
   updateJobStatus,
@@ -15,6 +16,7 @@ const router = express.Router();
 // Public or Authenticated (Candidates)
 router.get('/', optionalAuth, listJobs);
 router.get('/filters/options', getFilterOptions);
+router.post('/:jobId/views', optionalAuth, incrementJobViews);
 router.get('/:jobId', optionalAuth, getJobById);
 
 // Employer only routes
