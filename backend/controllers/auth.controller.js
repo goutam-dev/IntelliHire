@@ -261,7 +261,8 @@ async function completeSignup(req, res) {
 // Get user role - used during sign-in
 async function getUserRole(req, res) {
   try {
-    const sessionToken = req.cookies.__session || req.headers.authorization?.replace('Bearer ', '');
+    // Prioritize the fresh Authorization header over the potentially stale __session cookie
+    const sessionToken = req.headers.authorization?.replace('Bearer ', '') || req.cookies.__session;
     
     if (!sessionToken) {
       return res.status(401).json({ error: 'No session token' });

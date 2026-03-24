@@ -82,7 +82,8 @@ async function getClerkUserWithCache(userId, { allowStaleOnRateLimit = true } = 
 // Middleware to verify Clerk authentication
 async function requireAuth(req, res, next) {
   try {
-    const sessionToken = req.cookies.__session || req.headers.authorization?.replace('Bearer ', '');
+    // Prioritize the fresh Authorization header over the potentially stale __session cookie
+    const sessionToken = req.headers.authorization?.replace('Bearer ', '') || req.cookies.__session;
     
     if (!sessionToken) {
       logAuthDebug('require_auth_no_token', { path: req.originalUrl, method: req.method });
@@ -134,7 +135,8 @@ async function requireAuth(req, res, next) {
 // Optional auth middleware - populates req.auth if token exists, but doesn't block if missing
 async function optionalAuth(req, res, next) {
   try {
-    const sessionToken = req.cookies.__session || req.headers.authorization?.replace('Bearer ', '');
+    // Prioritize the fresh Authorization header over the potentially stale __session cookie
+    const sessionToken = req.headers.authorization?.replace('Bearer ', '') || req.cookies.__session;
     
     if (!sessionToken) {
       // No token provided, continue without auth
