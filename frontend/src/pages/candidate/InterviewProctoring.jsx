@@ -1678,42 +1678,11 @@ function ScreenshotRow({ screenshots }) {
   );
 }
 
-function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingScore = 0, screenshotCaptures = {}, localVoiceMismatches = 0 }) {
-  const scoring = summary?.scoring || {};
-  const turns = summary?.turns || [];
-  const avgScore = scoring.averageScore;
-  const scored = turns.filter(t => t.evaluation?.score != null);
-
-  // Voice proctoring data — from server summary (populated by voiceProctoringService)
-  const vp = summary?.voiceProctoring || {};
-  const vpTotal = vp.totalMismatches ?? localVoiceMismatches;
-  const vpAnalyzed = vp.totalSegmentsAnalyzed ?? 0;
-  const vpMatches = vp.matchCount ?? 0;
-  const vpEnrolled = vp.enrollmentStatus;
-  const vpMismatches = vp.mismatches ?? [];
-
-  const fp = summary?.faceProctoring || {};
-  const fpEnrollment = fp.enrollmentStatus || 'not_enrolled';
-  const fpFaceAlerts = fp.faceAlerts || [];
-  const fpObjectAlerts = fp.objectAlerts || [];
-  const fpTotalFace = fp.totalFaceAlerts ?? fpFaceAlerts.length;
-  const fpTotalObject = fp.totalObjectAlerts ?? fpObjectAlerts.length;
-
-  const scoreColor = avgScore >= 7 ? 'text-emerald-400' : avgScore >= 5 ? 'text-amber-400' : 'text-red-400';
-  const verdict = scoring.overallVerdict || (avgScore >= 7 ? 'Strong Performance' : avgScore >= 5 ? 'Moderate Performance' : 'Needs Improvement');
-
-  const integrityPct = Math.min(100, Math.round((totalCheatingScore / CHEATING_THRESHOLD) * 100));
-  const integrityColor = totalCheatingScore === 0 ? 'text-emerald-400' :
-    totalCheatingScore < CHEATING_THRESHOLD * 0.4 ? 'text-sky-400' :
-      totalCheatingScore < CHEATING_THRESHOLD * 0.7 ? 'text-amber-400' : 'text-red-400';
-  const integrityLabel = totalCheatingScore === 0 ? 'Clean' :
-    totalCheatingScore < CHEATING_THRESHOLD * 0.4 ? 'Minor Flags' :
-      totalCheatingScore >= CHEATING_THRESHOLD ? 'Terminated' : 'Moderate Flags';
-
+function SummaryScreen({ jobTitle }) {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
       <motion.div variants={slideUp} initial="hidden" animate="visible"
-        className="w-full max-w-2xl bg-slate-900 border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden">
+        className="w-full max-w-lg bg-slate-900 border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden">
         <div className="flex items-center gap-3 px-7 py-5 border-b border-slate-700/60 bg-slate-800/60">
           <Award className="text-emerald-400 flex-shrink-0" size={26} />
           <div>
@@ -1722,278 +1691,33 @@ function SummaryScreen({ jobTitle, summary, cheatingReport = [], totalCheatingSc
           </div>
         </div>
 
-        <div className="px-7 py-6 space-y-6">
-          {/* Performance summary */}
-          <div className="flex items-center gap-6 bg-slate-800/50 rounded-xl p-5">
-            <div className="text-center">
-              <p className={`text-5xl font-black ${scoreColor}`}>{avgScore ?? '—'}</p>
-              <p className="text-xs text-slate-500 mt-1">/ 10 avg</p>
-            </div>
-            <div>
-              <p className={`text-lg font-bold ${scoreColor}`}>{verdict}</p>
-              <p className="text-sm text-slate-400 mt-1">{scored.length} questions answered</p>
+        <div className="px-7 py-8 space-y-6 text-center">
+          {/* Success icon */}
+          <div className="flex justify-center">
+            <div className="h-20 w-20 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center">
+              <CheckCircle className="text-emerald-400" size={40} />
             </div>
           </div>
 
-          {/* Detailed scores */}
-          {(scoring.technicalScore || scoring.communicationScore || scoring.problemSolvingScore) && (
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'Technical', score: scoring.technicalScore },
-                { label: 'Communication', score: scoring.communicationScore },
-                { label: 'Problem Solving', score: scoring.problemSolvingScore },
-              ].filter(s => s.score != null).map(s => (
-                <div key={s.label} className="bg-slate-800/40 rounded-xl p-3 text-center border border-slate-700/30">
-                  <p className={`text-2xl font-bold ${s.score >= 7 ? 'text-emerald-400' : s.score >= 5 ? 'text-amber-400' : 'text-red-400'}`}>{s.score}</p>
-                  <p className="text-xs text-slate-500 mt-1">{s.label}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Strengths & Weaknesses */}
-          {(scoring.strengths?.length > 0 || scoring.weaknesses?.length > 0) && (
-            <div className="grid grid-cols-2 gap-4">
-              {scoring.strengths?.length > 0 && (
-                <div className="bg-emerald-950/30 border border-emerald-800/30 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-emerald-400 uppercase tracking-widest mb-2">Strengths</p>
-                  <ul className="space-y-1">
-                    {scoring.strengths.map((s, i) => <li key={i} className="text-xs text-emerald-300/80">• {s}</li>)}
-                  </ul>
-                </div>
-              )}
-              {scoring.weaknesses?.length > 0 && (
-                <div className="bg-red-950/30 border border-red-800/30 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-red-400 uppercase tracking-widest mb-2">Areas to Improve</p>
-                  <ul className="space-y-1">
-                    {scoring.weaknesses.map((w, i) => <li key={i} className="text-xs text-red-300/80">• {w}</li>)}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Recommendations */}
-          {scoring.recommendations?.length > 0 && (
-            <div className="bg-sky-950/30 border border-sky-800/30 rounded-xl p-4">
-              <p className="text-xs font-semibold text-sky-400 uppercase tracking-widest mb-2">Recommendations</p>
-              <ul className="space-y-1">
-                {scoring.recommendations.map((r, i) => <li key={i} className="text-xs text-sky-300/80">• {r}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {/* Voice Verification Report */}
-          <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-800/70 border-b border-slate-700/40">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                <Mic2 size={13} /> Voice Verification Report
-              </div>
-              <span className={`text-sm font-bold ${vpEnrolled !== 'enrolled' ? 'text-slate-500' :
-                vpTotal === 0 ? 'text-emerald-400' :
-                  vpTotal < 3 ? 'text-amber-400' : 'text-red-400'
-                }`}>
-                {vpEnrolled !== 'enrolled'
-                  ? (vpEnrolled === 'failed' ? 'Enrollment Failed' : 'Not Enrolled')
-                  : vpTotal === 0 ? 'Clean'
-                    : vpTotal < 3 ? `${vpTotal} Flag${vpTotal > 1 ? 's' : ''}`
-                      : `${vpTotal} Mismatches`}
-              </span>
-            </div>
-            {vpEnrolled !== 'enrolled' ? (
-              <div className="px-5 py-4 flex items-center gap-2 text-slate-500 text-sm">
-                <Circle size={15} />
-                {vpEnrolled === 'failed'
-                  ? 'Voice enrollment failed at application time — speaker verification was unavailable.'
-                  : 'Voice enrollment was not completed — voice proctoring was not active.'}
-              </div>
-            ) : vpTotal === 0 ? (
-              <div className="px-5 py-4 flex items-center gap-2 text-emerald-400 text-sm">
-                <CheckCircle size={16} /> Voice matched throughout the session. No mismatches detected.
-              </div>
-            ) : (
-              <div className="px-5 py-4 space-y-3">
-                <div className="flex gap-6 text-xs text-slate-400">
-                  <span>Segments analyzed: <span className="text-slate-200 font-mono">{vpAnalyzed}</span></span>
-                  <span>Matches: <span className="text-emerald-400 font-mono">{vpMatches}</span></span>
-                  <span>Mismatches: <span className="text-red-400 font-mono">{vpTotal}</span></span>
-                </div>
-                {vpMismatches.length > 0 && (
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700">
-                    {vpMismatches.map((m, i) => (
-                      <div key={i} className="flex items-center gap-3 bg-slate-900/50 rounded-lg px-3 py-2 text-xs border border-red-500/20">
-                        <XCircle size={12} className="text-red-400 flex-shrink-0" />
-                        <span className="text-slate-400 font-mono">{typeof m.timestamp === 'number' ? `t=${m.timestamp.toFixed(1)}s` : '—'}</span>
-                        <span className="text-red-300/80">score {typeof m.rawScore === 'number' ? m.rawScore.toFixed(3) : '—'}</span>
-                        <span className="text-slate-500">({typeof m.segmentDuration === 'number' ? `${m.segmentDuration.toFixed(1)}s segment` : ''})</span>
-                        {m.clipUrl && (
-                          <a href={m.clipUrl} target="_blank" rel="noopener noreferrer"
-                            className="ml-auto text-sky-400 hover:text-sky-300 text-[10px] font-semibold">
-                            ▶ Clip
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <p className="text-xs text-slate-600 italic">
-                  Voice mismatches are flagged for reviewer attention only — the interview was not interrupted.
-                </p>
-              </div>
-            )}
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold text-white">Thank You for Completing Your Interview</h3>
+            <p className="text-sm text-slate-400 leading-relaxed max-w-sm mx-auto">
+              Your interview session has been securely submitted and will be reviewed by the employer. 
+              You will be notified about the next steps in due course.
+            </p>
           </div>
 
-          {/* Face/Object Verification Report */}
-          <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-800/70 border-b border-slate-700/40">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                <Camera size={13} /> Face &amp; Object Verification Report
-              </div>
-              <span className={`text-sm font-bold ${fpEnrollment !== 'enrolled' ? 'text-slate-500' :
-                (fpTotalFace + fpTotalObject) === 0 ? 'text-emerald-400' : 'text-amber-400'
-                }`}>
-                {fpEnrollment !== 'enrolled'
-                  ? (fpEnrollment === 'failed' ? 'Enrollment Failed' : 'Not Enrolled')
-                  : (fpTotalFace + fpTotalObject) === 0
-                    ? 'Clean'
-                    : `${fpTotalFace + fpTotalObject} Alert${(fpTotalFace + fpTotalObject) > 1 ? 's' : ''}`}
-              </span>
-            </div>
-
-            {fpEnrollment !== 'enrolled' ? (
-              <div className="px-5 py-4 flex items-center gap-2 text-slate-500 text-sm">
-                <Circle size={15} />
-                Face enrollment was not completed — face/object proctoring was not active.
-              </div>
-            ) : (fpTotalFace + fpTotalObject) === 0 ? (
-              <div className="px-5 py-4 flex items-center gap-2 text-emerald-400 text-sm">
-                <CheckCircle size={16} /> No face/object violations detected.
-              </div>
-            ) : (
-              <div className="px-5 py-4 space-y-3">
-                <div className="flex gap-6 text-xs text-slate-400">
-                  <span>Face alerts: <span className="text-amber-300 font-mono">{fpTotalFace}</span></span>
-                  <span>Object alerts: <span className="text-amber-300 font-mono">{fpTotalObject}</span></span>
-                </div>
-
-                {fpFaceAlerts.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Face Alerts</p>
-                    {fpFaceAlerts.map((item, i) => (
-                      <div key={`face-${i}`} className="flex items-center gap-3 bg-slate-900/50 rounded-lg px-3 py-2 text-xs border border-amber-500/20">
-                        <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
-                        <span className="text-slate-400 font-mono">{typeof item.timestamp === 'number' ? `t=${item.timestamp.toFixed(1)}s` : '—'}</span>
-                        <span className="text-amber-300/90">{item.violationType || item.status || 'face_alert'}</span>
-                        {typeof item.similarity === 'number' && <span className="text-slate-500">sim {item.similarity.toFixed(3)}</span>}
-                        {item.snapshotUrl && (
-                          <a href={item.snapshotUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-sky-400 hover:text-sky-300 text-[10px] font-semibold">
-                            View Proof
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {fpObjectAlerts.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Object Alerts</p>
-                    {fpObjectAlerts.map((item, i) => (
-                      <div key={`obj-${i}`} className="flex items-center gap-3 bg-slate-900/50 rounded-lg px-3 py-2 text-xs border border-orange-500/20">
-                        <AlertTriangle size={12} className="text-orange-400 flex-shrink-0" />
-                        <span className="text-slate-400 font-mono">{typeof item.timestamp === 'number' ? `t=${item.timestamp.toFixed(1)}s` : '—'}</span>
-                        <span className="text-orange-300/90">{Array.isArray(item.alertTypes) && item.alertTypes.length > 0 ? item.alertTypes.join(', ') : 'object_alert'}</span>
-                        {item.snapshotUrl && (
-                          <a href={item.snapshotUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-sky-400 hover:text-sky-300 text-[10px] font-semibold">
-                            View Proof
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <p className="text-xs text-slate-600 italic">
-                  Face mismatch frames become violations only when the formal alert threshold is crossed.
-                </p>
-              </div>
-            )}
+          <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
+            <p className="text-xs text-slate-500">
+              All session data including your responses, audio, and video has been encrypted and securely stored.
+              The hiring team will review your performance and proctoring report.
+            </p>
           </div>
 
-          {/* Integrity Report */}
-          <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-800/70 border-b border-slate-700/40">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                <Shield size={13} /> Integrity Report
-              </div>
-              <span className={`text-sm font-bold ${integrityColor}`}>{integrityLabel}</span>
-            </div>
-            {cheatingReport.length > 0 ? (
-              <div className="px-5 py-4">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-slate-500 border-b border-slate-700/40">
-                      <th className="text-left pb-2 font-semibold">Event</th>
-                      <th className="text-center pb-2 font-semibold">Count</th>
-                      <th className="text-right pb-2 font-semibold">Points</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cheatingReport.map(row => (
-                      <React.Fragment key={row.eventType}>
-                        <tr className="text-slate-300 border-b border-slate-700/20">
-                          <td className="py-2 flex items-center gap-1.5">
-                            {(screenshotCaptures[row.eventType]?.length > 0) && (
-                              <Camera size={11} className="text-sky-400 flex-shrink-0" />
-                            )}
-                            {row.label}
-                          </td>
-                          <td className="py-2 text-center font-mono">{row.count}</td>
-                          <td className="py-2 text-right font-mono text-red-400">+{row.totalPoints}</td>
-                        </tr>
-                        <ScreenshotRow screenshots={screenshotCaptures[row.eventType]} />
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="px-5 py-4 flex items-center gap-2 text-emerald-400 text-sm">
-                <CheckCircle size={16} /> No integrity violations detected.
-              </div>
-            )}
-          </div>
-
-          {/* Per-question breakdown */}
-          {turns.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Question Breakdown</p>
-              <div className="space-y-3 max-h-64 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700">
-                {turns.map((t, i) => (
-                  <div key={i} className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <p className="text-sm text-slate-200 font-medium leading-snug flex-1">{t.question}</p>
-                      <span className={`text-sm font-bold flex-shrink-0 ${(t.evaluation?.score ?? 0) >= 7 ? 'text-emerald-400' :
-                        (t.evaluation?.score ?? 0) >= 5 ? 'text-amber-400' : 'text-red-400'
-                        }`}>{t.evaluation?.score ?? '—'}/10</span>
-                    </div>
-                    <p className="text-xs text-slate-400">{t.evaluation?.feedback}</p>
-                    {t.answer && !t.answer.startsWith('(no response') && (
-                      <p className="text-xs text-slate-600 mt-2 italic line-clamp-2">"{t.answer}"</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="text-center">
-            <p className="text-sm text-slate-400">Your session data has been securely submitted for review.</p>
-            <button onClick={() => { try { window.close(); } catch { } window.location.href = '/'; }}
-              className="mt-5 inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-colors">
-              Close Session
-            </button>
-          </div>
+          <button onClick={() => { try { window.close(); } catch { } window.location.href = '/'; }}
+            className="inline-flex items-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-colors">
+            Return to Dashboard
+          </button>
         </div>
       </motion.div>
     </div>

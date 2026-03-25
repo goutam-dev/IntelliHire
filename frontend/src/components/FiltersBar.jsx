@@ -7,7 +7,8 @@ const statusOptions = [
   { value: 'all', label: 'All statuses' },
   { value: 'Applied', label: 'Applied' },
   { value: 'Shortlisted', label: 'Shortlisted' },
-  { value: 'Interview Scheduled', label: 'Interview' },
+  { value: 'Interview Scheduled', label: 'Interview Scheduled' },
+  { value: 'Interviewed', label: 'Interviewed' },
   { value: 'Hired', label: 'Accepted' },
   { value: 'Rejected', label: 'Rejected' },
 ];

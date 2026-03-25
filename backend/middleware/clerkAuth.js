@@ -93,6 +93,7 @@ async function requireAuth(req, res, next) {
     // Verify the JWT token (networkless verification)
     const payload = await verifyToken(sessionToken, {
       secretKey: process.env.CLERK_SECRET_KEY,
+      clockSkewInMs: 60 * 1000, // Allowance for clock drift between server and client
     });
     logAuthDebug('jwt_verified', {
       path: req.originalUrl,
@@ -147,6 +148,7 @@ async function optionalAuth(req, res, next) {
     // Verify the JWT token
     const payload = await verifyToken(sessionToken, {
       secretKey: process.env.CLERK_SECRET_KEY,
+      clockSkewInMs: 60 * 1000, // Allowance for clock drift between server and client
     });
     logAuthDebug('optional_jwt_verified', {
       path: req.originalUrl,

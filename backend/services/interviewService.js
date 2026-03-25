@@ -556,6 +556,17 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
   await session.save();
   logger.info(`[Interview] Session completed: ${sessionId} — Status: ${session.status}`);
 
+  // Auto-update application status to 'Interviewed' so employer can see the candidate finished
+  try {
+    await JobApplication.findOneAndUpdate(
+      { applicationId: session.applicationId, status: 'Interview Scheduled' },
+      { status: 'Interviewed' }
+    );
+    logger.info(`[Interview] Application ${session.applicationId} status updated to 'Interviewed'`);
+  } catch (err) {
+    logger.warn(`[Interview] Failed to update application status: ${err.message}`);
+  }
+
   return formatSessionSummary(session);
 }
 

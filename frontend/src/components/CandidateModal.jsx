@@ -8,7 +8,7 @@ const Section = ({ title, children }) => (
   </div>
 );
 
-const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = new Set() }) => {
+const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = new Set(), onViewInterviewReport }) => {
   if (!open) return null;
   const candidate = application?.candidate;
   const user = candidate?.user;
@@ -95,9 +95,23 @@ const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = 
                 </div>
               )}
               
+              {/* Interview Score Display */}
+              {(application?.interviewScore || application?.interviewScore === 0) && (
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <Award className="h-4 w-4 text-teal-600" />
+                    <span className="font-semibold text-slate-900">Interview Score:</span>
+                    <span className="text-lg font-bold text-teal-600">{application.interviewScore}/10</span>
+                  </div>
+                  {application?.interviewVerdict && (
+                    <p className="text-sm text-slate-600 mt-1">Verdict: {application.interviewVerdict}</p>
+                  )}
+                </div>
+              )}
+              
               {/* Analyze Button */}
               {onAnalyze && (
-                <div className="pt-2">
+                <div className="pt-2 flex flex-col gap-2">
                   <button
                     onClick={() => onAnalyze(application._id)}
                     disabled={analyzingIds.has(application._id)}
@@ -115,6 +129,17 @@ const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = 
                       </>
                     )}
                   </button>
+                  
+                  {/* View Interview Report Button */}
+                  {onViewInterviewReport && application?.status === 'Interviewed' && (
+                    <button
+                      onClick={() => onViewInterviewReport(application)}
+                      className="inline-flex items-center gap-2 rounded-lg border-2 border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 transition-all shadow-sm hover:shadow w-full justify-center"
+                    >
+                      <Award className="h-4 w-4" />
+                      View AI Interview Report
+                    </button>
+                  )}
                 </div>
               )}
             </div>

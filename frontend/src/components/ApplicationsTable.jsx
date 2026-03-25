@@ -7,6 +7,7 @@ const statusColors = {
   'Under Review': 'bg-yellow-100 text-yellow-700',
   'Shortlisted': 'bg-blue-100 text-blue-700',
   'Interview Scheduled': 'bg-amber-100 text-amber-700',
+  'Interviewed': 'bg-teal-100 text-teal-700',
   'Hired': 'bg-emerald-100 text-emerald-700',
   'Rejected': 'bg-rose-100 text-rose-700',
   'Withdrawn': 'bg-gray-100 text-gray-700',
@@ -48,6 +49,31 @@ const AIScoreBadge = ({ score, verdict }) => {
   );
 };
 
+const InterviewScoreBadge = ({ score, verdict }) => {
+  if (score == null) {
+    return <div className="text-xs text-slate-400 italic">—</div>;
+  }
+
+  const getStyle = (s) => {
+    if (s >= 7) return { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' };
+    if (s >= 5) return { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' };
+    return { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200' };
+  };
+
+  const style = getStyle(score);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className={`inline-flex items-center gap-1 rounded-lg border ${style.border} ${style.bg} px-2.5 py-1`}>
+        <Sparkles className={`h-3.5 w-3.5 ${style.text}`} />
+        <span className={`text-sm font-bold ${style.text}`}>{score}</span>
+        <span className={`text-xs ${style.text}`}>/10</span>
+      </div>
+      {verdict && <span className="text-xs text-slate-600 truncate max-w-[120px]">{verdict}</span>}
+    </div>
+  );
+};
+
 const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds, onSingleAction, onCandidateClick, onAnalyze, analyzingIds = new Set() }) => {
   const allSelected = useMemo(() => applications.length > 0 && selectedIds.length === applications.length, [applications, selectedIds]);
 
@@ -75,6 +101,12 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
               <div className="flex items-center gap-1">
                 <Sparkles className="h-3.5 w-3.5 text-violet-500" />
                 AI Score
+              </div>
+            </th>
+            <th className="p-3 text-left text-xs font-semibold text-slate-600">
+              <div className="flex items-center gap-1">
+                <Sparkles className="h-3.5 w-3.5 text-teal-500" />
+                Interview
               </div>
             </th>
             <th className="p-3 text-left text-xs font-semibold text-slate-600">Resume</th>
@@ -137,6 +169,12 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                   />
                 </td>
                 <td className="p-3">
+                  <InterviewScoreBadge
+                    score={app.interviewScore}
+                    verdict={app.interviewVerdict}
+                  />
+                </td>
+                <td className="p-3">
                   <a href={resumeUrl} target="_blank" className="inline-flex items-center gap-1 text-sm text-slate-700 hover:text-slate-900">
                     <FileDown className="h-4 w-4" /> {resumeName}
                   </a>
@@ -177,7 +215,7 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
           })}
           {applications.length === 0 && (
             <tr>
-              <td colSpan="9" className="p-6 text-center text-sm text-slate-500">No applications found.</td>
+              <td colSpan="10" className="p-6 text-center text-sm text-slate-500">No applications found.</td>
             </tr>
           )}
         </tbody>

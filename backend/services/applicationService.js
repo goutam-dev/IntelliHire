@@ -304,6 +304,34 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
     matchingScore: scoreMap[app._id.toString()]?.matchingScore
   }));
 
+  // Enrich with interview session scores
+  const appIds = applications.map(a => a.applicationId).filter(Boolean);
+  if (appIds.length > 0) {
+    const interviewSessions = await InterviewSession.find({
+      applicationId: { $in: appIds },
+      status: { $in: ['completed', 'terminated'] },
+    })
+      .sort({ createdAt: -1 })
+      .select('applicationId scoring status')
+      .lean();
+
+    const interviewMap = {};
+    for (const session of interviewSessions) {
+      if (!interviewMap[session.applicationId]) {
+        interviewMap[session.applicationId] = {
+          interviewScore: session.scoring?.averageScore ?? null,
+          interviewVerdict: session.scoring?.overallVerdict || null,
+        };
+      }
+    }
+
+    applications = applications.map(app => ({
+      ...app,
+      interviewScore: interviewMap[app.applicationId]?.interviewScore ?? null,
+      interviewVerdict: interviewMap[app.applicationId]?.interviewVerdict ?? null,
+    }));
+  }
+
   // Filter by resume grade (AI verdict)
   if (resumeGrade && resumeGrade !== 'all') {
     if (resumeGrade === 'not_analyzed') {
@@ -1005,6 +1033,84 @@ const withdrawApplication = async (candidateId, applicationId) => {
   }
 };
 
+/**
+ * Get interview report for an application (employer only)
+ */
+const getInterviewReport = async (applicationId, userId) => {
+  if (!mongoose.Types.ObjectId.isValid(applicationId)) {
+    throw new ValidationError('Invalid applicationId');
+  }
+
+  // Verify employer ownership
+  const user = await User.findOne({ clerkUserId: userId });
+  if (!user) throw new ForbiddenError('User not found');
+
+  const employerProfile = await EmployerProfile.findOne({ user: user._id });
+  if (!employerProfile) throw new ForbiddenError('Employer profile not found');
+
+  const application = await JobApplication.findById(applicationId).populate('jobId');
+  if (!application) throw new NotFoundError('Application not found');
+
+  if (!application.jobId || application.jobId.employer.toString() !== employerProfile._id.toString()) {
+    throw new ForbiddenError('You do not have permission to view this report');
+  }
+
+  // Find the latest completed/terminated interview session
+  const session = await InterviewSession.findOne({
+    applicationId: application.applicationId,
+    status: { $in: ['completed', 'terminated'] },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (!session) {
+    throw new NotFoundError('No completed interview found for this application');
+  }
+
+  // Format the report (mirrors formatSessionSummary in interviewService)
+  return {
+    sessionId: session._id,
+    status: session.status,
+    jobTitle: session.jobTitle,
+    totalDurationSec: session.totalDurationSec,
+    totalQuestions: session.turns?.length || 0,
+    totalAnswered: (session.turns || []).filter(t => !t.isUnanswered).length,
+    scoring: session.scoring || {},
+    integrity: {
+      verdict: session.integrity?.integrityVerdict || 'clean',
+      totalScore: session.integrity?.totalCheatingScore || 0,
+      threshold: session.config?.cheatingThreshold || 10,
+      events: session.integrity?.cheatingEvents || [],
+      terminationReason: session.integrity?.terminationReason || '',
+    },
+    voiceProctoring: {
+      enrollmentStatus: session.voiceProctoring?.enrollmentStatus || 'not_enrolled',
+      totalMismatches: session.voiceProctoring?.totalMismatches || 0,
+      totalSegmentsAnalyzed: session.voiceProctoring?.totalSegmentsAnalyzed || 0,
+      matchCount: session.voiceProctoring?.matchCount || 0,
+      unsureCount: session.voiceProctoring?.unsureCount || 0,
+      mismatches: session.voiceProctoring?.mismatches || [],
+    },
+    faceProctoring: {
+      enrollmentStatus: session.faceProctoring?.enrollmentStatus || 'not_enrolled',
+      faceAlerts: session.faceProctoring?.faceAlerts || [],
+      objectAlerts: session.faceProctoring?.objectAlerts || [],
+      totalFaceAlerts: session.faceProctoring?.totalFaceAlerts || 0,
+      totalObjectAlerts: session.faceProctoring?.totalObjectAlerts || 0,
+    },
+    turns: (session.turns || []).map(t => ({
+      index: t.index,
+      phase: t.phase,
+      question: t.question,
+      answer: t.answer,
+      evaluation: t.evaluation,
+      isUnanswered: t.isUnanswered,
+    })),
+    startedAt: session.startedAt,
+    completedAt: session.completedAt,
+  };
+};
+
 module.exports = {
   getApplicationsByJob,
   updateApplicationStatus,
@@ -1015,5 +1121,6 @@ module.exports = {
   submitApplication,
   getCandidateApplications,
   getApplicationById,
-  withdrawApplication
+  withdrawApplication,
+  getInterviewReport
 };

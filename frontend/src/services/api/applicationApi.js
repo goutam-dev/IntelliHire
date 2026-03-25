@@ -47,9 +47,20 @@ export const scheduleInterview = async (applicationId, interviewData) => {
   return response.data;
 };
 
+/**
+ * Get interview report for an application (employer only)
+ */
+export const getInterviewReport = async (applicationId) => {
+  const response = await api.get(
+    `/employer/applications/${applicationId}/interview-report`
+  );
+  return response.data;
+};
+
 export default {
   getApplicationsByJob,
   updateApplicationStatus,
   bulkUpdateApplicationStatus,
   scheduleInterview,
+  getInterviewReport,
 };

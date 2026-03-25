@@ -10,6 +10,7 @@ import { batchAnalyzeApplications, analyzeResume } from '../../services/api/resu
 import FiltersBar from '../../components/FiltersBar';
 import ApplicationsTable from '../../components/ApplicationsTable';
 import CandidateModal from '../../components/CandidateModal';
+import InterviewReportModal from '../../components/InterviewReportModal';
 
 import EmployerHeader from '../../components/layout/EmployerHeader';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -53,6 +54,12 @@ const JobApplicationsPage = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [candidateOpen, setCandidateOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState(null);
+  
+  // Interview report modal state
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [selectedReportData, setSelectedReportData] = useState(null);
+  const [loadingReport, setLoadingReport] = useState(false);
+
   const [analyzingBatch, setAnalyzingBatch] = useState(false);
   const [analyzingIds, setAnalyzingIds] = useState(new Set());
   const [batchProgress, setBatchProgress] = useState(null);
@@ -128,6 +135,26 @@ const JobApplicationsPage = () => {
     } catch (err) {
       console.error(err);
       alert(err.message || 'Action failed');
+    }
+  };
+
+  const handleViewReport = async (application) => {
+    setLoadingReport(true);
+    setCandidateOpen(false); // Close candidate modal first
+    try {
+      const reportData = await applicationApi.getInterviewReport(application._id);
+      setSelectedReportData({
+        ...reportData,
+        candidateName: application?.candidate?.user?.fullName || 'Candidate',
+        jobTitle: application?.job?.title || 'Position' // Added job title fallback
+      });
+      setReportModalOpen(true);
+    } catch (err) {
+      console.error('Failed to load report:', err);
+      alert('Failed to load interview report. It may not be available yet.');
+      setCandidateOpen(true); // Re-open if failed
+    } finally {
+      setLoadingReport(false);
     }
   };
 
@@ -502,7 +529,25 @@ const JobApplicationsPage = () => {
           application={selectedApplication}
           onAnalyze={handleAnalyzeSingle}
           analyzingIds={analyzingIds}
+          onViewInterviewReport={handleViewReport}
         />
+
+        {/* Global Loading Overlay for Reports */}
+        {loadingReport && (
+          <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm">
+            <RefreshCw className="h-10 w-10 text-indigo-600 animate-spin mb-4" />
+            <p className="text-lg font-semibold text-slate-800">Loading Report...</p>
+            <p className="text-sm text-slate-500 mt-2">Retrieving AI interview analysis and proctoring data.</p>
+          </div>
+        )}
+
+        <InterviewReportModal
+          isOpen={reportModalOpen}
+          onClose={() => setReportModalOpen(false)}
+          report={selectedReportData}
+          candidateName={selectedReportData?.candidateName}
+        />
+
         {/* Batch Analysis Progress Modal */}
         <AnimatePresence>
           {batchProgress && (

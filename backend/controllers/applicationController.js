@@ -67,3 +67,17 @@ exports.scheduleInterview = asyncHandler(async (req, res) => {
 
   res.json(application);
 });
+
+/**
+ * Get interview report for an application (employer only)
+ */
+exports.getInterviewReport = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const report = await applicationService.getInterviewReport(
+    id,
+    req.auth.userId
+  );
+
+  res.json({ success: true, data: report });
+});

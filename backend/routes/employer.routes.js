@@ -31,5 +31,6 @@ router.get('/jobs/:jobId/applications', applicationController.listApplicationsBy
 router.patch('/applications/bulk/status', applicationController.bulkUpdateStatus);
 router.patch('/applications/:id/status', applicationController.updateApplicationStatus);
 router.post('/applications/:id/interview', applicationController.scheduleInterview);
+router.get('/applications/:id/interview-report', applicationController.getInterviewReport);
 
 module.exports = router;
