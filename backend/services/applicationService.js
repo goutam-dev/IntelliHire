@@ -233,7 +233,7 @@ const enrichApplicationsWithInterviewState = async (applications = []) => {
  * Get applications by job ID with optional filters
  */
 const getApplicationsByJob = async (jobId, filters = {}, userId) => {
-  const { status = 'all', search = '', sort = 'newest' } = filters;
+  const { status = 'all', search = '', sort = 'newest', resumeGrade = 'all' } = filters;
 
   if (!mongoose.Types.ObjectId.isValid(jobId)) {
     throw new ValidationError('Invalid jobId');
@@ -303,6 +303,15 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
     aiVerdict: scoreMap[app._id.toString()]?.aiVerdict,
     matchingScore: scoreMap[app._id.toString()]?.matchingScore
   }));
+
+  // Filter by resume grade (AI verdict)
+  if (resumeGrade && resumeGrade !== 'all') {
+    if (resumeGrade === 'not_analyzed') {
+      applications = applications.filter(app => app.aiScore == null);
+    } else {
+      applications = applications.filter(app => app.aiVerdict === resumeGrade);
+    }
+  }
 
   // In-memory filtering (search)
   applications = filterBySearch(applications, search);

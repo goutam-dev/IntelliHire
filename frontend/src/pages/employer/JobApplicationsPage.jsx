@@ -47,6 +47,7 @@ const JobApplicationsPage = () => {
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [resumeGrade, setResumeGrade] = useState('all');
   const [sort, setSort] = useState('newest');
 
   const [selectedIds, setSelectedIds] = useState([]);
@@ -84,7 +85,7 @@ const JobApplicationsPage = () => {
     if (!silent) setLoading(true);
     setError('');
     try {
-      const params = { status, search, sort };
+      const params = { status, search, sort, resumeGrade };
       const data = await applicationApi.getApplicationsByJob(jobId, params);
       setApplications(data);
       return data; // return fresh data so callers don't rely on stale closure
@@ -446,6 +447,8 @@ const JobApplicationsPage = () => {
             setSearch={setSearch}
             status={status}
             setStatus={setStatus}
+            resumeGrade={resumeGrade}
+            setResumeGrade={setResumeGrade}
             sort={sort}
             setSort={setSort}
             onApply={applyFilters}

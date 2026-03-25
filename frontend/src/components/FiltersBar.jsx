@@ -18,7 +18,16 @@ const sortOptions = [
   { value: 'name', label: 'Name A→Z' },
 ];
 
-const FiltersBar = ({ search, setSearch, status, setStatus, sort, setSort, onApply }) => {
+const resumeGradeOptions = [
+  { value: 'all', label: 'All grades' },
+  { value: 'Excellent', label: 'Excellent' },
+  { value: 'Good', label: 'Good' },
+  { value: 'Average', label: 'Average' },
+  { value: 'Poor', label: 'Poor' },
+  { value: 'not_analyzed', label: 'Not analyzed' },
+];
+
+const FiltersBar = ({ search, setSearch, status, setStatus, sort, setSort, resumeGrade, setResumeGrade, onApply }) => {
   return (
     <div className="flex flex-col md:flex-row gap-3 md:items-end bg-white rounded-xl border border-slate-200 p-4">
       <div className="flex-1">
@@ -40,6 +49,14 @@ const FiltersBar = ({ search, setSearch, status, setStatus, sort, setSort, onApp
         value={status}
         onChange={(e) => setStatus(e.target.value)}
         options={statusOptions}
+        className="w-full md:w-48"
+      />
+      <Select
+        name="resumeGrade"
+        label="AI Grade"
+        value={resumeGrade}
+        onChange={(e) => setResumeGrade(e.target.value)}
+        options={resumeGradeOptions}
         className="w-full md:w-48"
       />
       <Select
