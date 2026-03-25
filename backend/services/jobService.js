@@ -104,6 +104,23 @@ const getSortStage = (sortBy = 'createdAt', sortOrder = 'desc') => {
   return sortMap[sortBy] || sortMap.createdAt;
 };
 
+const normalizeApplicationDeadline = (rawDeadline) => {
+  if (!rawDeadline) return null;
+
+  if (typeof rawDeadline === 'string') {
+    const dateOnlyMatch = rawDeadline.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const year = Number(dateOnlyMatch[1]);
+      const month = Number(dateOnlyMatch[2]) - 1;
+      const day = Number(dateOnlyMatch[3]);
+      return new Date(year, month, day, 23, 59, 59, 999);
+    }
+  }
+
+  const parsedDate = new Date(rawDeadline);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
 /**
  * Get jobs by employer (with optional filters)
  */
@@ -321,16 +338,13 @@ const createJob = async (clerkUserId, jobData) => {
   }
   
   // Validate application deadline if provided
+  let normalizedApplicationDeadline;
   if (applicationDeadline) {
-    if (!isValidDate(applicationDeadline)) {
+    normalizedApplicationDeadline = normalizeApplicationDeadline(applicationDeadline);
+    if (!normalizedApplicationDeadline || !isValidDate(normalizedApplicationDeadline)) {
       throw new ValidationError('Invalid application deadline date');
     }
-    // Compare date-only (start of day) to avoid timezone issues
-    const deadlineDate = new Date(applicationDeadline);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    deadlineDate.setHours(0, 0, 0, 0);
-    if (deadlineDate < today) {
+    if (normalizedApplicationDeadline < new Date()) {
       throw new ValidationError('Application deadline cannot be in the past');
     }
   }
@@ -365,7 +379,7 @@ const createJob = async (clerkUserId, jobData) => {
     location: sanitizedLocation,
     employmentType,
     salaryRange,
-    applicationDeadline,
+    applicationDeadline: normalizedApplicationDeadline,
     status,
     publishedAt: status === 'active' ? new Date() : undefined,
     lastStatusChangeAt: new Date(),
