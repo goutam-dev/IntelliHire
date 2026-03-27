@@ -1,368 +1,596 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Award, CheckCircle, AlertTriangle, Shield, Mic2, Camera, XCircle, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  AlertTriangle,
+  Award,
+  Camera,
+  CheckCircle,
+  Download,
+  Mic2,
+  Shield,
+  X,
+  XCircle,
+} from 'lucide-react';
 
 const CHEATING_THRESHOLD = 10;
 
-const slideUp = {
-  hidden: { opacity: 0, y: 50 },
-  visible: { opacity: 1, y: 0, transition: { type: 'spring', damping: 25, stiffness: 200 } }
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const toBackendOrigin = () => {
+  const base = import.meta.env.VITE_API_BASE_URL;
+  if (!base) return window.location.origin;
+  try {
+    return new URL(base).origin;
+  } catch {
+    return window.location.origin;
+  }
 };
 
-function ScreenshotLightbox({ src, onClose }) {
-  return (
-    <div className="fixed inset-0 z-[60] flex justify-center items-center bg-black/90 p-4" onClick={onClose}>
-      <div className="relative max-w-5xl w-full h-full flex justify-center items-center">
-        <button className="absolute top-4 right-4 bg-slate-800 text-white rounded-full p-2 hover:bg-slate-700" onClick={onClose}>
-          <X size={20} />
-        </button>
-        <img src={src} className="max-w-full max-h-full object-contain rounded shadow-2xl" onClick={e => e.stopPropagation()} alt="Cheating proof" />
+const getCandidateOrigins = () => {
+  const candidates = [];
+  const pushUnique = (origin) => {
+    if (!origin || candidates.includes(origin)) return;
+    candidates.push(origin);
+  };
+
+  pushUnique(toBackendOrigin());
+  pushUnique(window.location.origin);
+
+  // Common local dev fallback when frontend runs on 5173 and backend on 4000.
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    pushUnique(`http://${window.location.hostname}:4000`);
+  }
+
+  return candidates;
+};
+
+const resolveAssetCandidates = (input) => {
+  if (!input) return [];
+  if (/^https?:\/\//i.test(input)) return [input];
+  const normalized = input.startsWith('/') ? input : `/${input}`;
+  return getCandidateOrigins().map((origin) => `${origin}${normalized}`);
+};
+
+const toClock = (seconds) => {
+  if (typeof seconds !== 'number' || Number.isNaN(seconds)) return '--:--';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+};
+
+const toFriendlyDuration = (seconds) => {
+  if (typeof seconds !== 'number' || Number.isNaN(seconds) || seconds <= 0) return 'N/A';
+  const mins = Math.round(seconds / 60);
+  return `${mins} min`;
+};
+
+const scorePillClass = (score) => {
+  if (score == null) return 'text-slate-700 bg-slate-100 border-slate-200';
+  if (score >= 7) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+  if (score >= 5) return 'text-amber-700 bg-amber-50 border-amber-200';
+  return 'text-rose-700 bg-rose-50 border-rose-200';
+};
+
+function buildPrintableHtml({ report, candidateName }) {
+  const scoring = report.scoring || {};
+  const turns = report.turns || [];
+  const vp = report.voiceProctoring || {};
+  const fp = report.faceProctoring || {};
+  const integrity = report.integrity || {};
+  const completed = report.completedAt || report.startedAt;
+
+  const qaRows = turns
+    .map(
+      (turn, i) => `
+      <div style="margin-bottom:14px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;">
+        <div style="font-weight:700;color:#0f172a;margin-bottom:6px;">Q${i + 1}: ${escapeHtml(turn.question || 'N/A')}</div>
+        <div style="font-size:13px;color:#334155;margin-bottom:6px;"><strong>Answer:</strong> ${escapeHtml(turn.answer || 'No response')}</div>
+        <div style="font-size:13px;color:#475569;"><strong>AI feedback:</strong> ${escapeHtml(turn.evaluation?.feedback || 'N/A')} ${turn.evaluation?.score != null ? `(Score: ${turn.evaluation.score}/10)` : ''}</div>
       </div>
-    </div>
-  );
-}
+    `
+    )
+    .join('');
 
-function ScreenshotRow({ screenshots }) {
-  const [lightboxSrc, setLightboxSrc] = React.useState(null);
-  if (!screenshots || screenshots.length === 0) return null;
-
-  return (
-    <>
+  const voiceRows = (vp.mismatches || [])
+    .map(
+      (m, i) => `
       <tr>
-        <td colSpan="3" className="pb-3 pt-1">
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200">
-            {screenshots.slice(0, 5).map((src, i) => (
-              <button
-                key={i}
-                onClick={() => setLightboxSrc(src)}
-                className="relative flex-shrink-0 border border-slate-200 rounded overflow-hidden group hover:border-slate-300 transition-colors"
-                title="Click to expand"
-              >
-                <img src={src} alt={`Screenshot ${i + 1}`} className="h-20 w-auto object-cover block" />
-              </button>
-            ))}
-          </div>
-        </td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${i + 1}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(toClock(m.timestamp))}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${typeof m.rawScore === 'number' ? m.rawScore.toFixed(3) : 'N/A'}</td>
       </tr>
-      {lightboxSrc && <ScreenshotLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
-    </>
-  );
+    `
+    )
+    .join('');
+
+  const faceRows = (fp.faceAlerts || [])
+    .map(
+      (m, i) => `
+      <tr>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${i + 1}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(toClock(m.timestamp))}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(m.violationType || m.status || 'Face alert')}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  const objectRows = (fp.objectAlerts || [])
+    .map(
+      (m, i) => `
+      <tr>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${i + 1}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(toClock(m.timestamp))}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(Array.isArray(m.alertTypes) ? m.alertTypes.join(', ') : 'Object alert')}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  const integrityRows = (integrity.events || [])
+    .map(
+      (row) => `
+      <tr>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(row.label || row.eventType || 'Event')}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;">${escapeHtml(row.count ?? 0)}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;text-align:center;">${escapeHtml(row.totalPoints ?? 0)}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  return `
+  <!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>AI Interview Report</title>
+      <style>
+        body { font-family: Segoe UI, Arial, sans-serif; color: #0f172a; margin: 24px; }
+        h1, h2 { margin: 0 0 10px 0; }
+        h2 { margin-top: 20px; font-size: 18px; }
+        p { margin: 4px 0; color: #334155; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+        th { background: #f8fafc; text-align: left; padding: 8px; border: 1px solid #e2e8f0; }
+      </style>
+    </head>
+    <body>
+      <h1>AI Interview Report</h1>
+      <p><strong>Candidate:</strong> ${escapeHtml(candidateName || 'Candidate')}</p>
+      <p><strong>Position:</strong> ${escapeHtml(report.jobTitle || 'N/A')}</p>
+      <p><strong>Date:</strong> ${completed ? escapeHtml(new Date(completed).toLocaleString()) : 'N/A'}</p>
+      <p><strong>Verdict:</strong> ${escapeHtml(scoring.overallVerdict || 'N/A')}</p>
+      <p><strong>Average Score:</strong> ${escapeHtml(scoring.averageScore ?? 'N/A')} / 10</p>
+      <p><strong>Duration:</strong> ${escapeHtml(toFriendlyDuration(report.totalDurationSec))}</p>
+
+      <h2>Proctoring Summary</h2>
+      <p><strong>Voice mismatches:</strong> ${escapeHtml(vp.totalMismatches ?? 0)} / ${escapeHtml(vp.totalSegmentsAnalyzed ?? 0)} segments</p>
+      <p><strong>Face alerts:</strong> ${escapeHtml(fp.totalFaceAlerts ?? (fp.faceAlerts || []).length)}</p>
+      <p><strong>Object alerts:</strong> ${escapeHtml(fp.totalObjectAlerts ?? (fp.objectAlerts || []).length)}</p>
+      <p><strong>Integrity score:</strong> ${escapeHtml(integrity.totalScore ?? 0)} / ${escapeHtml(integrity.threshold ?? CHEATING_THRESHOLD)}</p>
+
+      <h2>Voice Alert Details</h2>
+      <table>
+        <thead><tr><th>#</th><th>Timestamp</th><th>Score</th></tr></thead>
+        <tbody>${voiceRows || '<tr><td colspan="3" style="padding:8px;border:1px solid #e2e8f0;">No voice mismatches recorded</td></tr>'}</tbody>
+      </table>
+
+      <h2>Face Alert Details</h2>
+      <table>
+        <thead><tr><th>#</th><th>Timestamp</th><th>Violation</th></tr></thead>
+        <tbody>${faceRows || '<tr><td colspan="3" style="padding:8px;border:1px solid #e2e8f0;">No face alerts recorded</td></tr>'}</tbody>
+      </table>
+
+      <h2>Object Alert Details</h2>
+      <table>
+        <thead><tr><th>#</th><th>Timestamp</th><th>Type</th></tr></thead>
+        <tbody>${objectRows || '<tr><td colspan="3" style="padding:8px;border:1px solid #e2e8f0;">No object alerts recorded</td></tr>'}</tbody>
+      </table>
+
+      <h2>Platform Integrity Events</h2>
+      <table>
+        <thead><tr><th>Event</th><th>Count</th><th>Penalty</th></tr></thead>
+        <tbody>${integrityRows || '<tr><td colspan="3" style="padding:8px;border:1px solid #e2e8f0;">No integrity events recorded</td></tr>'}</tbody>
+      </table>
+
+      <h2>Question and Answer Details</h2>
+      ${qaRows || '<p>No question/answer history available.</p>'}
+    </body>
+  </html>`;
 }
 
 export default function InterviewReportModal({ isOpen, onClose, report, candidateName }) {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [proctorFilter, setProctorFilter] = useState('all');
+  const [snapshotPreview, setSnapshotPreview] = useState(null);
+
+  const scoring = report?.scoring || {};
+  const turns = report?.turns || [];
+  const avgScore = scoring.averageScore;
+
+  const voice = report?.voiceProctoring || {};
+  const face = report?.faceProctoring || {};
+  const integrity = report?.integrity || {};
+
+  const voiceMismatches = voice.mismatches || [];
+  const faceAlerts = face.faceAlerts || [];
+  const objectAlerts = face.objectAlerts || [];
+
+  const timelineEvents = useMemo(() => {
+    const all = [
+      ...voiceMismatches.map((item, idx) => ({
+        id: `voice-${idx}`,
+        type: 'voice',
+        timestamp: item.timestamp,
+        title: 'Voice mismatch detected',
+        description: `Raw score: ${typeof item.rawScore === 'number' ? item.rawScore.toFixed(3) : 'N/A'}`,
+        mediaCandidates: resolveAssetCandidates(item.clipUrl || item.clipPath),
+        mediaLabel: 'Play audio clip',
+      })),
+      ...faceAlerts.map((item, idx) => ({
+        id: `face-${idx}`,
+        type: 'face',
+        timestamp: item.timestamp,
+        title: item.violationType || item.status || 'Face alert',
+        description: `Faces: ${item.numFaces ?? 'N/A'} | Similarity: ${item.similarity ?? 'N/A'}`,
+        mediaCandidates: resolveAssetCandidates(item.snapshotUrl || item.snapshotPath),
+        mediaLabel: 'View snapshot',
+        mediaKind: 'image',
+      })),
+      ...objectAlerts.map((item, idx) => ({
+        id: `object-${idx}`,
+        type: 'object',
+        timestamp: item.timestamp,
+        title: 'Suspicious object/person activity',
+        description: Array.isArray(item.alertTypes) && item.alertTypes.length > 0
+          ? item.alertTypes.join(', ')
+          : 'Object alert',
+        mediaCandidates: resolveAssetCandidates(item.snapshotUrl || item.snapshotPath),
+        mediaLabel: 'View snapshot',
+        mediaKind: 'image',
+      })),
+    ];
+
+    return all
+      .filter((event) => proctorFilter === 'all' || event.type === proctorFilter)
+      .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+  }, [voiceMismatches, faceAlerts, objectAlerts, proctorFilter]);
+
   if (!isOpen || !report) return null;
 
-  const scoring = report.scoring || {};
-  const turns = report.turns || [];
-  const avgScore = scoring.averageScore;
-  const scored = turns.filter(t => t.evaluation?.score != null);
-
-  const vp = report.voiceProctoring || {};
-  const vpTotal = vp.totalMismatches ?? 0;
-  const vpAnalyzed = vp.totalSegmentsAnalyzed ?? 0;
-  const vpMatches = vp.matchCount ?? 0;
-  const vpEnrolled = vp.enrollmentStatus;
-  const vpMismatches = vp.mismatches ?? [];
-
-  const fp = report.faceProctoring || {};
-  const fpEnrollment = fp.enrollmentStatus || 'not_enrolled';
-  const fpFaceAlerts = fp.faceAlerts || [];
-  const fpObjectAlerts = fp.objectAlerts || [];
-  const fpTotalFace = fp.totalFaceAlerts ?? fpFaceAlerts.length;
-  const fpTotalObject = fp.totalObjectAlerts ?? fpObjectAlerts.length;
-
-  const cheatingReport = report.integrity?.events || [];
-  const totalCheatingScore = report.integrity?.totalScore || 0;
-
-  // Emulate screenshot captures from events mapping
-  const screenshotCaptures = cheatingReport.reduce((acc, row) => {
-    if (row.screenshots && row.screenshots.length > 0) {
-      acc[row.eventType] = row.screenshots;
-    }
-    return acc;
-  }, {});
-
-  const scoreColor = avgScore >= 7 ? 'text-emerald-600 bg-emerald-100 border-emerald-200' : 
-                     avgScore >= 5 ? 'text-amber-600 bg-amber-100 border-amber-200' : 
-                     'text-rose-600 bg-rose-100 border-rose-200';
-                     
   const verdict = scoring.overallVerdict || (avgScore >= 7 ? 'Strong Performance' : avgScore >= 5 ? 'Moderate Performance' : 'Needs Improvement');
 
-  const integrityColor = totalCheatingScore === 0 ? 'text-emerald-600' :
-    totalCheatingScore < CHEATING_THRESHOLD * 0.4 ? 'text-sky-600' :
-      totalCheatingScore < CHEATING_THRESHOLD * 0.7 ? 'text-amber-600' : 'text-rose-600';
-      
-  const integrityLabel = totalCheatingScore === 0 ? 'Clean' :
-    totalCheatingScore < CHEATING_THRESHOLD * 0.4 ? 'Minor Flags' :
-      totalCheatingScore >= CHEATING_THRESHOLD ? 'Terminated' : 'Moderate Flags';
+  const integrityThreshold = integrity.threshold || CHEATING_THRESHOLD;
+  const integrityTotal = integrity.totalScore || 0;
+  const integrityStatus = integrityTotal === 0
+    ? 'Clean'
+    : integrityTotal < integrityThreshold * 0.4
+      ? 'Minor flags'
+      : integrityTotal < integrityThreshold
+        ? 'Moderate flags'
+        : 'High flags';
+
+  const handleDownloadPdf = () => {
+    const reportHtml = buildPrintableHtml({ report, candidateName });
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+    if (!printWindow) {
+      alert('Popup blocked. Please allow popups to download the PDF report.');
+      return;
+    }
+
+    printWindow.document.write(reportHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 300);
+  };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 14, scale: 0.98 }}
+          className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-100 rounded-lg">
-                <Award className="h-5 w-5 text-indigo-600" />
+          <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-blue-50 to-cyan-50 px-6 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-slate-800">
+                  <Award className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-bold">AI Interview Report</h2>
+                </div>
+                <p className="text-sm text-slate-600">
+                  {candidateName || 'Candidate'} • {report.jobTitle || 'Position'} • {report.completedAt || report.startedAt ? new Date(report.completedAt || report.startedAt).toLocaleString() : 'N/A'}
+                </p>
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-800 tracking-tight">AI Interview Report</h2>
-                <p className="text-sm text-slate-500">{candidateName} • {report.jobTitle} • {new Date(report.completedAt || report.startedAt).toLocaleDateString()}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadPdf}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  <Download className="h-4 w-4" /> Download PDF
+                </button>
+                <button
+                  onClick={onClose}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-              <X className="h-5 w-5" />
-            </button>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[
+                { id: 'overview', label: 'Overview' },
+                { id: 'proctoring', label: 'Proctoring Details' },
+                { id: 'qa', label: 'Q&A Breakdown' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                    activeTab === tab.id
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-white text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            
-            {/* Performance summary */}
-            <div className="flex flex-col sm:flex-row items-center gap-6 bg-slate-50 rounded-xl p-6 border border-slate-200">
-              <div className={`flex flex-col items-center justify-center h-24 w-24 rounded-full border-4 ${scoreColor.split(' ')[2]} bg-white shadow-sm`}>
-                <span className={`text-3xl font-black ${scoreColor.split(' ')[0]}`}>{avgScore ?? '—'}</span>
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-0.5">out of 10</span>
-              </div>
-              <div>
-                <h3 className={`text-xl font-bold ${scoreColor.split(' ')[0]}`}>{verdict}</h3>
-                <p className="text-sm text-slate-600 mt-1">{scored.length} questions answered in {Math.round(report.totalDurationSec / 60)} minutes</p>
-              </div>
-            </div>
+          <div className="flex-1 overflow-y-auto p-6">
+            {activeTab === 'overview' && (
+              <div className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className={`rounded-xl border p-4 ${scorePillClass(avgScore)}`}>
+                    <p className="text-xs font-semibold uppercase tracking-wider">Average Score</p>
+                    <p className="mt-2 text-2xl font-bold">{avgScore ?? 'N/A'} / 10</p>
+                    <p className="mt-1 text-sm">{verdict}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Interview Duration</p>
+                    <p className="mt-2 text-2xl font-bold text-slate-800">{toFriendlyDuration(report.totalDurationSec)}</p>
+                    <p className="mt-1 text-sm text-slate-500">{turns.length} total questions</p>
+                  </div>
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-rose-700">Voice Mismatches</p>
+                    <p className="mt-2 text-2xl font-bold text-rose-700">{voice.totalMismatches ?? 0}</p>
+                    <p className="mt-1 text-sm text-rose-700">From {voice.totalSegmentsAnalyzed ?? 0} analyzed segments</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Visual Alerts</p>
+                    <p className="mt-2 text-2xl font-bold text-amber-700">{(face.totalFaceAlerts ?? faceAlerts.length) + (face.totalObjectAlerts ?? objectAlerts.length)}</p>
+                    <p className="mt-1 text-sm text-amber-700">Face: {face.totalFaceAlerts ?? faceAlerts.length}, Object: {face.totalObjectAlerts ?? objectAlerts.length}</p>
+                  </div>
+                </div>
 
-            {/* Detailed scores */}
-            {(scoring.technicalScore || scoring.communicationScore || scoring.problemSolvingScore) && (
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { label: 'Technical', score: scoring.technicalScore },
-                  { label: 'Communication', score: scoring.communicationScore },
-                  { label: 'Problem Solving', score: scoring.problemSolvingScore },
-                ].filter(s => s.score != null).map(s => (
-                  <div key={s.label} className="bg-white rounded-xl p-4 text-center border border-slate-200 shadow-sm">
-                    <p className={`text-2xl font-bold ${s.score >= 7 ? 'text-emerald-600' : s.score >= 5 ? 'text-amber-600' : 'text-rose-600'}`}>{s.score}</p>
-                    <p className="text-xs font-medium text-slate-500 mt-1 uppercase tracking-wider">{s.label}</p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-600">Score Breakdown</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between"><span className="text-slate-500">Technical</span><span className="font-semibold text-slate-800">{scoring.technicalScore ?? 'N/A'}</span></div>
+                      <div className="flex items-center justify-between"><span className="text-slate-500">Communication</span><span className="font-semibold text-slate-800">{scoring.communicationScore ?? 'N/A'}</span></div>
+                      <div className="flex items-center justify-between"><span className="text-slate-500">Problem Solving</span><span className="font-semibold text-slate-800">{scoring.problemSolvingScore ?? 'N/A'}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-600">
+                      <Shield className="h-4 w-4 text-blue-600" /> Platform Integrity
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between"><span className="text-slate-500">Verdict</span><span className="font-semibold text-slate-800">{integrity.verdict || integrityStatus}</span></div>
+                      <div className="flex items-center justify-between"><span className="text-slate-500">Penalty Score</span><span className="font-semibold text-slate-800">{integrityTotal} / {integrityThreshold}</span></div>
+                      <div className="flex items-center justify-between"><span className="text-slate-500">Termination Reason</span><span className="max-w-[65%] truncate text-right font-semibold text-slate-800">{integrity.terminationReason || 'N/A'}</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-emerald-700">
+                      <CheckCircle className="h-4 w-4" /> Strengths
+                    </h3>
+                    {(scoring.strengths || []).length > 0 ? (
+                      <ul className="space-y-1 text-sm text-emerald-800">
+                        {(scoring.strengths || []).map((item, index) => <li key={`${item}-${index}`}>• {item}</li>)}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-emerald-700">No strengths recorded.</p>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-rose-700">
+                      <AlertTriangle className="h-4 w-4" /> Improvement Areas
+                    </h3>
+                    {(scoring.weaknesses || []).length > 0 ? (
+                      <ul className="space-y-1 text-sm text-rose-800">
+                        {(scoring.weaknesses || []).map((item, index) => <li key={`${item}-${index}`}>• {item}</li>)}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-rose-700">No weaknesses recorded.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'proctoring' && (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-600">
+                      <Mic2 className="h-4 w-4 text-blue-600" /> Voice Proctoring
+                    </h3>
+                    <p className="text-sm text-slate-700">Enrollment: <span className="font-semibold">{voice.enrollmentStatus || 'not_enrolled'}</span></p>
+                    <p className="text-sm text-slate-700">Mismatches: <span className="font-semibold">{voice.totalMismatches ?? 0}</span> / {voice.totalSegmentsAnalyzed ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-600">
+                      <Camera className="h-4 w-4 text-blue-600" /> Face and Object Proctoring
+                    </h3>
+                    <p className="text-sm text-slate-700">Enrollment: <span className="font-semibold">{face.enrollmentStatus || 'not_enrolled'}</span></p>
+                    <p className="text-sm text-slate-700">Face alerts: <span className="font-semibold">{face.totalFaceAlerts ?? faceAlerts.length}</span></p>
+                    <p className="text-sm text-slate-700">Object alerts: <span className="font-semibold">{face.totalObjectAlerts ?? objectAlerts.length}</span></p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'all', label: 'All Alerts' },
+                    { id: 'voice', label: 'Voice' },
+                    { id: 'face', label: 'Face' },
+                    { id: 'object', label: 'Object' },
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      onClick={() => setProctorFilter(filter.id)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                        proctorFilter === filter.id
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-600">Alert Timeline</h3>
+                  {timelineEvents.length === 0 && (
+                    <p className="flex items-center gap-2 text-sm text-slate-500">
+                      <XCircle className="h-4 w-4" /> No alerts for this filter.
+                    </p>
+                  )}
+                  {timelineEvents.map((event) => (
+                    <div key={event.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold text-slate-800">{event.title}</p>
+                        <span className="rounded-md bg-white px-2 py-1 text-xs font-mono text-slate-600">t={toClock(event.timestamp)}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">{event.description}</p>
+                      {event.mediaCandidates?.length > 0 && event.mediaKind === 'image' && (
+                        <button
+                          type="button"
+                          onClick={() => setSnapshotPreview({
+                            candidates: event.mediaCandidates,
+                            index: 0,
+                            failed: false,
+                            title: event.title,
+                            time: toClock(event.timestamp),
+                          })}
+                          className="mt-2 inline-flex text-sm font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                          {event.mediaLabel}
+                        </button>
+                      )}
+                      {event.mediaCandidates?.length > 0 && event.mediaKind !== 'image' && (
+                        <a
+                          href={event.mediaCandidates[0]}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex text-sm font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                          {event.mediaLabel}
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {(integrity.events || []).length > 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-600">Platform Integrity Events</h3>
+                    <div className="space-y-2">
+                      {(integrity.events || []).map((row, index) => (
+                        <div key={`${row.eventType || 'event'}-${index}`} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
+                          <span className="text-slate-700">{row.label || row.eventType || 'Event'}</span>
+                          <span className="font-mono text-slate-700">count {row.count ?? 0} | penalty {row.totalPoints ?? 0}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'qa' && (
+              <div className="space-y-3">
+                {turns.length === 0 && <p className="text-sm text-slate-500">No interview turns available.</p>}
+                {turns.map((turn, index) => (
+                  <div key={`${turn.index ?? index}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="font-semibold text-slate-800">Question {index + 1}</p>
+                      <span className={`rounded-md border px-2 py-1 text-xs font-bold ${scorePillClass(turn.evaluation?.score)}`}>
+                        Score {turn.evaluation?.score ?? 'N/A'} / 10
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm font-medium text-slate-700">{turn.question || 'No question text.'}</p>
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Candidate Answer</p>
+                      <p className="mt-1 text-sm text-slate-700">{turn.answer || 'No response captured.'}</p>
+                    </div>
+                    <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">AI Evaluation</p>
+                      <p className="mt-1 text-sm text-slate-700">{turn.evaluation?.feedback || 'No AI feedback recorded.'}</p>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
 
-            {/* Strengths & Weaknesses */}
-            {(scoring.strengths?.length > 0 || scoring.weaknesses?.length > 0) && (
-              <div className="grid md:grid-cols-2 gap-4">
-                {scoring.strengths?.length > 0 && (
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5">
-                    <p className="text-xs font-bold text-emerald-700 uppercase tracking-widest mb-3 flex items-center gap-1.5"><CheckCircle size={14} /> Strengths</p>
-                    <ul className="space-y-2">
-                      {scoring.strengths.map((s, i) => <li key={i} className="text-sm text-emerald-800 leading-snug">• {s}</li>)}
-                    </ul>
+          {snapshotPreview && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/80 p-4">
+              <div className="relative max-h-full w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{snapshotPreview.title}</p>
+                    <p className="text-xs text-slate-500">t={snapshotPreview.time}</p>
                   </div>
-                )}
-                {scoring.weaknesses?.length > 0 && (
-                  <div className="bg-rose-50 border border-rose-100 rounded-xl p-5">
-                    <p className="text-xs font-bold text-rose-700 uppercase tracking-widest mb-3 flex items-center gap-1.5"><AlertTriangle size={14} /> Areas to Improve</p>
-                    <ul className="space-y-2">
-                      {scoring.weaknesses.map((w, i) => <li key={i} className="text-sm text-rose-800 leading-snug">• {w}</li>)}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Proctoring Grid */}
-            <div className="grid md:grid-cols-2 gap-4">
-              
-              {/* Voice Verification Report */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-widest">
-                    <Mic2 size={14} className="text-indigo-500"/> Voice Proctoring
-                  </div>
-                  <span className={`text-sm font-bold ${vpEnrolled !== 'enrolled' ? 'text-slate-500' :
-                    vpTotal === 0 ? 'text-emerald-600' :
-                      vpTotal < 3 ? 'text-amber-600' : 'text-rose-600'
-                    }`}>
-                    {vpEnrolled !== 'enrolled'
-                      ? (vpEnrolled === 'failed' ? 'Failed' : 'Not Enrolled')
-                      : vpTotal === 0 ? 'Clean'
-                        : `${vpTotal} Mismatches`}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSnapshotPreview(null)}
+                    className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-                <div className="p-5 flex-1 space-y-3 bg-white">
-                  {vpEnrolled !== 'enrolled' ? (
-                    <p className="text-sm text-slate-500 flex items-center gap-2"><XCircle size={16} className="text-slate-400"/> Voice proctoring inactive.</p>
-                  ) : vpTotal === 0 ? (
-                    <p className="text-sm text-emerald-600 flex items-center gap-2"><CheckCircle size={16}/> Voice matched perfectly.</p>
+                <div className="max-h-[70vh] overflow-auto bg-slate-100 p-3">
+                  {!snapshotPreview.failed ? (
+                    <img
+                      src={snapshotPreview.candidates[snapshotPreview.index]}
+                      alt="Proctoring snapshot"
+                      onError={() => {
+                        if (snapshotPreview.index < snapshotPreview.candidates.length - 1) {
+                          setSnapshotPreview((prev) => ({ ...prev, index: prev.index + 1 }));
+                        } else {
+                          setSnapshotPreview((prev) => ({ ...prev, failed: true }));
+                        }
+                      }}
+                      className="mx-auto max-h-[66vh] w-auto rounded-lg object-contain"
+                    />
                   ) : (
-                    <>
-                      <div className="flex gap-4 text-xs font-medium text-slate-500">
-                        <span>Analyzed: <span className="text-slate-800">{vpAnalyzed}</span></span>
-                        <span>Mismatches: <span className="text-rose-600">{vpTotal}</span></span>
-                      </div>
-                      {vpMismatches.length > 0 && (
-                        <div className="space-y-2 mt-2 max-h-32 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
-                          {vpMismatches.map((m, i) => (
-                            <div key={i} className="flex justify-between items-center bg-rose-50 text-rose-800 text-xs px-3 py-2 rounded-lg border border-rose-100">
-                              <div className="flex gap-3">
-                                <span className="font-mono bg-white px-1.5 py-0.5 rounded text-rose-600">t={typeof m.timestamp === 'number' ? m.timestamp.toFixed(1) : '—'}s</span>
-                                <span>score: {typeof m.rawScore === 'number' ? m.rawScore.toFixed(3) : '—'}</span>
-                              </div>
-                              {m.clipUrl && (
-                                <a href={m.clipUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 font-semibold bg-white px-2 py-0.5 rounded shadow-sm">Play Clip</a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Face/Object Verification Report */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-widest">
-                    <Camera size={14} className="text-indigo-500" /> Video Proctoring
-                  </div>
-                  <span className={`text-sm font-bold ${fpEnrollment !== 'enrolled' ? 'text-slate-500' :
-                    (fpTotalFace + fpTotalObject) === 0 ? 'text-emerald-600' : 'text-amber-600'
-                    }`}>
-                    {fpEnrollment !== 'enrolled'
-                      ? (fpEnrollment === 'failed' ? 'Failed' : 'Not Enrolled')
-                      : (fpTotalFace + fpTotalObject) === 0
-                        ? 'Clean'
-                        : `${fpTotalFace + fpTotalObject} Alerts`}
-                  </span>
-                </div>
-                <div className="p-5 flex-1 space-y-3 bg-white">
-                  {fpEnrollment !== 'enrolled' ? (
-                     <p className="text-sm text-slate-500 flex items-center gap-2"><XCircle size={16} className="text-slate-400"/> Video proctoring inactive.</p>
-                  ) : (fpTotalFace + fpTotalObject) === 0 ? (
-                     <p className="text-sm text-emerald-600 flex items-center gap-2"><CheckCircle size={16}/> No visual violations detected.</p>
-                  ) : (
-                    <>
-                      <div className="flex gap-4 text-xs font-medium text-slate-500 border-b border-slate-100 pb-2">
-                        <span>Face alerts: <span className="text-amber-600">{fpTotalFace}</span></span>
-                        <span>Object alerts: <span className="text-amber-600">{fpTotalObject}</span></span>
-                      </div>
-                      
-                      <div className="space-y-2 max-h-32 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
-                        {fpFaceAlerts.map((item, i) => (
-                           <div key={`face-${i}`} className="flex justify-between items-center bg-amber-50 text-amber-800 text-xs px-3 py-2 rounded-lg border border-amber-100">
-                              <span className="font-mono bg-white px-1.5 py-0.5 rounded text-amber-600">t={typeof item.timestamp === 'number' ? item.timestamp.toFixed(1) : '—'}s</span>
-                              <span className="capitalize">{item.violationType || item.status || 'Face Alert'}</span>
-                              {item.snapshotUrl && (
-                                <a href={item.snapshotUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 font-semibold bg-white px-2 py-0.5 rounded shadow-sm">View Proof</a>
-                              )}
-                           </div>
-                        ))}
-                        {fpObjectAlerts.map((item, i) => (
-                           <div key={`obj-${i}`} className="flex justify-between items-center bg-amber-50 text-amber-800 text-xs px-3 py-2 rounded-lg border border-amber-100">
-                              <span className="font-mono bg-white px-1.5 py-0.5 rounded text-amber-600">t={typeof item.timestamp === 'number' ? item.timestamp.toFixed(1) : '—'}s</span>
-                              <span>{Array.isArray(item.alertTypes) && item.alertTypes.length > 0 ? item.alertTypes.join(', ') : 'Object Alert'}</span>
-                              {item.snapshotUrl && (
-                                <a href={item.snapshotUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 font-semibold bg-white px-2 py-0.5 rounded shadow-sm">View Proof</a>
-                              )}
-                           </div>
-                        ))}
-                      </div>
-                    </>
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                      Failed to load snapshot image from available URLs.
+                    </div>
                   )}
                 </div>
               </div>
             </div>
-
-            {/* Integrity Report */}
-            {cheatingReport.length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-widest">
-                    <Shield size={14} className="text-indigo-500" /> Platform Integrity Report
-                  </div>
-                  <span className={`text-sm font-bold ${integrityColor}`}>{integrityLabel} ({totalCheatingScore}/{report.integrity?.threshold || 10})</span>
-                </div>
-                <div className="p-0">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>
-                        <th className="text-left px-5 py-2.5 font-semibold text-slate-600 text-xs tracking-wider">Event / Violation</th>
-                        <th className="text-center px-5 py-2.5 font-semibold text-slate-600 text-xs tracking-wider">Count</th>
-                        <th className="text-right px-5 py-2.5 font-semibold text-slate-600 text-xs tracking-wider">Penalty Points</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {cheatingReport.map(row => (
-                        <React.Fragment key={row.eventType}>
-                          <tr className="hover:bg-slate-50/50">
-                            <td className="px-5 py-3 flex items-center gap-2 text-slate-700 font-medium">
-                              {(screenshotCaptures[row.eventType]?.length > 0) && <Camera size={14} className="text-indigo-500" />}
-                              {row.label}
-                            </td>
-                            <td className="px-5 py-3 text-center font-mono text-slate-600">{row.count}</td>
-                            <td className="px-5 py-3 text-right font-mono font-bold text-rose-600">+{row.totalPoints}</td>
-                          </tr>
-                          <ScreenshotRow screenshots={screenshotCaptures[row.eventType]} />
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Per-question breakdown */}
-            {turns.length > 0 && (
-              <div>
-                <p className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <span className="w-1.5 h-5 bg-indigo-500 rounded-full inline-block"></span>
-                  Question Breakdown
-                </p>
-                <div className="space-y-4">
-                  {turns.filter(t => t.evaluation).map((t, i) => {
-                    const qColor = (t.evaluation?.score ?? 0) >= 7 ? 'text-emerald-600 bg-emerald-100' :
-                                   (t.evaluation?.score ?? 0) >= 5 ? 'text-amber-600 bg-amber-100' : 'text-rose-600 bg-rose-100';
-                    return (
-                      <div key={i} className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm relative overflow-hidden group">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-slate-200 group-hover:bg-indigo-400 transition-colors"></div>
-                        <div className="pl-4">
-                          <div className="flex items-start gap-4 mb-3">
-                            <div className="flex-1">
-                              <span className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-1 block">Question {i + 1}</span>
-                              <p className="text-base text-slate-800 font-medium leading-relaxed">{t.question}</p>
-                            </div>
-                            <div className={`flex flex-col items-center justify-center h-12 w-12 rounded-lg ${qColor} flex-shrink-0 shadow-sm`}>
-                              <span className="text-lg font-bold leading-none">{t.evaluation?.score ?? '—'}</span>
-                              <span className="text-[9px] font-bold uppercase mt-0.5 opacity-80">/ 10</span>
-                            </div>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 mt-4 space-y-3">
-                            <div>
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Candidate's Response</span>
-                                {t.answer && !t.answer.startsWith('(no response') ? (
-                                    <p className="text-sm text-slate-700 italic leading-relaxed">"{t.answer}"</p>
-                                ) : (
-                                    <p className="text-sm text-slate-400 italic">No response provided</p>
-                                )}
-                            </div>
-                            <div className="pt-3 border-t border-slate-200/60">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">AI Evaluation</span>
-                                <p className="text-sm text-slate-600">{t.evaluation?.feedback}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </motion.div>
       </div>
     </AnimatePresence>

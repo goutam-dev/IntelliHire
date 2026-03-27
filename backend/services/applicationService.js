@@ -1083,21 +1083,8 @@ const getInterviewReport = async (applicationId, userId) => {
       events: session.integrity?.cheatingEvents || [],
       terminationReason: session.integrity?.terminationReason || '',
     },
-    voiceProctoring: {
-      enrollmentStatus: session.voiceProctoring?.enrollmentStatus || 'not_enrolled',
-      totalMismatches: session.voiceProctoring?.totalMismatches || 0,
-      totalSegmentsAnalyzed: session.voiceProctoring?.totalSegmentsAnalyzed || 0,
-      matchCount: session.voiceProctoring?.matchCount || 0,
-      unsureCount: session.voiceProctoring?.unsureCount || 0,
-      mismatches: session.voiceProctoring?.mismatches || [],
-    },
-    faceProctoring: {
-      enrollmentStatus: session.faceProctoring?.enrollmentStatus || 'not_enrolled',
-      faceAlerts: session.faceProctoring?.faceAlerts || [],
-      objectAlerts: session.faceProctoring?.objectAlerts || [],
-      totalFaceAlerts: session.faceProctoring?.totalFaceAlerts || 0,
-      totalObjectAlerts: session.faceProctoring?.totalObjectAlerts || 0,
-    },
+    voiceProctoring: voiceProctoringService.formatVoiceProctoringReport(session),
+    faceProctoring: faceProctoringService.formatFaceProctoringReport(session),
     turns: (session.turns || []).map(t => ({
       index: t.index,
       phase: t.phase,

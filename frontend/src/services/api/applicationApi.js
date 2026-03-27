@@ -54,7 +54,7 @@ export const getInterviewReport = async (applicationId) => {
   const response = await api.get(
     `/employer/applications/${applicationId}/interview-report`
   );
-  return response.data;
+  return response.data?.data || response.data;
 };
 
 export default {
