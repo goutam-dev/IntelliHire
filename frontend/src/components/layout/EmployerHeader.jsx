@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, LogOut, User, Briefcase, LayoutDashboard } from 'lucide-react';
-import { useClerk } from '@clerk/clerk-react';
+import { useClerk, useUser } from '@clerk/clerk-react';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -112,6 +112,9 @@ const CloseIcon = ({ className }) => (
 const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', userImage, onLogout }) => {
   const navigate = useNavigate();
   const { signOut } = useClerk();
+  const { user } = useUser();
+  const displayImage = userImage || user?.imageUrl;
+  
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
@@ -200,8 +203,8 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
                   <span className="font-medium text-slate-900">{userName}</span>
                   <span className="text-xs text-slate-500">{companyName}</span>
                 </div>
-                {userImage ? (
-                  <img src={userImage} alt={userName} className="h-8 w-8 rounded-full object-cover border border-slate-200" />
+                {displayImage ? (
+                  <img src={displayImage} alt={userName} className="h-8 w-8 rounded-full object-cover border border-slate-200" />
                 ) : (
                   <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-medium text-xs border border-slate-200">
                     {userName.charAt(0)}
