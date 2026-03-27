@@ -44,9 +44,19 @@ class AntiSpoofPredictor:
     """
     ONNX-based face anti-spoofing using MiniFASNetV2.
     
-    Output: softmax [fake_prob, real_prob]
-    - Index 0 = Fake probability
-    - Index 1 = Real probability
+    The exported MiniFASNetV2 ONNX used here emits 3 classes.
+    Silent-Face-Anti-Spoofing treats class index 1 as the live/real class
+    and uses argmax over all classes to make the final decision.
+
+    To preserve the existing liveness thresholding pipeline while honoring
+    the reference decision boundary, we derive a binary live score by
+    comparing the live class against the strongest competing attack class:
+
+      live_score = p_live / (p_live + max(p_attack_classes))
+
+    This means:
+    - live_score > 0.5 iff the live class wins against every attack class
+    - borderline 3-class outputs stay near 0.5 instead of being over-penalized
     """
 
     def __init__(self):
@@ -124,11 +134,22 @@ class AntiSpoofPredictor:
         )
         
         logits = outputs[0]
-        probs = self._softmax(logits)[0]  # [fake_prob, real_prob]
-        
-        real_score = float(probs[1])
-        fake_score = float(probs[0])
-        is_real = real_score > 0.5
+        probs = self._softmax(logits)[0]
+
+        num_classes = int(len(probs))
+        if num_classes < 2:
+            raise ValueError(f"Unexpected anti-spoof output shape: {logits.shape}")
+
+        live_index = 1
+        predicted_index = int(np.argmax(probs))
+        live_prob = float(probs[live_index])
+        attack_probs = [float(prob) for idx, prob in enumerate(probs) if idx != live_index]
+        strongest_attack_prob = max(attack_probs) if attack_probs else 0.0
+
+        denom = live_prob + strongest_attack_prob
+        real_score = live_prob / denom if denom > 1e-10 else 0.5
+        fake_score = strongest_attack_prob / denom if denom > 1e-10 else 0.5
+        is_real = predicted_index == live_index
         label = "Real" if is_real else "Fake"
 
         return {
@@ -136,5 +157,15 @@ class AntiSpoofPredictor:
             "real_score": round(real_score, 4),
             "fake_score": round(fake_score, 4),
             "label": label,
-            "model_scores": {"MiniFASNetV2": {"real": round(real_score, 4), "fake": round(fake_score, 4)}},
+            "model_scores": {
+                "MiniFASNetV2": {
+                    "live_index": live_index,
+                    "predicted_index": predicted_index,
+                    "raw_probs": [round(float(prob), 4) for prob in probs],
+                    "live_class_prob": round(live_prob, 4),
+                    "strongest_attack_prob": round(strongest_attack_prob, 4),
+                    "real": round(real_score, 4),
+                    "fake": round(fake_score, 4),
+                }
+            },
         }

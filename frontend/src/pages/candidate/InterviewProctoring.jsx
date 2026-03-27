@@ -61,6 +61,8 @@ const getResumeConditions = () => ({
 const INTERVIEW_MAX_SECONDS = 30 * 60;
 const INTERVIEW_MIN_SECONDS = 20 * 60;
 const FACE_PROCTORING_FRAME_INTERVAL_MS = 2000;
+const FACE_PROCTORING_MAX_WIDTH = 640;
+const FACE_PROCTORING_JPEG_QUALITY = 0.85;
 
 const TERMS_LIST = [
   { id: 1, title: 'Recording Consent', body: 'By proceeding you give IntelliHire irrevocable consent to record your audio, video, and screen activity for the entire duration of this interview session.' },
@@ -872,18 +874,27 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       return canvas;
     };
 
+    const getCaptureSize = (sourceWidth, sourceHeight) => {
+      const safeWidth = Math.max(1, Math.round(sourceWidth || FACE_PROCTORING_MAX_WIDTH));
+      const safeHeight = Math.max(1, Math.round(sourceHeight || safeWidth));
+      const scale = Math.min(1, FACE_PROCTORING_MAX_WIDTH / safeWidth);
+      return {
+        width: Math.max(1, Math.round(safeWidth * scale)),
+        height: Math.max(1, Math.round(safeHeight * scale)),
+      };
+    };
+
     const drawToDataUrl = (source, width, height) => {
       const canvas = ensureCanvas(width, height);
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
       ctx.drawImage(source, 0, 0, width, height);
-      return canvas.toDataURL('image/jpeg', 0.6);
+      return canvas.toDataURL('image/jpeg', FACE_PROCTORING_JPEG_QUALITY);
     };
 
     const video = videoRef.current;
     if (video && video.readyState >= 2) {
-      const width = Math.min(640, video.videoWidth || 640);
-      const height = Math.max(360, Math.round((width * 9) / 16));
+      const { width, height } = getCaptureSize(video.videoWidth, video.videoHeight);
       return drawToDataUrl(video, width, height);
     }
 
@@ -894,8 +905,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
       const imageCapture = new ImageCapture(track);
       const bitmap = await imageCapture.grabFrame();
-      const width = Math.min(640, bitmap.width || 640);
-      const height = Math.max(360, Math.round((width * 9) / 16));
+      const { width, height } = getCaptureSize(bitmap.width, bitmap.height);
       const dataUrl = drawToDataUrl(bitmap, width, height);
       bitmap.close();
       return dataUrl;
