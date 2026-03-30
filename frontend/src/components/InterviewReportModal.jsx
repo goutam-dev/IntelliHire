@@ -121,6 +121,19 @@ function buildPrintableHtml({ report, candidateName }) {
     )
     .join('');
 
+  const faceObservationRows = (fp.faceObservations || [])
+    .map(
+      (m, i) => `
+      <tr>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${i + 1}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(toClock(m.timestamp))}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(m.status || 'uncertain')}</td>
+        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(m.reason || 'quality_uncertain')}</td>
+      </tr>
+    `
+    )
+    .join('');
+
   const objectRows = (fp.objectAlerts || [])
     .map(
       (m, i) => `
@@ -172,6 +185,7 @@ function buildPrintableHtml({ report, candidateName }) {
       <h2>Proctoring Summary</h2>
       <p><strong>Voice mismatches:</strong> ${escapeHtml(vp.totalMismatches ?? 0)} / ${escapeHtml(vp.totalSegmentsAnalyzed ?? 0)} segments</p>
       <p><strong>Face alerts:</strong> ${escapeHtml(fp.totalFaceAlerts ?? (fp.faceAlerts || []).length)}</p>
+      <p><strong>Face uncertain observations:</strong> ${escapeHtml(fp.totalFaceObservations ?? (fp.faceObservations || []).length)}</p>
       <p><strong>Object alerts:</strong> ${escapeHtml(fp.totalObjectAlerts ?? (fp.objectAlerts || []).length)}</p>
       <p><strong>Integrity score:</strong> ${escapeHtml(integrity.totalScore ?? 0)} / ${escapeHtml(integrity.threshold ?? CHEATING_THRESHOLD)}</p>
 
@@ -185,6 +199,12 @@ function buildPrintableHtml({ report, candidateName }) {
       <table>
         <thead><tr><th>#</th><th>Timestamp</th><th>Violation</th></tr></thead>
         <tbody>${faceRows || '<tr><td colspan="3" style="padding:8px;border:1px solid #e2e8f0;">No face alerts recorded</td></tr>'}</tbody>
+      </table>
+
+      <h2>Face Uncertain Observations</h2>
+      <table>
+        <thead><tr><th>#</th><th>Timestamp</th><th>Status</th><th>Reason</th></tr></thead>
+        <tbody>${faceObservationRows || '<tr><td colspan="4" style="padding:8px;border:1px solid #e2e8f0;">No uncertain face observations recorded</td></tr>'}</tbody>
       </table>
 
       <h2>Object Alert Details</h2>
@@ -220,6 +240,7 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
 
   const voiceMismatches = voice.mismatches || [];
   const faceAlerts = face.faceAlerts || [];
+  const faceObservations = face.faceObservations || [];
   const objectAlerts = face.objectAlerts || [];
 
   const timelineEvents = useMemo(() => {
@@ -243,6 +264,16 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
         mediaLabel: 'View snapshot',
         mediaKind: 'image',
       })),
+      ...faceObservations.map((item, idx) => ({
+        id: `face-observation-${idx}`,
+        type: 'face',
+        timestamp: item.timestamp,
+        title: 'Face status: uncertain',
+        description: `Reason: ${item.reason || 'quality_uncertain'} | Liveness: ${item.livenessScore ?? 'N/A'}`,
+        mediaCandidates: resolveAssetCandidates(item.snapshotUrl || item.snapshotPath),
+        mediaLabel: 'View snapshot',
+        mediaKind: 'image',
+      })),
       ...objectAlerts.map((item, idx) => ({
         id: `object-${idx}`,
         type: 'object',
@@ -260,7 +291,7 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
     return all
       .filter((event) => proctorFilter === 'all' || event.type === proctorFilter)
       .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
-  }, [voiceMismatches, faceAlerts, objectAlerts, proctorFilter]);
+  }, [voiceMismatches, faceAlerts, faceObservations, objectAlerts, proctorFilter]);
 
   if (!isOpen || !report) return null;
 
@@ -371,7 +402,7 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Visual Alerts</p>
                     <p className="mt-2 text-2xl font-bold text-amber-700">{(face.totalFaceAlerts ?? faceAlerts.length) + (face.totalObjectAlerts ?? objectAlerts.length)}</p>
-                    <p className="mt-1 text-sm text-amber-700">Face: {face.totalFaceAlerts ?? faceAlerts.length}, Object: {face.totalObjectAlerts ?? objectAlerts.length}</p>
+                    <p className="mt-1 text-sm text-amber-700">Face: {face.totalFaceAlerts ?? faceAlerts.length}, Object: {face.totalObjectAlerts ?? objectAlerts.length}, Uncertain: {face.totalFaceObservations ?? faceObservations.length}</p>
                   </div>
                 </div>
 
@@ -442,6 +473,7 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
                     </h3>
                     <p className="text-sm text-slate-700">Enrollment: <span className="font-semibold">{face.enrollmentStatus || 'not_enrolled'}</span></p>
                     <p className="text-sm text-slate-700">Face alerts: <span className="font-semibold">{face.totalFaceAlerts ?? faceAlerts.length}</span></p>
+                    <p className="text-sm text-slate-700">Face uncertain: <span className="font-semibold">{face.totalFaceObservations ?? faceObservations.length}</span></p>
                     <p className="text-sm text-slate-700">Object alerts: <span className="font-semibold">{face.totalObjectAlerts ?? objectAlerts.length}</span></p>
                   </div>
                 </div>

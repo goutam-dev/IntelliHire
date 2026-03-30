@@ -63,6 +63,7 @@ const INTERVIEW_MIN_SECONDS = 20 * 60;
 const FACE_PROCTORING_FRAME_INTERVAL_MS = 2000;
 const FACE_PROCTORING_MAX_WIDTH = 640;
 const FACE_PROCTORING_JPEG_QUALITY = 0.85;
+const FACE_PROCTORING_LOG_PREFIX = '[FaceProctoring:UI]';
 
 const TERMS_LIST = [
   { id: 1, title: 'Recording Consent', body: 'By proceeding you give IntelliHire irrevocable consent to record your audio, video, and screen activity for the entire duration of this interview session.' },
@@ -818,15 +819,34 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     if (engine.engineState !== ENGINE_STATE.LISTENING) return;
 
     fpStartedRef.current = true;
+    console.debug(
+      FACE_PROCTORING_LOG_PREFIX,
+      'start request',
+      {
+        sessionId: engine.sessionId,
+        elapsedSeconds: engine.elapsedSeconds,
+        frameIntervalMs: FACE_PROCTORING_FRAME_INTERVAL_MS,
+      }
+    );
     faceProctoringApi.startFaceProctoring(engine.sessionId, engine.elapsedSeconds)
       .then((result) => {
         const data = result?.data || {};
         if (data.started) {
+          console.debug(
+            FACE_PROCTORING_LOG_PREFIX,
+            'start success',
+            { sessionId: engine.sessionId, candidateId: data.candidateId || null }
+          );
           setFpActive(true);
           setFpEnrollmentStatus('enrolled');
           fpRetryCountRef.current = 0;
           fpForwardFailCountRef.current = 0;
         } else {
+          console.warn(
+            FACE_PROCTORING_LOG_PREFIX,
+            'start returned not started',
+            { sessionId: engine.sessionId, reason: data?.reason || 'unknown' }
+          );
           setFpActive(false);
           setFpEnrollmentStatus('not_enrolled');
 
@@ -834,6 +854,11 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
           const shouldRetry = reason.includes('not yet complete') || reason.includes('wait');
           if (shouldRetry && fpRetryCountRef.current < 15) {
             fpRetryCountRef.current += 1;
+            console.debug(
+              FACE_PROCTORING_LOG_PREFIX,
+              'scheduling enrollment retry',
+              { sessionId: engine.sessionId, retryCount: fpRetryCountRef.current, retryDelayMs: 8000 }
+            );
             fpRetryTimerRef.current = setTimeout(() => {
               fpStartedRef.current = false;
               setFpEnrollmentStatus(prev => (prev === 'retrying' ? 'not_enrolled' : 'retrying'));
@@ -841,11 +866,25 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
           }
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn(
+          FACE_PROCTORING_LOG_PREFIX,
+          'start request failed',
+          { sessionId: engine.sessionId, error: err?.message || 'unknown' }
+        );
         setFpActive(false);
         setFpEnrollmentStatus('failed');
       });
   }, [engine.sessionId, engine.engineState, engine.elapsedSeconds, fpEnrollmentStatus]);
+
+  useEffect(() => {
+    if (!engine.sessionId) return;
+    console.debug(
+      FACE_PROCTORING_LOG_PREFIX,
+      'state changed',
+      { sessionId: engine.sessionId, active: fpActive, enrollmentStatus: fpEnrollmentStatus }
+    );
+  }, [engine.sessionId, fpActive, fpEnrollmentStatus]);
 
   const pauseInterview = useCallback((reason, mode = 'lockdown') => {
     if (isPausedRef.current || isTerminatingRef.current) return;
@@ -919,6 +958,12 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     if (!fpActive) return;
     if (!engine.sessionId) return;
 
+    console.debug(
+      FACE_PROCTORING_LOG_PREFIX,
+      'frame streaming started',
+      { sessionId: engine.sessionId, intervalMs: FACE_PROCTORING_FRAME_INTERVAL_MS }
+    );
+
     fpFrameIntervalRef.current = setInterval(async () => {
       if (isPausedRef.current || isTerminatingRef.current) return;
       if (fpFrameInFlightRef.current) return;
@@ -933,8 +978,27 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
         if (frameData.forwarded === false) {
           fpForwardFailCountRef.current += 1;
+          console.warn(
+            FACE_PROCTORING_LOG_PREFIX,
+            'frame not forwarded',
+            {
+              sessionId: engine.sessionId,
+              consecutiveFailCount: fpForwardFailCountRef.current,
+              failReason: frameData?.failReason || 'unknown',
+              wsReadyState: frameData?.wsReadyState || 'n/a',
+            }
+          );
 
           if (fpForwardFailCountRef.current >= 3) {
+            console.warn(
+              FACE_PROCTORING_LOG_PREFIX,
+              'auto disabling after consecutive frame forward failures',
+              {
+                sessionId: engine.sessionId,
+                threshold: 3,
+                intervalMs: FACE_PROCTORING_FRAME_INTERVAL_MS,
+              }
+            );
             setFpActive(false);
             fpStartedRef.current = false;
             setFpEnrollmentStatus('retrying');
@@ -942,6 +1006,13 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
           return;
         }
 
+        if (fpForwardFailCountRef.current > 0) {
+          console.debug(
+            FACE_PROCTORING_LOG_PREFIX,
+            'frame forwarding recovered',
+            { sessionId: engine.sessionId, previousFailCount: fpForwardFailCountRef.current }
+          );
+        }
         fpForwardFailCountRef.current = 0;
 
         const faceSignal = frameData.faceSignal;
@@ -997,7 +1068,12 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
           showProctoringToast('object', Shield, objTitle, objMsg);
         }
 
-      } catch {
+      } catch (err) {
+        console.warn(
+          FACE_PROCTORING_LOG_PREFIX,
+          'sendFaceFrame request failed',
+          { sessionId: engine.sessionId, error: err?.message || 'unknown' }
+        );
         // Non-blocking by design
       } finally {
         fpFrameInFlightRef.current = false;
@@ -1005,6 +1081,11 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     }, FACE_PROCTORING_FRAME_INTERVAL_MS); // 2.0s interval to align with backend 6x threshold (~12s)
 
     return () => {
+      console.debug(
+        FACE_PROCTORING_LOG_PREFIX,
+        'frame streaming cleanup',
+        { sessionId: engine.sessionId }
+      );
       if (fpRetryTimerRef.current) {
         clearTimeout(fpRetryTimerRef.current);
         fpRetryTimerRef.current = null;

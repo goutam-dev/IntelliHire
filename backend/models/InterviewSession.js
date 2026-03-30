@@ -209,6 +209,20 @@ const interviewSessionSchema = new mongoose.Schema({
     }],
     totalFaceAlerts: { type: Number, default: 0 },
 
+    faceObservations: [{
+      timestamp: { type: Number },
+      wallClockTime: { type: Date },
+      status: { type: String },
+      reason: { type: String },
+      similarity: { type: Number },
+      livenessScore: { type: Number },
+      numFaces: { type: Number },
+      quality: { type: mongoose.Schema.Types.Mixed },
+      snapshotPath: { type: String },
+      _id: false,
+    }],
+    totalFaceObservations: { type: Number, default: 0 },
+
     objectAlerts: [{
       timestamp: { type: Number },
       wallClockTime: { type: Date },

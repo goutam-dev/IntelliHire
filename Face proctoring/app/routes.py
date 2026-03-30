@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 from datetime import datetime
 from typing import List, Optional
 
@@ -130,6 +131,7 @@ async def websocket_analyze(websocket: WebSocket):
 
     current_violation_type = None
     consecutive_same_type = 0
+    last_uncertain_snapshot_sent_at = 0.0
 
     candidate_id = None
     registered_embedding = None
@@ -189,6 +191,7 @@ async def websocket_analyze(websocket: WebSocket):
 
                     alert_type = "none"
                     is_ok = True
+                    is_uncertain = False
 
                     if verify_result["status"] == "no_face":
                         alert_type = "no_face"
@@ -203,11 +206,16 @@ async def websocket_analyze(websocket: WebSocket):
                         alert_type = "low_quality"
                         is_ok = False
 
-                    if not liveness_result["is_live"] and alert_type == "none":
+                    if liveness_result.get("status") == "uncertain" and alert_type == "none":
+                        is_uncertain = True
+
+                    if (not liveness_result["is_live"]) and (not is_uncertain) and alert_type == "none":
                         alert_type = "liveness_fail"
                         is_ok = False
 
-                    if is_ok:
+                    if is_uncertain:
+                        face_status = "uncertain"
+                    elif is_ok:
                         face_status = "ok"
                     elif alert_type == "face_mismatch":
                         face_status = "mismatch"
@@ -221,6 +229,7 @@ async def websocket_analyze(websocket: WebSocket):
                         "liveness": liveness_result,
                         "alert_type": alert_type,
                         "is_ok": is_ok,
+                        "is_uncertain": is_uncertain,
                         "face_status": face_status,
                     }
 
@@ -237,7 +246,21 @@ async def websocket_analyze(websocket: WebSocket):
             liveness_score = float(face_data["liveness"].get("liveness_score", 0.0))
             num_faces = int(face_data["verify"].get("num_faces", 0))
 
-            if is_ok:
+            if face_data.get("is_uncertain"):
+                if current_violation_type is not None or consecutive_same_type > 0:
+                    logger.info(
+                        "[FaceWS][%s] UNCERTAIN status=uncertain similarity=%.4f liveness=%.4f num_faces=%d quality=%s (counter reset from type=%s count=%d)",
+                        candidate_id,
+                        similarity,
+                        liveness_score,
+                        num_faces,
+                        (face_data["liveness"].get("quality") or {}).get("reason", "unknown"),
+                        current_violation_type,
+                        consecutive_same_type,
+                    )
+                current_violation_type = None
+                consecutive_same_type = 0
+            elif is_ok:
                 if current_violation_type is not None or consecutive_same_type > 0:
                     logger.info(
                         "[FaceWS][%s] RECOVERY status=ok similarity=%.4f liveness=%.4f num_faces=%d (counter reset from type=%s count=%d)",
@@ -287,7 +310,14 @@ async def websocket_analyze(websocket: WebSocket):
                 )
 
             face_snapshot = None
-            if formal_face_alert:
+            should_send_uncertain_snapshot = False
+            if face_data.get("is_uncertain"):
+                now_ts = time.time()
+                if (now_ts - last_uncertain_snapshot_sent_at) >= 5.0:
+                    should_send_uncertain_snapshot = True
+                    last_uncertain_snapshot_sent_at = now_ts
+
+            if formal_face_alert or should_send_uncertain_snapshot:
                 annotated_face = annotate_face_alert(
                     face_frame,
                     face_data["face_status"],
@@ -304,6 +334,7 @@ async def websocket_analyze(websocket: WebSocket):
                     "similarity": round(float(face_data["verify"]["similarity"]), 4),
                     "liveness_score": round(float(face_data["liveness"]["liveness_score"]), 4),
                     "status": face_data["face_status"],
+                    "quality": face_data["liveness"].get("quality", {}),
                     "formal_alert_raised": formal_face_alert,
                     "violation_type": current_violation_type if formal_face_alert else None,
                     "num_faces": int(face_data["verify"]["num_faces"]),
@@ -323,8 +354,12 @@ async def websocket_analyze(websocket: WebSocket):
 
             await websocket.send_json(response)
 
-    except WebSocketDisconnect:
-        logger.info("WebSocket disconnected for candidate %s", candidate_id)
+    except WebSocketDisconnect as e:
+        logger.warning(
+            "WebSocket disconnected for candidate %s (code=%s)",
+            candidate_id,
+            getattr(e, "code", "unknown"),
+        )
     except Exception as e:
         logger.exception("WebSocket error: %s", e)
     finally:

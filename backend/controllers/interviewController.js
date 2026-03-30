@@ -436,7 +436,9 @@ exports.streamFaceFrame = asyncHandler(async (req, res) => {
 
   const frameResult = faceProctoringService.processFrame(sessionId, image, candidateId);
   if (!frameResult?.forwarded) {
-    logger.warn(`[FaceProctoring] Frame not forwarded: session=${sessionId} candidate=${candidateId}`);
+    logger.warn(
+      `[FaceProctoring] Frame not forwarded: session=${sessionId} candidate=${candidateId} reason=${frameResult?.failReason || 'unknown'} wsState=${frameResult?.wsReadyState || 'n/a'}`
+    );
   }
   res.json({ success: true, data: frameResult });
 });

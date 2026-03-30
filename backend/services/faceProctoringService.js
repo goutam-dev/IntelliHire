@@ -23,6 +23,21 @@ const VIDEO_REG_MIN_FRAMES = 5;
 
 const activeSessions = new Map();
 
+function wsStateName(state) {
+  switch (state) {
+    case WebSocket.CONNECTING:
+      return 'CONNECTING';
+    case WebSocket.OPEN:
+      return 'OPEN';
+    case WebSocket.CLOSING:
+      return 'CLOSING';
+    case WebSocket.CLOSED:
+      return 'CLOSED';
+    default:
+      return `UNKNOWN(${state})`;
+  }
+}
+
 function runFfmpeg(configureFn) {
   return new Promise((resolve, reject) => {
     const cmd = ffmpeg();
@@ -188,8 +203,20 @@ async function appendObjectAlert(sessionId, alert) {
   }).catch(() => {});
 }
 
+async function appendFaceObservation(sessionId, observation) {
+  await InterviewSession.findByIdAndUpdate(sessionId, {
+    $push: { 'faceProctoring.faceObservations': observation },
+    $inc: { 'faceProctoring.totalFaceObservations': 1 },
+  }).catch(() => {});
+}
+
 async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding, elapsedSeconds = 0, options = {}) {
-  if (activeSessions.has(String(sessionId))) return;
+  if (activeSessions.has(String(sessionId))) {
+    logger.warn(
+      `[FaceProctoring] connectVerificationWS skipped (already active): session=${sessionId} candidate=${candidateId}`
+    );
+    return;
+  }
 
   if (!Array.isArray(canonicalEmbedding) || canonicalEmbedding.length === 0) {
     throw new Error('Missing canonical embedding for face proctoring');
@@ -199,6 +226,10 @@ async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding,
   const wsSessionId = `intellihire_face_${sessionId}_${Date.now()}`;
   const startedAt = Date.now();
   const elapsedAtStart = Number(elapsedSeconds || 0);
+
+  logger.info(
+    `[FaceProctoring] Opening WS: session=${sessionId} wsSessionId=${wsSessionId} candidate=${candidateId} owner=${options?.candidateId || 'n/a'} embeddingLen=${canonicalEmbedding.length} url=${wsUrl}`
+  );
 
   await new Promise((resolve) => {
     const ws = new WebSocket(wsUrl);
@@ -213,22 +244,40 @@ async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding,
     let resolved = false;
 
     ws.on('open', () => {
+      logger.info(
+        `[FaceProctoring] WS open: session=${sessionId} wsSessionId=${wsSessionId} readyState=${wsStateName(ws.readyState)}`
+      );
       const initPayload = {
         candidate_id: candidateId,
         canonical_embedding: canonicalEmbedding,
       };
-      ws.send(JSON.stringify(initPayload));
+      try {
+        ws.send(JSON.stringify(initPayload));
+        logger.debug(
+          `[FaceProctoring] WS init sent: session=${sessionId} wsSessionId=${wsSessionId}`
+        );
+      } catch (err) {
+        logger.warn(
+          `[FaceProctoring] WS init send failed: session=${sessionId} wsSessionId=${wsSessionId} error=${err.message}`
+        );
+      }
     });
 
     ws.on('message', async (data) => {
       let event;
       try {
         event = JSON.parse(data.toString());
-      } catch {
+      } catch (err) {
+        logger.warn(
+          `[FaceProctoring] WS message parse failed: session=${sessionId} wsSessionId=${wsSessionId} error=${err.message}`
+        );
         return;
       }
 
       if (event.type === 'connected') {
+        logger.info(
+          `[FaceProctoring] WS connected ack: session=${sessionId} wsSessionId=${wsSessionId} candidate=${candidateId}`
+        );
         await InterviewSession.findByIdAndUpdate(sessionId, {
           $set: {
             'faceProctoring.enrollmentStatus': 'enrolled',
@@ -242,7 +291,9 @@ async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding,
       }
 
       if (event.type === 'error') {
-        logger.warn(`[FaceProctoring] Python WS error for session=${sessionId}: ${event.message || 'unknown error'}`);
+        logger.warn(
+          `[FaceProctoring] Python WS error: session=${sessionId} wsSessionId=${wsSessionId} message=${event.message || 'unknown error'}`
+        );
         resolveOnce();
         return;
       }
@@ -255,6 +306,53 @@ async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding,
       const face = event.face || {};
       const object = event.object || {};
       const snapshots = event.snapshots || {};
+      const sessionState = activeSessions.get(String(sessionId)) || {};
+
+      const faceStatus = face.status || null;
+      const faceQuality = face.quality || null;
+      const isUncertainFace = faceStatus === 'uncertain';
+
+      if (isUncertainFace) {
+        const shouldPersistObservation =
+          sessionState.lastFaceObservationStatus !== 'uncertain'
+          || typeof sessionState.lastFaceObservationAt !== 'number'
+          || (elapsed - sessionState.lastFaceObservationAt) >= 5;
+
+        if (shouldPersistObservation) {
+          const uncertainSnapshotPath = snapshots.face
+            ? saveBase64Snapshot(
+                snapshots.face,
+                ['face-observations', String(sessionId)],
+                `uncertain-${Date.now()}.jpg`
+              )
+            : null;
+
+          await appendFaceObservation(sessionId, {
+            timestamp: elapsed,
+            wallClockTime,
+            status: 'uncertain',
+            reason: faceQuality?.reason || 'uncertain_quality',
+            similarity: typeof face.similarity === 'number' ? face.similarity : null,
+            livenessScore: typeof face.liveness_score === 'number' ? face.liveness_score : null,
+            numFaces: typeof face.num_faces === 'number' ? face.num_faces : null,
+            quality: faceQuality,
+            snapshotPath: uncertainSnapshotPath,
+          });
+        }
+
+        activeSessions.set(String(sessionId), {
+          ...sessionState,
+          latestFaceStatus: 'uncertain',
+          latestFaceViolationType: null,
+          lastFaceObservationStatus: 'uncertain',
+          lastFaceObservationAt: elapsed,
+        });
+      } else {
+        activeSessions.set(String(sessionId), {
+          ...sessionState,
+          lastFaceObservationStatus: faceStatus,
+        });
+      }
 
       if (face.formal_alert_raised) {
         const violationType = face.violation_type || null;
@@ -340,11 +438,17 @@ async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding,
     });
 
     ws.on('error', (err) => {
-      logger.warn(`[FaceProctoring] WS connection error for session=${sessionId}: ${err.message}`);
+      logger.warn(
+        `[FaceProctoring] WS connection error: session=${sessionId} wsSessionId=${wsSessionId} readyState=${wsStateName(ws.readyState)} error=${err.message}`
+      );
       resolveOnce();
     });
 
-    ws.on('close', async () => {
+    ws.on('close', async (code, reasonBuffer) => {
+      const reason = Buffer.isBuffer(reasonBuffer) ? reasonBuffer.toString() : String(reasonBuffer || '');
+      logger.warn(
+        `[FaceProctoring] WS closed: session=${sessionId} wsSessionId=${wsSessionId} code=${code} reason=${reason || 'n/a'} uptimeMs=${Date.now() - startedAt} hadActive=${activeSessions.has(String(sessionId))}`
+      );
       activeSessions.delete(String(sessionId));
       await InterviewSession.findByIdAndUpdate(sessionId, {
         $set: { 'faceProctoring.stoppedAt': new Date() },
@@ -359,33 +463,74 @@ async function connectVerificationWS(sessionId, candidateId, canonicalEmbedding,
       latestFaceViolationType: null,
       latestFaceFormalAlert: null,
       deliveredFaceFormalAlertIds: new Set(),
+      lastFaceObservationStatus: null,
+      lastFaceObservationAt: null,
     });
 
-    setTimeout(resolveOnce, 15000);
+    logger.debug(
+      `[FaceProctoring] Active session registered: session=${sessionId} wsSessionId=${wsSessionId} owner=${options?.candidateId || 'n/a'}`
+    );
+
+    setTimeout(() => {
+      if (!resolved) {
+        logger.warn(
+          `[FaceProctoring] WS connect timeout waiting for ack: session=${sessionId} wsSessionId=${wsSessionId} readyState=${wsStateName(ws.readyState)}`
+        );
+      }
+      resolveOnce();
+    }, 15000);
   });
 }
 
 function processFrame(sessionId, imageBase64, candidateId) {
   const active = activeSessions.get(String(sessionId));
-  if (!active || !imageBase64) {
+  if (!active) {
+    logger.debug(
+      `[FaceProctoring] processFrame dropped: session=${sessionId} candidate=${candidateId || 'n/a'} reason=no_active_session`
+    );
     return {
       forwarded: false,
       faceSignal: null,
+      objectSignal: null,
+      failReason: 'no_active_session',
+    };
+  }
+
+  if (!imageBase64) {
+    logger.debug(
+      `[FaceProctoring] processFrame dropped: session=${sessionId} candidate=${candidateId || 'n/a'} reason=missing_image`
+    );
+    return {
+      forwarded: false,
+      faceSignal: null,
+      objectSignal: null,
+      failReason: 'missing_image',
     };
   }
 
   if (active.ownerCandidateId && candidateId && active.ownerCandidateId !== String(candidateId)) {
+    logger.warn(
+      `[FaceProctoring] processFrame dropped: session=${sessionId} reason=owner_mismatch owner=${active.ownerCandidateId} candidate=${candidateId}`
+    );
     return {
       forwarded: false,
       faceSignal: null,
+      objectSignal: null,
+      failReason: 'owner_mismatch',
     };
   }
 
   const { ws } = active;
   if (!ws || ws.readyState !== WebSocket.OPEN) {
+    logger.warn(
+      `[FaceProctoring] processFrame dropped: session=${sessionId} candidate=${candidateId || 'n/a'} reason=ws_not_open readyState=${ws ? wsStateName(ws.readyState) : 'no_ws'}`
+    );
     return {
       forwarded: false,
       faceSignal: null,
+      objectSignal: null,
+      failReason: 'ws_not_open',
+      wsReadyState: ws ? wsStateName(ws.readyState) : 'no_ws',
     };
   }
 
@@ -437,37 +582,64 @@ function processFrame(sessionId, imageBase64, candidateId) {
       latestFaceViolationType: active.latestFaceViolationType || null,
     };
   } catch {
+    logger.warn(
+      `[FaceProctoring] processFrame send failed: session=${sessionId} candidate=${candidateId || 'n/a'} reason=ws_send_error readyState=${wsStateName(ws.readyState)}`
+    );
     return {
       forwarded: false,
       faceSignal: null,
       objectSignal: null,
+      failReason: 'ws_send_error',
+      wsReadyState: wsStateName(ws.readyState),
     };
   }
 }
 
 async function stopVerificationWS(sessionId, candidateId) {
   const active = activeSessions.get(String(sessionId));
-  if (!active) return;
+  if (!active) {
+    logger.debug(
+      `[FaceProctoring] stopVerificationWS noop: session=${sessionId} candidate=${candidateId || 'n/a'} reason=no_active_session`
+    );
+    return;
+  }
 
   if (active.ownerCandidateId && candidateId && active.ownerCandidateId !== String(candidateId)) {
+    logger.warn(
+      `[FaceProctoring] stopVerificationWS denied: session=${sessionId} reason=owner_mismatch owner=${active.ownerCandidateId} candidate=${candidateId}`
+    );
     return;
   }
 
   const { ws } = active;
   if (!ws) {
+    logger.warn(
+      `[FaceProctoring] stopVerificationWS no ws instance: session=${sessionId} candidate=${candidateId || 'n/a'}`
+    );
     activeSessions.delete(String(sessionId));
     return;
   }
 
+  logger.info(
+    `[FaceProctoring] stopVerificationWS requested: session=${sessionId} candidate=${candidateId || 'n/a'} wsState=${wsStateName(ws.readyState)}`
+  );
+
   await new Promise((resolve) => {
     const timeout = setTimeout(() => {
+      logger.warn(
+        `[FaceProctoring] stopVerificationWS timeout; terminating socket: session=${sessionId} wsState=${wsStateName(ws.readyState)}`
+      );
       try {
         ws.terminate();
       } catch {}
       resolve();
     }, 10000);
 
-    ws.once('close', () => {
+    ws.once('close', (code, reasonBuffer) => {
+      const reason = Buffer.isBuffer(reasonBuffer) ? reasonBuffer.toString() : String(reasonBuffer || '');
+      logger.info(
+        `[FaceProctoring] stopVerificationWS close observed: session=${sessionId} code=${code} reason=${reason || 'n/a'}`
+      );
       clearTimeout(timeout);
       resolve();
     });
@@ -495,6 +667,7 @@ function formatFaceProctoringReport(session) {
     enrollmentStatus: fp.enrollmentStatus || 'not_enrolled',
     candidateId: fp.candidateId || null,
     totalFaceAlerts: fp.totalFaceAlerts || 0,
+    totalFaceObservations: fp.totalFaceObservations || 0,
     totalObjectAlerts: fp.totalObjectAlerts || 0,
     faceAlerts: (fp.faceAlerts || []).map((alert) => ({
       timestamp: alert.timestamp,
@@ -505,6 +678,17 @@ function formatFaceProctoringReport(session) {
       livenessScore: alert.livenessScore,
       numFaces: alert.numFaces,
       snapshotUrl: alert.snapshotPath || null,
+    })),
+    faceObservations: (fp.faceObservations || []).map((obs) => ({
+      timestamp: obs.timestamp,
+      wallClockTime: obs.wallClockTime,
+      status: obs.status,
+      reason: obs.reason,
+      similarity: obs.similarity,
+      livenessScore: obs.livenessScore,
+      numFaces: obs.numFaces,
+      quality: obs.quality || null,
+      snapshotUrl: obs.snapshotPath || null,
     })),
     objectAlerts: (fp.objectAlerts || []).map((alert) => ({
       timestamp: alert.timestamp,
