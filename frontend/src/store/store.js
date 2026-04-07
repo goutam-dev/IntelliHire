@@ -6,6 +6,7 @@ import jobReducer from './slices/jobSlice';
 import candidateReducer from './slices/candidateSlice';
 import jobApplicationsReducer from './slices/jobApplicationsSlice';
 import profileCompletionReducer from './slices/profileCompletionSlice';
+import notificationReducer from './slices/notificationSlice';
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     candidate: candidateReducer,
     jobApplications: jobApplicationsReducer,
     profileCompletion: profileCompletionReducer,
+    notifications: notificationReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

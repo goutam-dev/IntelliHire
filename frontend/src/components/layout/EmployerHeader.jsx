@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, LogOut, User, Briefcase, LayoutDashboard } from 'lucide-react';
 import { useClerk, useUser } from '@clerk/clerk-react';
+import { useSelector } from 'react-redux';
+import NotificationBell from '../common/NotificationBell';
+import { useNotifications } from '../../hooks/useNotifications';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -115,6 +118,10 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
   const { user } = useUser();
   const displayImage = userImage || user?.imageUrl;
   
+  const profile = useSelector((state) => state.employer.profile);
+  const mongoUserId = profile?.user?._id || profile?._id;
+  useNotifications(mongoUserId);
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
@@ -190,6 +197,8 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
+          
+          <NotificationBell />
 
           {/* User Profile Dropdown */}
           <div className="relative" data-profile-dropdown>
@@ -256,18 +265,21 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
         </div>
 
         {/* Mobile Menu Button */}
-        <button
-          type="button"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:border-slate-300 md:hidden focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-          onClick={() => setMobileOpen((prev) => !prev)}
-          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-        >
-          {mobileOpen ? (
-            <CloseIcon className="h-5 w-5" />
-          ) : (
-            <MenuIcon className="h-5 w-5" />
-          )}
-        </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <NotificationBell />
+          <button
+            type="button"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            onClick={() => setMobileOpen((prev) => !prev)}
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+          >
+            {mobileOpen ? (
+              <CloseIcon className="h-5 w-5" />
+            ) : (
+              <MenuIcon className="h-5 w-5" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Menu */}

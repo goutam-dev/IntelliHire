@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useClerk, useUser } from '@clerk/clerk-react';
+import NotificationBell from '../common/NotificationBell';
+import { useNotifications } from '../../hooks/useNotifications';
 
 // Icons
 const LogoMark = ({ className = "h-6 w-6" }) => (
@@ -36,11 +38,15 @@ const CandidateHeader = () => {
   const profile = useSelector(state => state.candidate.profile);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  
+
   // Get user data from Clerk (source of truth for auth data)
   const fullName = clerkUser?.fullName || profile?.user?.fullName || 'User';
   const initials = fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   const profilePhotoUrl = clerkUser?.imageUrl || (profile?.profilePhotoUrl ? `http://localhost:4000${profile.profilePhotoUrl}` : null);
+
+  // MongoDB user _id for WebSocket auth
+  const mongoUserId = profile?.user?._id || profile?._id;
+  useNotifications(mongoUserId);
   
   const navLinks = [
     { label: "Dashboard", id: "dashboard", path: "/candidate/dashboard" },
@@ -117,7 +123,10 @@ const CandidateHeader = () => {
         </nav>
 
         {/* Desktop Profile with Dropdown */}
-        <div className="hidden md:flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-3">
+          {/* Notification Bell */}
+          <NotificationBell />
+
           <div className="relative">
             <motion.button
               onClick={handleProfileClick}
@@ -182,16 +191,20 @@ const CandidateHeader = () => {
         </div>
 
         {/* Mobile Menu Button */}
-        <motion.button
-          className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-700 hover:border-slate-300 md:hidden"
-          onClick={handleMobileMenu}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </motion.button>
+        <div className="flex items-center gap-2 md:hidden">
+          {/* Bell visible on mobile too */}
+          <NotificationBell />
+          <motion.button
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-700 hover:border-slate-300"
+            onClick={handleMobileMenu}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </motion.button>
+        </div>
       </div>
 
       {/* Mobile Navigation */}

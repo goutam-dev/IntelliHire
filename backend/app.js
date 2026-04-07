@@ -9,6 +9,7 @@ const config = require('./config');
 const { connectDatabase } = require('./config/database');
 const { errorHandler } = require('./utils/errorHandler');
 const logger = require('./utils/logger');
+const wsManager = require('./utils/wsManager');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -16,6 +17,7 @@ const employerRoutes = require('./routes/employer.routes');
 const candidateRoutes = require('./routes/candidate.routes');
 const jobRoutes = require('./routes/jobRoutes');
 const resumeRankingRoutes = require('./routes/resumeRanking.routes');
+const notificationRoutes = require('./routes/notification.routes');
 
 const app = express();
 
@@ -102,6 +104,7 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/job-applications', require('./routes/jobApplication.routes'));
 app.use('/api/interview', require('./routes/interview.routes'));
 app.use('/api/resume-ranking', resumeRankingRoutes); // AI-powered Resume Ranking Module
+app.use('/api/notifications', notificationRoutes);
 
 // Serve uploaded files
 const path = require('path');
@@ -128,6 +131,9 @@ const server = app.listen(PORT, () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📍 Environment: ${config.nodeEnv}`);
   logger.info(`🌐 CORS origin: ${config.corsOrigin}`);
+
+  // Attach WebSocket server to the same HTTP server
+  wsManager.init(server);
 });
 
 // Handle unhandled promise rejections

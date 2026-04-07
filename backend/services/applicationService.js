@@ -13,6 +13,7 @@ const fs = require('fs');
 const { extractAudio, createSilentVideo } = require('../utils/videoProcessor');
 const voiceProctoringService = require('./voiceProctoringService');
 const faceProctoringService = require('./faceProctoringService');
+const notificationService = require('./notificationService');
 
 /**
  * Application service - handles all application-related business logic
@@ -388,6 +389,23 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
 
   await application.save();
 
+  // --- Notification: candidate receives alert that their status changed ---
+  if (oldStatus !== status) {
+    setImmediate(async () => {
+      try {
+        await notificationService.notifyCandidateStatusUpdate({
+          candidateUserId: application.candidateId,
+          jobTitle: application.jobId?.title || 'the job',
+          newStatus: status,
+          applicationId: application.applicationId,
+          notifType: 'status_updated',
+        });
+      } catch (notifErr) {
+        logger.error(`[applicationService] Candidate status notification failed: ${notifErr.message}`);
+      }
+    });
+  }
+
   // Update candidate profile stats if status changed
   if (oldStatus !== status) {
     const statUpdates = {};
@@ -463,6 +481,22 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
     if (feedback) app.employerNotes = feedback;
     else if (notes) app.employerNotes = notes;
     await app.save();
+
+    // --- Notification per candidate (non-blocking) ---
+    const capturedApp = app;
+    setImmediate(async () => {
+      try {
+        await notificationService.notifyCandidateStatusUpdate({
+          candidateUserId: capturedApp.candidateId,
+          jobTitle: capturedApp.jobId?.title || 'the job',
+          newStatus: status,
+          applicationId: capturedApp.applicationId,
+          notifType: 'status_updated',
+        });
+      } catch (notifErr) {
+        logger.error(`[applicationService] Bulk candidate notification failed: ${notifErr.message}`);
+      }
+    });
   }
 
   return { updated: applications.length };
@@ -541,6 +575,24 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   }
 
   await application.save();
+
+  // --- Notification: candidate notified that interview has been scheduled ---
+  setImmediate(async () => {
+    try {
+      const populatedForNotif = await JobApplication.findById(application._id)
+        .populate('jobId', 'title')
+        .lean();
+      await notificationService.notifyCandidateStatusUpdate({
+        candidateUserId: application.candidateId,
+        jobTitle: populatedForNotif?.jobId?.title || 'the job',
+        newStatus: 'Interview Scheduled',
+        applicationId: application.applicationId,
+        notifType: 'interview_scheduled',
+      });
+    } catch (notifErr) {
+      logger.error(`[applicationService] Interview scheduled notification failed: ${notifErr.message}`);
+    }
+  });
 
   if (!enrollmentsReady) {
     setImmediate(() => {
@@ -843,12 +895,36 @@ const submitApplication = async (candidateId, applicationData, files) => {
       select: 'title location employer',
       populate: {
         path: 'employer',
-        select: 'companyName'
+        select: 'companyName user'
       }
     });
 
     if (jobApplication.jobId && jobApplication.jobId.employer) {
       jobApplication.jobId.company = jobApplication.jobId.employer.companyName;
+    }
+
+    // --- Notification: employer receives alert that a candidate applied ---
+    setImmediate(async () => {
+      try {
+        const employerProfile = jobApplication.jobId?.employer;
+        if (employerProfile?.user) {
+          const candidateName =
+            parsedApplicationProfile?.personalInfo?.name ||
+            (await User.findById(candidateId).select('fullName').lean())?.fullName ||
+            'A candidate';
+          await notificationService.notifyEmployerApplicationReceived({
+            employerUserId: employerProfile.user,
+            candidateName,
+            jobTitle: jobApplication.jobId.title,
+            jobId: jobApplication.jobId._id,
+          });
+        }
+      } catch (notifErr) {
+        logger.error(`[applicationService] Employer notification failed: ${notifErr.message}`);
+      }
+    });
+
+    if (jobApplication.jobId?.employer) {
       delete jobApplication.jobId.employer;
     }
 
