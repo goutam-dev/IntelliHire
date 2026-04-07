@@ -82,6 +82,10 @@ const ApplicationDetails = () => {
     });
   };
 
+  const applicationJobId = typeof application?.jobId === 'string'
+    ? application.jobId
+    : application?.jobId?._id;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -163,9 +167,9 @@ const ApplicationDetails = () => {
             </div>
             
             <div className="flex items-center gap-3">
-              {application.jobId && (
+              {applicationJobId && (
                 <button
-                  onClick={() => navigate(`/jobs/${application.jobId._id}`)}
+                  onClick={() => navigate(`/candidate/jobs/${applicationJobId}`)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
                 >
                   <ExternalLink className="w-4 h-4" />

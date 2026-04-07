@@ -41,7 +41,8 @@ const JobDetails = () => {
     try {
       setLoading(true);
       const response = await api.get(`/jobs/${jobId}`);
-      setJob(response.data.data);
+      const payload = response.data?.data ?? response.data;
+      setJob(payload || null);
     } catch (error) {
       console.error('Error fetching job details:', error);
       setError(error.response?.data?.message || 'Failed to load job details');

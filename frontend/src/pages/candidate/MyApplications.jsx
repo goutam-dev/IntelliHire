@@ -320,9 +320,11 @@ const MyApplications = () => {
                           View Details
                         </button>
                         
-                        {application.jobId?._id && (
+                        {(typeof application.jobId === 'string' || application.jobId?._id) && (
                           <button
-                            onClick={() => navigate(`/jobs/${application.jobId._id}`)}
+                            onClick={() =>
+                              navigate(`/candidate/jobs/${typeof application.jobId === 'string' ? application.jobId : application.jobId._id}`)
+                            }
                             className="text-sm text-slate-600 hover:text-slate-700 flex items-center gap-1"
                           >
                             <ExternalLink className="w-4 h-4" />

@@ -240,10 +240,18 @@ const getJobById = async (jobId, userId = null) => {
     
     if (userId) {
       const user = await User.findOne({ clerkUserId: userId });
-      if (user && job.employer && job.employer.user) {
-        if (job.employer.user.toString() === user._id.toString()) {
-          canView = true;
-        }
+      if (user && job.employer && job.employer.user && job.employer.user.toString() === user._id.toString()) {
+        canView = true;
+      }
+
+      // Candidates can still view jobs they already applied to, even if the posting is no longer active.
+      if (!canView && user && user.role === 'candidate') {
+        const hasApplied = await JobApplication.exists({
+          jobId: job._id,
+          candidateId: user._id,
+          status: { $ne: 'Withdrawn' },
+        });
+        canView = Boolean(hasApplied);
       }
     }
 
