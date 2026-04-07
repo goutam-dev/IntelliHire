@@ -29,7 +29,7 @@ function applicationReceivedEmail({ candidateName, jobTitle, applicationLink }) 
                   background:#0f172a;color:#fff;border-radius:8px;text-decoration:none">
           View Application
         </a>
-        <p style="margin-top:32px;color:#94a3b8;font-size:12px">IntelliHire — Smart Hiring Platform</p>
+        <p style="margin-top:32px;color:#94a3b8;font-size:12px">IntelliHire</p>
       </div>`,
   };
 }
