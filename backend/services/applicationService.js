@@ -218,7 +218,7 @@ const enrichApplicationsWithInterviewState = async (applications = []) => {
   return applications.map((application) => {
     const latestInterviewSession = latestByApplicationId.get(application.applicationId) || null;
     const interviewSessionStatus = latestInterviewSession?.status || null;
-    const interviewLocked = TERMINAL_INTERVIEW_STATUSES.includes(interviewSessionStatus);
+    const interviewLocked = Boolean(latestInterviewSession?.startedAt) || TERMINAL_INTERVIEW_STATUSES.includes(interviewSessionStatus);
 
     return {
       ...application,

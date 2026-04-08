@@ -228,12 +228,32 @@ async function transcribeAudio(audioBuffer, mimeType = 'audio/webm') {
  * Create a new interview session and load context from the job application.
  */
 async function createSession(applicationId, candidateId) {
-  const latestSession = await InterviewSession.findOne({ applicationId, candidateId })
+  const attemptedSession = await InterviewSession.findOne({
+    applicationId,
+    candidateId,
+    $or: [
+      { startedAt: { $ne: null } },
+      { status: { $in: ['completed', 'terminated', 'abandoned', 'completing'] } },
+    ],
+  })
     .sort({ createdAt: -1 })
     .lean();
 
-  if (latestSession && ['completed', 'terminated', 'abandoned', 'completing'].includes(latestSession.status)) {
-    throw new AppError('Interview already completed for this application. Retakes are not allowed.', 409);
+  if (attemptedSession) {
+    if (['created', 'started', 'in_progress'].includes(attemptedSession.status)) {
+      await InterviewSession.findByIdAndUpdate(attemptedSession._id, {
+        status: 'abandoned',
+        completedAt: attemptedSession.completedAt || new Date(),
+        'integrity.terminationReason': attemptedSession.integrity?.terminationReason || 'Interview session ended unexpectedly',
+      }).catch(() => {});
+    }
+
+    await JobApplication.findOneAndUpdate(
+      { applicationId, status: 'Interview Scheduled' },
+      { status: 'Interviewed' }
+    ).catch(() => {});
+
+    throw new AppError('Interview has already been attempted for this application. Retakes are not allowed.', 409);
   }
 
   // Load application data for context  
@@ -358,6 +378,16 @@ async function startSession(sessionId) {
 
   await session.save();
   logger.info(`[Interview] Session started: ${sessionId} — First question generated`);
+
+  // Lock retakes as soon as an interview has started.
+  try {
+    await JobApplication.findOneAndUpdate(
+      { applicationId: session.applicationId, status: 'Interview Scheduled' },
+      { status: 'Interviewed' }
+    );
+  } catch (err) {
+    logger.warn(`[Interview] Failed to mark application as Interviewed at start: ${err.message}`);
+  }
 
   return { sessionId: session._id, question, turnIndex: 0, phase: 'opening' };
 }

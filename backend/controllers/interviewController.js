@@ -41,13 +41,31 @@ exports.createSession = asyncHandler(async (req, res) => {
   // Check for existing active session
   const existing = await interviewService.getActiveSession(applicationId, candidateId);
   if (existing) {
-    return res.json({
-      success: true,
-      data: {
-        sessionId: existing._id,
-        status: existing.status,
-        resumed: true,
-      },
+    if (existing.status === 'created') {
+      return res.json({
+        success: true,
+        data: {
+          sessionId: existing._id,
+          status: existing.status,
+          resumed: true,
+        },
+      });
+    }
+
+    await InterviewSession.findByIdAndUpdate(existing._id, {
+      status: 'abandoned',
+      completedAt: existing.completedAt || new Date(),
+      'integrity.terminationReason': existing.integrity?.terminationReason || 'Interview session ended unexpectedly',
+    }).catch(() => {});
+
+    await JobApplication.findOneAndUpdate(
+      { applicationId, status: 'Interview Scheduled' },
+      { status: 'Interviewed' }
+    ).catch(() => {});
+
+    return res.status(409).json({
+      success: false,
+      message: 'Interview has already been attempted for this application. Retakes are not allowed.',
     });
   }
 
