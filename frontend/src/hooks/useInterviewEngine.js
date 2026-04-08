@@ -51,7 +51,8 @@ function speakText(text, { onBoundary } = {}) {
     // Fire callback on each word boundary so UI can sync typing animation
     if (onBoundary) {
       utterance.onboundary = (e) => {
-        if (e.name === 'word') onBoundary(e.charIndex);
+        // Some engines don't reliably set e.name to "word".
+        if (Number.isFinite(e?.charIndex)) onBoundary(e.charIndex);
       };
     }
 
@@ -91,7 +92,6 @@ export function useInterviewEngine({
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
   const [questionCount, setQuestionCount] = useState(0);
-  const [liveTranscript, setLiveTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
   const [evaluations, setEvaluations] = useState([]);
   const [interviewState, setInterviewState] = useState(null);
@@ -107,12 +107,12 @@ export function useInterviewEngine({
   const timerRef = useRef(null);
   const askNextRef = useRef(null); // Stable ref to askNextQuestion
   const answerStartTimeRef = useRef(null);
-  const browserSttRef = useRef(null); // Browser STT for live transcript
   const pausedWhileListeningRef = useRef(false);
   const pausedWhileAskingRef = useRef(false);   // NEW: paused during TTS
   const pausedTurnIndexRef = useRef(null);
   const engineStateRef = useRef(ENGINE_STATE.IDLE); // NEW: live engine state
   const currentQuestionRef = useRef('');           // NEW: live current question
+  const activeUtteranceIdRef = useRef(0);          // Guard against stale TTS events
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -136,49 +136,6 @@ export function useInterviewEngine({
     return () => clearInterval(timerRef.current);
   }, [engineState]);
 
-  // ── Browser STT for live transcript display ────────────────────────────────
-  const startBrowserSTT = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-
-    try {
-      const rec = new SR();
-      rec.lang = 'en-US';
-      rec.interimResults = true;
-      rec.continuous = true;
-      rec.maxAlternatives = 1;
-
-      let accumulated = '';
-      rec.onresult = (e) => {
-        let interim = '';
-        let final = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript;
-          if (e.results[i].isFinal) final += t + ' ';
-          else interim += t;
-        }
-        if (final) accumulated += final;
-        setLiveTranscript(accumulated + interim);
-      };
-
-      rec.onerror = () => {};
-      rec.onend = () => {
-        // Auto-restart if still listening
-        if (!isPausedRef.current && browserSttRef.current === rec) {
-          try { rec.start(); } catch {}
-        }
-      };
-
-      rec.start();
-      browserSttRef.current = rec;
-    } catch {}
-  }, []);
-
-  const stopBrowserSTT = useCallback(() => {
-    try { browserSttRef.current?.stop(); } catch {}
-    browserSttRef.current = null;
-  }, []);
-
   // ── Core: Ask a question ───────────────────────────────────────────────────
   const askQuestion = useCallback(async (question, turnIndex) => {
     if (isPausedRef.current || isTerminatingRef.current) return;
@@ -189,13 +146,17 @@ export function useInterviewEngine({
     setCurrentQuestion(question);
     setCurrentTurnIndex(turnIndex);
     pausedTurnIndexRef.current = turnIndex;
-    setLiveTranscript('');
     setFinalTranscript('');
     setSpeechCharIndex(-1); // reset for new question
+    const utteranceId = ++activeUtteranceIdRef.current;
 
     // Speak the question via TTS — fire boundary events for typing sync
     await speakText(question, {
-      onBoundary: (charIdx) => setSpeechCharIndex(charIdx),
+      onBoundary: (charIdx) => {
+        // Ignore boundary callbacks from any cancelled/previous utterance.
+        if (utteranceId !== activeUtteranceIdRef.current) return;
+        setSpeechCharIndex((prev) => Math.max(prev, charIdx));
+      },
     });
 
     // Guard: if paused or terminated while TTS was running, stop here.
@@ -209,8 +170,6 @@ export function useInterviewEngine({
 
     // Start audio recording for Whisper
     startRecording();
-    // Start browser STT for live display
-    startBrowserSTT();
 
     // Start VAD — it will call onSilenceTimeout when the candidate stops speaking
     startVAD({
@@ -222,16 +181,16 @@ export function useInterviewEngine({
         await processAnswer(turnIndex);
       },
     });
-  }, [startRecording, startBrowserSTT, startVAD]);
+  }, [startRecording, startVAD]);
 
   // ── Core: Process the answer ───────────────────────────────────────────────
   const processAnswer = useCallback(async (turnIndex) => {
     if (isPausedRef.current || isTerminatingRef.current) return;
+    if (engineStateRef.current === ENGINE_STATE.PROCESSING) return;
 
     engineStateRef.current = ENGINE_STATE.PROCESSING;
     setEngineState(ENGINE_STATE.PROCESSING);
     stopVAD();
-    stopBrowserSTT();
 
     const answerDurationMs = answerStartTimeRef.current ? Date.now() - answerStartTimeRef.current : 0;
 
@@ -243,25 +202,16 @@ export function useInterviewEngine({
     // Transcribe via Whisper on backend
     if (audioBlob && audioBlob.size > 1000) { // Min 1KB to be meaningful audio
       try {
-        setLiveTranscript('Transcribing...');
         const result = await interviewApi.transcribeAudio(sessionIdRef.current, audioBlob);
         transcribedText = result.text || '';
       } catch (err) {
-        console.warn('[Interview] Whisper transcription failed, using browser STT fallback:', err.message);
-        // Fall back to whatever browser STT captured
+        console.warn('[Interview] Whisper transcription failed:', err.message);
         transcribedText = '';
       }
     }
 
-    // If Whisper returned nothing, use the browser STT live transcript as fallback
-    if (!transcribedText.trim()) {
-      // Get the latest live transcript state
-      transcribedText = ''; // Will be marked as no response
-    }
-
     const answerText = transcribedText.trim() || '(no response detected)';
     setFinalTranscript(answerText);
-    setLiveTranscript('');
 
     // Submit to backend — gets evaluation + next question
     try {
@@ -299,7 +249,18 @@ export function useInterviewEngine({
       setError(`Failed to process answer: ${err.message}`);
       setEngineState(ENGINE_STATE.ERROR);
     }
-  }, [stopVAD, stopBrowserSTT, stopRecording, currentQuestion]);
+  }, [stopVAD, stopRecording, currentQuestion]);
+
+  // ── Manual complete: stop listening now and process ───────────────────────
+  const completeCurrentAnswer = useCallback(async () => {
+    if (isPausedRef.current || isTerminatingRef.current) return;
+    if (engineStateRef.current !== ENGINE_STATE.LISTENING) return;
+
+    const turnIndex = pausedTurnIndexRef.current ?? currentTurnIndex;
+    if (turnIndex == null) return;
+
+    await processAnswer(turnIndex);
+  }, [processAnswer, currentTurnIndex]);
 
   // Keep askQuestion ref up to date
   useEffect(() => {
@@ -392,12 +353,11 @@ export function useInterviewEngine({
     window.speechSynthesis?.cancel();
 
     stopVAD();
-    stopBrowserSTT();
 
     if (pausedWhileListeningRef.current) {
       stopRecording().catch(() => {});
     }
-  }, [stopVAD, stopBrowserSTT, stopRecording]);
+  }, [stopVAD, stopRecording]);
 
   const resume = useCallback(() => {
     if (isTerminatingRef.current) return;
@@ -433,7 +393,6 @@ export function useInterviewEngine({
     answerStartTimeRef.current = Date.now();
 
     startRecording();
-    startBrowserSTT();
     startVAD({
       onSpeechStart: () => {},
       onSilenceTimeout: async () => {
@@ -442,7 +401,7 @@ export function useInterviewEngine({
     });
 
     pausedWhileListeningRef.current = false;
-  }, [startRecording, startBrowserSTT, startVAD, processAnswer]);
+  }, [startRecording, startVAD, processAnswer]);
 
   // ── Terminate (for proctoring violations) ──────────────────────────────────
   const terminate = useCallback(async (cheatingData = {}) => {
@@ -450,7 +409,6 @@ export function useInterviewEngine({
 
     window.speechSynthesis?.cancel();
     stopVAD();
-    stopBrowserSTT();
 
     const terminationLine = 'This interview has been automatically terminated due to a proctoring integrity violation. Your session data has been submitted to the hiring team.';
     await speakText(terminationLine);
@@ -459,16 +417,15 @@ export function useInterviewEngine({
       ...cheatingData,
       terminationReason: cheatingData.terminationReason || 'Integrity threshold exceeded',
     });
-  }, [stopVAD, stopBrowserSTT, finishInterview]);
+  }, [stopVAD, finishInterview]);
 
   // ── Cleanup ────────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current);
       window.speechSynthesis?.cancel();
-      stopBrowserSTT();
     };
-  }, [stopBrowserSTT]);
+  }, []);
 
   return {
     // State
@@ -480,7 +437,6 @@ export function useInterviewEngine({
     speechCharIndex,
     currentTurnIndex,
     questionCount,
-    liveTranscript,
     finalTranscript,
     evaluations,
     interviewState,
@@ -494,6 +450,7 @@ export function useInterviewEngine({
     resume,
     terminate,
     finishInterview,
+    completeCurrentAnswer,
   };
 }
 

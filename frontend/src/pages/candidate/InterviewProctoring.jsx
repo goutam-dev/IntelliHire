@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, AlertTriangle, Camera, Mic, Monitor, Mic2,
   CheckCircle, XCircle, Circle, Loader2, Volume2,
-  Radio, Clock, TrendingUp, MessageSquare, Award,
+  Radio, Clock, TrendingUp, Award,
 } from 'lucide-react';
 
 import { useInterviewEngine, ENGINE_STATE } from '../../hooks/useInterviewEngine';
@@ -146,8 +146,8 @@ function EnergyBar({ level, isSpeaking }) {
 }
 
 /** ChatGPT-style word-by-word typewriter synced with TTS speech.
- *  Uses a timer (~420ms/word to match TTS at rate 0.95) as the primary driver,
- *  boosted by speechCharIndex boundary events for accuracy when available. */
+ *  Uses speech boundary events as source-of-truth when available,
+ *  and falls back to timer pacing only if boundary events are unavailable. */
 function TypewriterText({ text, speechCharIndex }) {
   const [timerCount, setTimerCount] = useState(0);
   const scrollRef = useRef(null);
@@ -193,8 +193,8 @@ function TypewriterText({ text, speechCharIndex }) {
     return count;
   }, [text, speechCharIndex]);
 
-  // Use whichever is further ahead: timer or boundary events
-  const visibleCount = Math.max(timerCount, boundaryCount);
+  const hasBoundaryEvents = speechCharIndex >= 0;
+  const visibleCount = hasBoundaryEvents ? boundaryCount : timerCount;
   const isComplete = text && visibleCount >= wordsRef.current.length;
 
   // Auto-scroll when new words appear
@@ -618,9 +618,6 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   const initializedRef = useRef(false);
   const summaryHandledRef = useRef(false);
 
-  // ── Audio analyser for waveform (separate from VAD) ────────────────────────
-  const [waveformAnalyser, setWaveformAnalyser] = useState(null);
-
   // ── Anti-cheating state ────────────────────────────────────────────────────
   const [cheatingReport, setCheatingReport] = useState([]);
   const [totalCheatingScore, setTotalCheatingScore] = useState(0);
@@ -670,18 +667,6 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   // ── Attach camera to video element ─────────────────────────────────────────
   useEffect(() => {
     if (videoRef.current && cameraStream) videoRef.current.srcObject = cameraStream;
-  }, [cameraStream]);
-
-  // ── Set up waveform analyser ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!cameraStream) return;
-    const audioCtx = new AudioContext();
-    const source = audioCtx.createMediaStreamSource(cameraStream);
-    const analyserNode = audioCtx.createAnalyser();
-    analyserNode.fftSize = 512;
-    source.connect(analyserNode);
-    setWaveformAnalyser(analyserNode);
-    return () => audioCtx.close();
   }, [cameraStream]);
 
   // ── Video MediaRecorder ────────────────────────────────────────────────────
@@ -1360,216 +1345,185 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
   const timeWarning = engine.elapsedSeconds >= INTERVIEW_MIN_SECONDS - 5 * 60 && engine.elapsedSeconds < INTERVIEW_MAX_SECONDS;
   const isNoFacePause = pauseMode === 'no_face';
+  const listeningActive = vadSpeaking || energyLevel > 0.02;
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
-      {/* ── Top Bar ─────────────────────────────────── */}
-      <header className="flex items-center justify-between px-6 py-3 bg-slate-900/80 border-b border-slate-800/60 backdrop-blur-md z-20">
-        <div className="flex items-center gap-2.5">
+    <div className="min-h-screen bg-[#020817] text-white flex flex-col overflow-hidden">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-4 lg:px-6 py-3 bg-[#050f25]/90 border-b border-[#193252]/70 backdrop-blur-md z-20">
+        <div className="flex items-center gap-2.5 min-w-0">
           <Shield className="text-emerald-400" size={20} />
           <span className="font-bold text-sm tracking-tight text-white">
             IntelliHire <span className="text-slate-400 font-normal">/ AI Interview</span>
           </span>
-          <span className="ml-2 text-xs text-slate-500 border border-slate-700 rounded-full px-2 py-0.5">{engine.jobTitle}</span>
         </div>
-        <div className="flex items-center gap-5">
-          <div className={`flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700/50 ${statusConfig.color}`}>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-[#2c4668] bg-[#0b1f3c]/70 ${statusConfig.color}`}>
             {[ENGINE_STATE.PROCESSING, ENGINE_STATE.COMPLETING, ENGINE_STATE.INITIALIZING].includes(engine.engineState)
               ? <Loader2 size={12} className="animate-spin" />
-              : <span className={`h-2 w-2 rounded-full ${statusConfig.dot}`} />}
+              : <span className={`h-2 w-2 rounded-full ${statusConfig.dot} animate-pulse`} />}
             {statusConfig.label}
           </div>
           {avgScore !== null && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-300 bg-slate-800 border border-slate-700/50 rounded-full px-3 py-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-200 bg-[#0b1f3c]/70 border border-[#2c4668] rounded-full px-3 py-1.5">
               <TrendingUp size={12} className="text-emerald-400" /> Avg {avgScore}/10
             </div>
           )}
-          {totalCheatingScore > 0 && (
-            <div className={`flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5 border ${totalCheatingScore >= CHEATING_THRESHOLD * 0.7 ? 'bg-red-900/50 border-red-500/40 text-red-400' :
-              totalCheatingScore >= CHEATING_THRESHOLD * 0.4 ? 'bg-amber-900/50 border-amber-500/40 text-amber-400' :
-                'bg-slate-800 border-slate-700/50 text-slate-400'
-              }`}>
-              <AlertTriangle size={11} /> {totalCheatingScore}/{CHEATING_THRESHOLD}
-            </div>
-          )}
-          {/* Voice Proctoring Status Badge — non-intrusive, informational only */}
           {vpActive && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-violet-400 bg-slate-800 border border-violet-500/30 rounded-full px-3 py-1.5">
-              <Mic2 size={11} className="animate-pulse" />
-              Voice{vpMismatchCount > 0 ? ` · ${vpMismatchCount} flag${vpMismatchCount > 1 ? 's' : ''}` : ''}
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-200 bg-[#0b1f3c]/70 border border-[#2c4668] rounded-full px-3 py-1.5">
+              <Mic2 size={11} className="text-emerald-400" /> Voice
             </div>
           )}
           {fpEnrollmentStatus === 'enrolled' && fpActive && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-sky-400 bg-slate-800 border border-sky-500/30 rounded-full px-3 py-1.5">
-              <Camera size={11} className="animate-pulse" /> Face/Object
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-200 bg-[#0b1f3c]/70 border border-[#2c4668] rounded-full px-3 py-1.5">
+              <Camera size={11} className="text-sky-400" /> Face/Object
             </div>
           )}
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
-            <Radio size={12} className="text-slate-500" /> {formattedTime}
+          <div className="flex items-center gap-1.5 text-xs font-mono text-slate-200 bg-[#0b1f3c]/70 border border-[#2c4668] rounded-full px-3 py-1.5">
+            <Radio size={12} className="text-slate-300" /> {formattedTime}
           </div>
           {videoRecording && (
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-red-400"><RecDot /> REC</div>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-red-300 bg-[#3a0f17]/70 border border-red-500/30 rounded-full px-3 py-1.5">
+              <RecDot /> REC
+            </div>
           )}
         </div>
       </header>
 
-      {/* ── Progress bar ─────────────────────────────── */}
       <div className="h-0.5 bg-slate-800">
         <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${progressPct}%` }} />
       </div>
 
-      {/* ── Time warning ─────────────────────────────── */}
       <AnimatePresence>
         {timeWarning && (
           <motion.div key="tw" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             className="bg-amber-900/60 border-b border-amber-700/40 text-amber-300 text-xs font-medium px-6 py-2 flex items-center gap-2">
-            <Clock size={13} /> 5 minutes remaining — the interview will conclude soon.
+            <Clock size={13} /> 5 minutes remaining - the interview will conclude soon.
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Main Content ─────────────────────────────── */}
-      <div className="flex-1 flex relative overflow-hidden">
-        <main className="flex-1 flex flex-col items-center justify-center px-10 py-12 lg:pr-[340px]">
-          {/* Question counter */}
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-6">
-            Question {engine.questionCount}
-            {engine.questionCount > 0 && (
-              <span className="ml-3 text-slate-600 normal-case font-normal">· {engine.evaluations.length} evaluated</span>
-            )}
-          </p>
+      <div className="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
+        <section className="relative lg:w-1/2 min-h-[45vh] lg:min-h-full border-r border-[#12335f]/40 overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(16,185,129,0.12),transparent_45%),radial-gradient(circle_at_75%_70%,rgba(59,130,246,0.1),transparent_40%),linear-gradient(160deg,#020817_0%,#03132f_55%,#020617_100%)]" />
+          <main className="relative h-full px-6 lg:px-12 py-8 lg:py-12 flex flex-col">
+            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.22em]">
+              Question {engine.questionCount || 1}
+            </div>
 
-          {/* Current question — scrollable container with typing animation */}
-          <AnimatePresence mode="wait">
-            {engine.currentQuestion ? (
-              <motion.div key={engine.currentQuestion} variants={slideUp} initial="hidden" animate="visible" exit="exit"
-                className="w-full flex justify-center">
-                <TypewriterText text={engine.currentQuestion} speechCharIndex={engine.speechCharIndex} />
-              </motion.div>
-            ) : (
-              <motion.div key="loading" variants={fadeIn} initial="hidden" animate="visible" className="flex flex-col items-center gap-3">
-                <Loader2 className="text-slate-500 animate-spin" size={36} />
-                <p className="text-slate-500 text-sm">
-                  {engine.engineState === ENGINE_STATE.INITIALIZING ? 'Setting up your interview session…' : 'Generating your next question…'}
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* ── Live transcript panel ─────────────────── */}
-          <AnimatePresence>
-            {(engine.engineState === ENGINE_STATE.LISTENING || engine.liveTranscript || engine.finalTranscript) && (
-              <motion.div key="transcript-box" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                className="mt-10 max-w-2xl w-full rounded-2xl overflow-hidden border border-slate-700/40">
-                <div className="flex items-center justify-between px-5 py-2.5 bg-slate-800/80 border-b border-slate-700/40">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                    <MessageSquare size={12} /> Your Response
-                  </div>
-                  {engine.engineState === ENGINE_STATE.LISTENING && (
-                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
-                    </div>
-                  )}
-                </div>
-                <div className="bg-slate-900/60 px-5 py-4 min-h-[64px]">
-                  {engine.engineState === ENGINE_STATE.LISTENING && engine.liveTranscript ? (
-                    <p className="text-slate-200 text-sm leading-relaxed">
-                      {engine.liveTranscript}
-                      <span className="inline-block w-0.5 h-4 bg-emerald-400 ml-0.5 animate-pulse align-text-bottom" />
+            <div className="flex-1 flex items-center justify-center">
+              <AnimatePresence mode="wait">
+                {engine.currentQuestion ? (
+                  <motion.div key={engine.currentQuestion} variants={slideUp} initial="hidden" animate="visible" exit="exit"
+                    className="w-full flex justify-center">
+                    <TypewriterText text={engine.currentQuestion} speechCharIndex={engine.speechCharIndex} />
+                  </motion.div>
+                ) : (
+                  <motion.div key="loading" variants={fadeIn} initial="hidden" animate="visible" className="flex flex-col items-center gap-3">
+                    <Loader2 className="text-slate-400 animate-spin" size={34} />
+                    <p className="text-slate-400 text-sm text-center">
+                      {engine.engineState === ENGINE_STATE.INITIALIZING ? 'Setting up your interview session...' : 'Generating your next question...'}
                     </p>
-                  ) : engine.finalTranscript ? (
-                    <p className="text-slate-300 text-sm leading-relaxed italic">"{engine.finalTranscript}"</p>
-                  ) : (
-                    <p className="text-slate-600 text-sm italic">Waiting for your answer…</p>
-                  )}
-                </div>
-                {/* VAD energy indicator */}
-                {engine.engineState === ENGINE_STATE.LISTENING && (
-                  <div className="px-5 py-2 bg-slate-900/40 border-t border-slate-700/20">
-                    <EnergyBar level={energyLevel} isSpeaking={vadSpeaking} />
-                    <p className="text-[10px] text-slate-600 mt-1">
-                      {vadSpeaking ? '● Speech detected' : '○ Waiting for speech…'}
-                    </p>
-                  </div>
+                  </motion.div>
                 )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </AnimatePresence>
+            </div>
 
-          {/* ── Last evaluation badge ─────────────────── */}
-          <AnimatePresence>
-            {engine.evaluations.length > 0 && engine.engineState !== ENGINE_STATE.LISTENING && (
-              <motion.div key={`eval-${engine.evaluations.length}`} initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                className="mt-4 max-w-2xl w-full flex items-center gap-3 bg-slate-900/50 border border-slate-700/30 rounded-xl px-4 py-2.5">
-                <div className={`text-xs font-bold px-2 py-0.5 rounded-full bg-slate-800 ${engine.evaluations[engine.evaluations.length - 1].score >= 7 ? 'text-emerald-400' :
-                  engine.evaluations[engine.evaluations.length - 1].score >= 5 ? 'text-amber-400' : 'text-red-400'
-                  }`}>
-                  {engine.evaluations[engine.evaluations.length - 1].score ?? '—'}/10
-                </div>
-                <p className="text-xs text-slate-400 flex-1 leading-relaxed">
-                  {engine.evaluations[engine.evaluations.length - 1].feedback}
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            <div className="pt-4 lg:pt-0 min-h-[132px]">
+              <AnimatePresence mode="wait">
+                {engine.engineState === ENGINE_STATE.LISTENING ? (
+                  <motion.div
+                    key="listening-footer"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="w-full"
+                  >
+                    <div className="w-full max-w-[900px] min-h-16 rounded-full border border-white/10 bg-gradient-to-b from-white/[0.09] to-white/[0.06] backdrop-blur-sm px-4 py-2 flex items-center justify-between gap-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="flex items-center gap-3">
+                        <motion.div
+                          className="relative h-16 w-16 rounded-full bg-[#2d3a53] flex items-center justify-center"
+                          animate={{ scale: listeningActive ? 1.08 : 1 }}
+                          transition={{ duration: 0.25, ease: 'easeOut' }}
+                        >
+                          <motion.span
+                            className="absolute inset-0 rounded-full border border-[#8bb8ff]/25"
+                            animate={{ scale: listeningActive ? [1, 1.18, 1] : 1, opacity: listeningActive ? [0.2, 0.45, 0.2] : 0.18 }}
+                            transition={{ duration: 1.1, repeat: listeningActive ? Infinity : 0, ease: 'easeInOut' }}
+                          />
+                          <motion.span
+                            className="absolute inset-[8px] rounded-full bg-[#435478]"
+                            animate={{ scale: listeningActive ? 1.03 : 1 }}
+                            transition={{ duration: 0.2 }}
+                          />
+                          <Mic size={24} className="relative z-10 text-[#a9ccff]" />
+                        </motion.div>
+                        <div>
+                          <p className="text-sm text-slate-100 font-medium">Listening</p>
+                          <p className="text-xs text-slate-400">{listeningActive ? 'Voice detected' : 'Waiting for voice'}</p>
+                        </div>
+                      </div>
 
-          {/* Progress dots */}
-          {engine.questionCount > 0 && (
-            <div className="mt-12 flex items-center gap-2 flex-wrap justify-center max-w-lg">
-              {Array.from({ length: engine.questionCount }).map((_, i) => {
-                const ev = engine.evaluations[i];
-                const color = ev
-                  ? ev.score >= 7 ? 'bg-emerald-500' : ev.score >= 5 ? 'bg-amber-500' : ev.isUnanswered ? 'bg-slate-600 opacity-40' : 'bg-red-500'
-                  : 'bg-slate-700';
-                return <span key={i} className={`h-2 rounded-full transition-all duration-300 ${i === engine.questionCount - 1 ? 'w-6' : 'w-2'} ${color}`} />;
-              })}
+                      <button
+                        type="button"
+                        onClick={() => engine.completeCurrentAnswer?.()}
+                        className="h-11 px-4 rounded-full bg-gradient-to-r from-emerald-500/90 to-cyan-400/90 text-[#031525] text-xs font-semibold tracking-wide uppercase shadow-[0_8px_20px_rgba(16,185,129,0.28)] hover:brightness-105 transition-all active:scale-[0.98]"
+                        aria-label="Complete answer and continue"
+                      >
+                        Complete answer
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : engine.finalTranscript ? (
+                  <motion.div
+                    key="transcript-footer"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="rounded-xl border border-emerald-500/25 bg-[#03152f]/80 px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3 mb-1.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-300">Transcribed Answer</p>
+                      <p className="text-[11px] text-slate-400">{engine.engineState === ENGINE_STATE.PROCESSING ? 'Processing...' : statusConfig.label}</p>
+                    </div>
+                    <p className="text-sm text-slate-200 leading-relaxed">"{engine.finalTranscript}"</p>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="status-footer"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="flex items-center gap-2 text-slate-300 text-xl font-semibold"
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full bg-sky-400 animate-pulse" />
+                    {statusConfig.label}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          )}
-        </main>
+          </main>
+        </section>
 
-        {/* ── PiP camera sidebar ─────────────────────── */}
-        <aside className="fixed bottom-6 right-6 w-80 z-30 select-none">
-          <div className="rounded-2xl overflow-hidden border border-slate-700/60 shadow-2xl bg-slate-900">
-            <div className="relative w-full" style={{ aspectRatio: '4/3' }}>
-              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover bg-slate-950" />
-              <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm text-red-400 text-xs font-bold px-2.5 py-1 rounded-full">
-                <RecDot /> REC
-              </div>
-              <div className={`absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm text-xs font-semibold px-2.5 py-1 rounded-full ${statusConfig.color}`}>
-                {engine.engineState === ENGINE_STATE.LISTENING && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
-                {statusConfig.label}
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-slate-950/90 to-transparent" />
+        <section className="relative lg:w-1/2 min-h-[45vh] lg:min-h-full bg-black">
+          <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 w-full h-full object-cover bg-slate-950" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none" />
+
+          <div className="absolute bottom-4 left-4 right-4 lg:bottom-5 lg:left-5 lg:right-5 z-10 flex items-center justify-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 rounded-2xl border border-red-500/30 bg-[#1d2433]/75 px-4 py-2 text-red-300 text-xl font-semibold backdrop-blur-md">
+              <RecDot /> <span className="text-base">REC</span>
             </div>
-            <div className="bg-slate-950 relative -mt-0.5">
-              {waveformAnalyser ? <WaveformVisualiser analyser={waveformAnalyser} /> : (
-                <div className="h-12 flex items-center justify-center"><p className="text-xs text-slate-600">Initialising audio…</p></div>
-              )}
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-500/40 bg-[#1d2433]/75 px-4 py-2 text-slate-200 text-xl font-semibold backdrop-blur-md">
+              <Camera size={17} className="text-slate-300" />
+              <span className="text-base">Camera</span>
+              <span className="text-slate-400 text-base font-medium">{formattedTime}</span>
             </div>
-            <div className="bg-slate-900 px-4 py-2 flex items-center justify-between text-xs text-slate-500">
-              <span className="flex items-center gap-1"><Camera size={11} />Camera</span>
-              <span className="font-mono">{formattedTime}</span>
-              <span className="flex items-center gap-1"><Mic size={11} />Mic</span>
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-500/40 bg-[#1d2433]/75 px-4 py-2 text-slate-200 text-xl font-semibold backdrop-blur-md">
+              <Mic size={17} className="text-slate-300" />
+              <span className="text-base">Mic</span>
             </div>
-            {engine.evaluations.length > 0 && (
-              <div className="bg-slate-900 border-t border-slate-800/60 px-4 py-2.5">
-                <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
-                  <span className="flex items-center gap-1"><TrendingUp size={10} />Scores</span>
-                  <span>{engine.evaluations.length} graded</span>
-                </div>
-                <div className="flex gap-1 flex-wrap">
-                  {engine.evaluations.map((ev, i) => (
-                    <span key={i} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ev.score >= 7 ? 'bg-emerald-900/60 text-emerald-400' :
-                      ev.score >= 5 ? 'bg-amber-900/60 text-amber-400' : 'bg-red-900/60 text-red-400'
-                      }`}>{ev.score}</span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-        </aside>
+        </section>
       </div>
 
       {/* ── Cheating warning banner ─────────────────── */}
