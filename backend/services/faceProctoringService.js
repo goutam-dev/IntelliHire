@@ -10,6 +10,7 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
 const InterviewSession = require('../models/InterviewSession');
 const JobApplication = require('../models/JobApplication');
+const notificationService = require('./notificationService');
 const logger = require('../utils/logger');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -171,6 +172,12 @@ async function enrollFaceFromVideo(applicationId, videoPath) {
         },
       }
     );
+
+    try {
+      await notificationService.notifyInterviewScheduledWhenEnrollmentReady({ applicationId });
+    } catch (notifErr) {
+      logger.error(`[FaceProctoring] Deferred interview notification failed for ${applicationId}: ${notifErr.message}`);
+    }
 
     logger.info(`[FaceProctoring] Enrollment success: applicationId=${applicationId}`);
   } catch (err) {

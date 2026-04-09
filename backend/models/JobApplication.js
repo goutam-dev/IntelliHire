@@ -123,6 +123,14 @@ const jobApplicationSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  interviewNotificationSentAt: {
+    type: Date,
+    default: null
+  },
+  interviewCompletionNotificationSentAt: {
+    type: Date,
+    default: null
+  },
   // Employer actions
   employerNotes: String,
   reviewedAt: Date,

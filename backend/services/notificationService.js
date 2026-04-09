@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const JobApplication = require('../models/JobApplication');
 const wsManager = require('../utils/wsManager');
 const { sendEmail } = require('./emailProvider');
 const { ForbiddenError, NotFoundError } = require('../utils/errorHandler');
@@ -28,6 +29,26 @@ function applicationReceivedEmail({ candidateName, jobTitle, applicationLink }) 
            style="display:inline-block;margin-top:16px;padding:10px 20px;
                   background:#0f172a;color:#fff;border-radius:8px;text-decoration:none">
           View Application
+        </a>
+        <p style="margin-top:32px;color:#94a3b8;font-size:12px">IntelliHire</p>
+      </div>`,
+  };
+}
+
+function interviewCompletedEmail({ candidateName, jobTitle, applicationLink }) {
+  return {
+    subject: `Interview completed for "${jobTitle}"`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:auto">
+        <h2 style="color:#1e293b">Interview Completed</h2>
+        <p style="color:#475569">
+          <strong>${candidateName}</strong> has completed the interview for
+          <strong>${jobTitle}</strong>.
+        </p>
+        <a href="${applicationLink}"
+           style="display:inline-block;margin-top:16px;padding:10px 20px;
+                  background:#0f172a;color:#fff;border-radius:8px;text-decoration:none">
+          Review Candidate
         </a>
         <p style="margin-top:32px;color:#94a3b8;font-size:12px">IntelliHire</p>
       </div>`,
@@ -148,6 +169,73 @@ async function notifyEmployerApplicationReceived({ employerUserId, candidateName
 }
 
 /**
+ * Notify employer when a candidate completes interview.
+ * Safe to call repeatedly; sends once per completion cycle.
+ */
+async function notifyEmployerInterviewCompleted({ applicationId }) {
+  if (!applicationId) return { sent: false, reason: 'missing_application_id' };
+
+  const claimedAt = new Date();
+  const app = await JobApplication.findOneAndUpdate(
+    {
+      applicationId,
+      interviewCompletionNotificationSentAt: null,
+    },
+    {
+      $set: {
+        interviewCompletionNotificationSentAt: claimedAt,
+      },
+    },
+    { new: true }
+  )
+    .populate('candidateId', 'fullName')
+    .populate({
+      path: 'jobId',
+      select: 'title employer',
+      populate: {
+        path: 'employer',
+        select: 'user',
+      },
+    })
+    .lean();
+
+  if (!app) {
+    return { sent: false, reason: 'already_sent_or_missing_application' };
+  }
+
+  const employerUserId = app.jobId?.employer?.user;
+  if (!employerUserId) {
+    await JobApplication.updateOne(
+      { _id: app._id, interviewCompletionNotificationSentAt: claimedAt },
+      { $set: { interviewCompletionNotificationSentAt: null } }
+    ).catch(() => {});
+    return { sent: false, reason: 'missing_employer_user' };
+  }
+
+  const candidateName = app.candidateId?.fullName || 'A candidate';
+  const jobTitle = app.jobId?.title || 'the job';
+  const link = `${APP_URL}/employer/jobs/${app.jobId?._id}/applications`;
+  const email = interviewCompletedEmail({ candidateName, jobTitle, applicationLink: link });
+
+  try {
+    await createAndSend(employerUserId, {
+      type: 'interview_completed',
+      title: 'Interview Completed',
+      message: `${candidateName} completed the interview for "${jobTitle}".`,
+      link,
+      email,
+    });
+    return { sent: true };
+  } catch (err) {
+    await JobApplication.updateOne(
+      { _id: app._id, interviewCompletionNotificationSentAt: claimedAt },
+      { $set: { interviewCompletionNotificationSentAt: null } }
+    ).catch(() => {});
+    throw err;
+  }
+}
+
+/**
  * Notify candidate that their application status changed.
  * @param {object} opts
  * @param {string} opts.candidateUserId  - MongoDB User _id of the candidate
@@ -189,6 +277,54 @@ async function notifyCandidateStatusUpdate({ candidateUserId, jobTitle, newStatu
     link,
     email,
   });
+}
+
+/**
+ * Send interview scheduled notification only when both enrollments are completed.
+ * This is safe to call repeatedly from multiple code paths.
+ */
+async function notifyInterviewScheduledWhenEnrollmentReady({ applicationId }) {
+  if (!applicationId) return { sent: false, reason: 'missing_application_id' };
+
+  const claimedAt = new Date();
+  const app = await JobApplication.findOneAndUpdate(
+    {
+      applicationId,
+      status: 'Interview Scheduled',
+      'voiceEnrollment.status': 'enrolled',
+      'faceEnrollment.status': 'enrolled',
+      interviewNotificationSentAt: null,
+    },
+    {
+      $set: {
+        interviewNotificationSentAt: claimedAt,
+      },
+    },
+    { new: true }
+  )
+    .populate('jobId', 'title')
+    .lean();
+
+  if (!app) {
+    return { sent: false, reason: 'not_ready_or_already_sent' };
+  }
+
+  try {
+    await notifyCandidateStatusUpdate({
+      candidateUserId: app.candidateId,
+      jobTitle: app.jobId?.title || 'the job',
+      newStatus: 'Interview Scheduled',
+      applicationId: app.applicationId,
+      notifType: 'interview_scheduled',
+    });
+    return { sent: true };
+  } catch (err) {
+    await JobApplication.updateOne(
+      { _id: app._id, interviewNotificationSentAt: claimedAt },
+      { $set: { interviewNotificationSentAt: null } }
+    ).catch(() => {});
+    throw err;
+  }
 }
 
 // ─── REST API helpers ────────────────────────────────────────────────────────
@@ -252,7 +388,9 @@ async function markAllRead(userId) {
 module.exports = {
   createAndSend,
   notifyEmployerApplicationReceived,
+  notifyEmployerInterviewCompleted,
   notifyCandidateStatusUpdate,
+  notifyInterviewScheduledWhenEnrollmentReady,
   getUserNotifications,
   getUnreadCount,
   markAsRead,

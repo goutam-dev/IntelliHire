@@ -384,13 +384,16 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
   const oldStatus = application.status;
 
   application.status = status;
+  if (status === 'Interview Scheduled' && oldStatus !== status) {
+    application.interviewNotificationSentAt = null;
+  }
   if (feedback) application.employerNotes = feedback;
   else if (notes) application.employerNotes = notes;
 
   await application.save();
 
   // --- Notification: candidate receives alert that their status changed ---
-  if (oldStatus !== status) {
+  if (oldStatus !== status && status !== 'Interview Scheduled') {
     setImmediate(async () => {
       try {
         await notificationService.notifyCandidateStatusUpdate({
@@ -402,6 +405,18 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
         });
       } catch (notifErr) {
         logger.error(`[applicationService] Candidate status notification failed: ${notifErr.message}`);
+      }
+    });
+  }
+
+  if (oldStatus !== status && status === 'Interview Scheduled') {
+    setImmediate(async () => {
+      try {
+        await notificationService.notifyInterviewScheduledWhenEnrollmentReady({
+          applicationId: application.applicationId,
+        });
+      } catch (notifErr) {
+        logger.error(`[applicationService] Deferred interview notification failed: ${notifErr.message}`);
       }
     });
   }
@@ -478,6 +493,9 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
 
   for (const app of applications) {
     app.status = status;
+    if (status === 'Interview Scheduled') {
+      app.interviewNotificationSentAt = null;
+    }
     if (feedback) app.employerNotes = feedback;
     else if (notes) app.employerNotes = notes;
     await app.save();
@@ -486,6 +504,13 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
     const capturedApp = app;
     setImmediate(async () => {
       try {
+        if (status === 'Interview Scheduled') {
+          await notificationService.notifyInterviewScheduledWhenEnrollmentReady({
+            applicationId: capturedApp.applicationId,
+          });
+          return;
+        }
+
         await notificationService.notifyCandidateStatusUpdate({
           candidateUserId: capturedApp.candidateId,
           jobTitle: capturedApp.jobId?.title || 'the job',
@@ -544,6 +569,7 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   }
 
   application.status = 'Interview Scheduled';
+  application.interviewNotificationSentAt = null;
   application.interviewWindowStart = startDate;
   application.interviewWindowEnd = endDate;
   application.employerNotes = `Interview window: ${startDate.toDateString()} – ${endDate.toDateString()}. ${instructions || ''}`.trim();
@@ -576,21 +602,14 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
 
   await application.save();
 
-  // --- Notification: candidate notified that interview has been scheduled ---
+  // Attempt deferred notification immediately in case enrollments are already done.
   setImmediate(async () => {
     try {
-      const populatedForNotif = await JobApplication.findById(application._id)
-        .populate('jobId', 'title')
-        .lean();
-      await notificationService.notifyCandidateStatusUpdate({
-        candidateUserId: application.candidateId,
-        jobTitle: populatedForNotif?.jobId?.title || 'the job',
-        newStatus: 'Interview Scheduled',
+      await notificationService.notifyInterviewScheduledWhenEnrollmentReady({
         applicationId: application.applicationId,
-        notifType: 'interview_scheduled',
       });
     } catch (notifErr) {
-      logger.error(`[applicationService] Interview scheduled notification failed: ${notifErr.message}`);
+      logger.error(`[applicationService] Deferred interview scheduled notification failed: ${notifErr.message}`);
     }
   });
 

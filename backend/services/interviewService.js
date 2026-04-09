@@ -21,6 +21,7 @@ const logger = require('../utils/logger');
 const { AppError } = require('../utils/errorHandler');
 const voiceProctoringService = require('./voiceProctoringService');
 const faceProctoringService = require('./faceProctoringService');
+const notificationService = require('./notificationService');
 
 // ── Configuration ────────────────────────────────────────────────────────────
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -596,6 +597,17 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
   } catch (err) {
     logger.warn(`[Interview] Failed to update application status: ${err.message}`);
   }
+
+  // Notify employer that candidate has completed the interview.
+  setImmediate(async () => {
+    try {
+      await notificationService.notifyEmployerInterviewCompleted({
+        applicationId: session.applicationId,
+      });
+    } catch (notifErr) {
+      logger.error(`[Interview] Employer interview completion notification failed: ${notifErr.message}`);
+    }
+  });
 
   return formatSessionSummary(session);
 }

@@ -17,6 +17,7 @@ const NotificationSchema = new Schema(
       required: true,
       enum: [
         'application_received',   // employer: candidate applied
+        'interview_completed',    // employer: candidate completed interview
         'status_updated',         // candidate: employer changed status
         'interview_scheduled',    // candidate: interview window set
       ],
