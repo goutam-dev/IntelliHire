@@ -1,6 +1,6 @@
 const { Schema, model } = require('mongoose');
 
-const EXPERIENCE_LEVELS = ['entry', 'mid', 'senior', 'expert'];
+const EXPERIENCE_LEVELS = ['no-experience', 'entry', 'mid', 'senior', 'expert'];
 const EMPLOYMENT_TYPES = ['full-time', 'part-time', 'contract', 'remote'];
 const JOB_STATUSES = ['draft', 'active', 'closed', 'archived'];
 
@@ -32,13 +32,16 @@ const JobSchema = new Schema(
       bookmarks: { type: Number, default: 0 }
     },
     publishedAt: { type: Date },
-    lastStatusChangeAt: { type: Date }
+    lastStatusChangeAt: { type: Date },
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null }
   },
   { timestamps: true }
 );
 
 // Compound indexes for common queries
 JobSchema.index({ employer: 1, status: 1 });
+JobSchema.index({ isDeleted: 1, status: 1, createdAt: -1 });
 JobSchema.index({ status: 1, createdAt: -1 }); // For listing active/published jobs
 JobSchema.index({ status: 1, publishedAt: -1 }); // For sorting by publish date
 JobSchema.index({ experienceLevel: 1, employmentType: 1, status: 1 }); // For filtering

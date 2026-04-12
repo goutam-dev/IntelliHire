@@ -23,7 +23,7 @@ const ExperienceSchema = new Schema(
     endDate: { type: Date },
     currentlyWorking: { type: Boolean, default: false },
     description: { type: String },
-    experienceType: { type: String, enum: ['specific', 'years'], default: 'specific' },
+    experienceType: { type: String, enum: ['specific', 'years', 'none'], default: 'specific' },
     yearsOfExperience: { type: Number }
   },
   { _id: true }
@@ -83,6 +83,7 @@ const CandidateProfileSchema = new Schema(
     resume: { type: ResumeSchema, default: () => ({}) },
     education: { type: [EducationSchema], default: [] },
     experience: { type: [ExperienceSchema], default: [] },
+    noWorkExperience: { type: Boolean, default: false },
     skills: { type: [String], default: [] },
     profilePhotoUrl: { type: String },
     // Video Introduction (optional at profile stage)
@@ -134,7 +135,7 @@ CandidateProfileSchema.methods.calculateCompletion = function() {
   const educationComplete = Array.isArray(this.education) && this.education.length > 0;
 
   // Section 4: Work experience
-  const experienceComplete = Array.isArray(this.experience) && this.experience.length > 0;
+  const experienceComplete = this.noWorkExperience === true || (Array.isArray(this.experience) && this.experience.length > 0);
 
   // Section 5: Minimum of 3 skills
   const normalizedSkills = Array.isArray(this.skills)

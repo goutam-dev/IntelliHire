@@ -14,6 +14,7 @@ export const JOB_CATEGORIES = [
 ];
 
 export const EXPERIENCE_LEVELS = [
+  { value: 'no-experience', label: 'No Experience (Fresher)' },
   { value: 'entry', label: 'Entry Level' },
   { value: 'mid', label: 'Mid-Level' },
   { value: 'senior', label: 'Senior' },

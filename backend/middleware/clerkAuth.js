@@ -1,5 +1,6 @@
 const { clerkClient, verifyToken } = require('@clerk/clerk-sdk-node');
 const logger = require('../utils/logger');
+const User = require('../models/User');
 
 const CLERK_USER_CACHE_TTL_MS = Number(process.env.CLERK_USER_CACHE_TTL_MS || 60 * 1000);
 const AUTH_DEBUG_CACHE = process.env.AUTH_DEBUG_CACHE === 'true';
@@ -79,6 +80,31 @@ async function getClerkUserWithCache(userId, { allowStaleOnRateLimit = true } = 
   }
 }
 
+async function resolveLocalUserRole(clerkUserId) {
+  if (!clerkUserId) return null;
+  const localUser = await User.findOne({ clerkUserId }).select('role').lean();
+  return localUser?.role || null;
+}
+
+async function resolveAuthPrincipal(userId) {
+  let user = null;
+  let role = null;
+
+  try {
+    user = await getClerkUserWithCache(userId);
+    role = user?.publicMetadata?.role || null;
+    return { user, role, source: 'clerk' };
+  } catch (error) {
+    const fallbackRole = await resolveLocalUserRole(userId);
+    if (fallbackRole) {
+      logAuthDebug('principal_fallback_local_role', { userId, role: fallbackRole });
+      logger.warn(`Clerk user lookup failed for ${userId}; using local DB role fallback`);
+      return { user: null, role: fallbackRole, source: 'local-db' };
+    }
+    throw error;
+  }
+}
+
 // Middleware to verify Clerk authentication
 async function requireAuth(req, res, next) {
   try {
@@ -107,14 +133,15 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Unauthorized - Invalid session' });
     }
 
-    // Resolve Clerk user with short-lived in-memory cache to avoid API bursts.
-    const user = await getClerkUserWithCache(payload.sub);
+    // Resolve principal from Clerk, and fall back to local DB role if Clerk user API fails.
+    const principal = await resolveAuthPrincipal(payload.sub);
     
     req.auth = {
       userId: payload.sub,
       sessionId: payload.sid,
-      user: user,
-      role: user.publicMetadata?.role || null,
+      user: principal.user,
+      role: principal.role,
+      principalSource: principal.source,
     };
 
     next();
@@ -163,14 +190,15 @@ async function optionalAuth(req, res, next) {
       return next();
     }
 
-    // Resolve Clerk user with cache and continue gracefully on transient rate limits.
-    const user = await getClerkUserWithCache(payload.sub);
+    // Resolve principal from Clerk, and fall back to local DB role if Clerk user API fails.
+    const principal = await resolveAuthPrincipal(payload.sub);
     
     req.auth = {
       userId: payload.sub,
       sessionId: payload.sid,
-      user: user,
-      role: user.publicMetadata?.role || null,
+      user: principal.user,
+      role: principal.role,
+      principalSource: principal.source,
     };
 
     next();

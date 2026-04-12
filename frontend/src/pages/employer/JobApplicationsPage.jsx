@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
 import { Download, FileText, Handshake, CalendarClock, CheckCircle2, XCircle, Users, ChevronRight, Sparkles, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'react-toastify';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchEmployerProfile } from '../../store/slices/employerSlice';
 import applicationApi from '../../services/api/applicationApi';
@@ -14,6 +15,19 @@ import InterviewReportModal from '../../components/InterviewReportModal';
 
 import EmployerHeader from '../../components/layout/EmployerHeader';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
+
+const ALLOWED_ACTIONS_BY_STATUS = {
+  'Applied': ['shortlist', 'reject'],
+  'Under Review': ['shortlist', 'reject'],
+  'Shortlisted': ['interview', 'reject'],
+  'Interview Scheduled': ['reject'],
+  'Interviewed': ['accept', 'reject'],
+  'Rejected': [],
+  'Hired': [],
+  'Withdrawn': [],
+  'Job Closed': [],
+  'Job Deleted': [],
+};
 
 const StatCard = ({ title, value, icon: Icon, color, delay }) => (
   <motion.div
@@ -73,6 +87,27 @@ const JobApplicationsPage = () => {
   const [interviewData, setInterviewData] = useState({ date: '', instructions: '' });
 
   const hasSelection = selectedIds.length > 0;
+
+  const selectedApplications = useMemo(
+    () => applications.filter((app) => selectedIds.includes(app._id)),
+    [applications, selectedIds]
+  );
+
+  const getEligibleApplicationsForAction = (type) => {
+    return selectedApplications.filter((app) => {
+      const allowed = ALLOWED_ACTIONS_BY_STATUS[app.status] || [];
+      return allowed.includes(type);
+    });
+  };
+
+  const bulkActionAvailability = useMemo(() => {
+    const shortlist = getEligibleApplicationsForAction('shortlist').length;
+    const reject = getEligibleApplicationsForAction('reject').length;
+    const interview = getEligibleApplicationsForAction('interview').length;
+    const accept = getEligibleApplicationsForAction('accept').length;
+
+    return { shortlist, reject, interview, accept };
+  }, [selectedApplications]);
 
   useEffect(() => {
     return () => {
@@ -160,20 +195,83 @@ const JobApplicationsPage = () => {
 
   const bulkAction = async (type, payload = {}) => {
     try {
-      const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired', interview: 'Interview Scheduled' };
-      const status = map[type];
+      const eligibleApplications = getEligibleApplicationsForAction(type);
+      const skippedCount = selectedIds.length - eligibleApplications.length;
 
-      await applicationApi.bulkUpdateApplicationStatus(selectedIds, {
-        status,
-        feedback: payload.feedback,
-        notes: payload.notes
-      });
+      if (eligibleApplications.length === 0) {
+        toast.info('No selected candidates are eligible for this action based on their current status.');
+        return;
+      }
+
+      if (type === 'interview') {
+        if (!payload.interviewWindowEnd) {
+          toast.error('Interview deadline is required.');
+          return;
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+
+        const results = await Promise.all(
+          eligibleApplications.map(async (app) => {
+            try {
+              await applicationApi.scheduleInterview(app._id, {
+                interviewWindowStart: today,
+                interviewWindowEnd: payload.interviewWindowEnd,
+                instructions: payload.instructions || ''
+              });
+              return { ok: true };
+            } catch (err) {
+              return { ok: false, error: err };
+            }
+          })
+        );
+
+        const successCount = results.filter((r) => r.ok).length;
+        const failedCount = results.length - successCount;
+        if (failedCount === 0 && skippedCount === 0) {
+          toast.success(`Interview scheduled for ${successCount} candidate(s).`);
+        } else if (successCount > 0) {
+          toast.warn(`Interview action finished: ${successCount} updated, ${failedCount} failed, ${skippedCount} skipped.`);
+        } else {
+          toast.error(`Interview action failed for all eligible candidates (${failedCount} failed, ${skippedCount} skipped).`);
+        }
+      } else {
+        const statusMap = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired' };
+        const targetStatus = statusMap[type];
+
+        const results = await Promise.all(
+          eligibleApplications.map(async (app) => {
+            try {
+              await applicationApi.updateApplicationStatus(app._id, {
+                status: targetStatus,
+                feedback: payload.feedback,
+                notes: payload.notes,
+              });
+              return { ok: true };
+            } catch (err) {
+              return { ok: false, error: err };
+            }
+          })
+        );
+
+        const successCount = results.filter((r) => r.ok).length;
+        const failedCount = results.length - successCount;
+        const actionLabel = `${type.charAt(0).toUpperCase() + type.slice(1)}`;
+
+        if (failedCount === 0 && skippedCount === 0) {
+          toast.success(`${actionLabel} completed for ${successCount} candidate(s).`);
+        } else if (successCount > 0) {
+          toast.warn(`${actionLabel} finished: ${successCount} updated, ${failedCount} failed, ${skippedCount} skipped.`);
+        } else {
+          toast.error(`${actionLabel} failed for all eligible candidates (${failedCount} failed, ${skippedCount} skipped).`);
+        }
+      }
 
       setSelectedIds([]);
-      refresh();
+      await refresh();
     } catch (err) {
       console.error(err);
-      alert(err.message || 'Bulk action failed');
+      toast.error(err.message || 'Bulk action failed');
     }
   };
 
@@ -348,28 +446,28 @@ const JobApplicationsPage = () => {
       <button
         onClick={() => bulkAction('shortlist')}
         className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white px-3 py-2 text-sm hover:bg-blue-700 shadow-sm hover:shadow transition-all"
-        disabled={!hasSelection}
+        disabled={!hasSelection || bulkActionAvailability.shortlist === 0}
       >
         <CheckCircle2 className="h-4 w-4" /> Shortlist
       </button>
       <button
         onClick={() => setRejectDialog(true)}
         className="inline-flex items-center gap-1 rounded-lg bg-rose-600 text-white px-3 py-2 text-sm hover:bg-rose-700 shadow-sm hover:shadow transition-all"
-        disabled={!hasSelection}
+        disabled={!hasSelection || bulkActionAvailability.reject === 0}
       >
         <XCircle className="h-4 w-4" /> Reject
       </button>
       <button
         onClick={() => setInterviewDialog(true)}
         className="inline-flex items-center gap-1 rounded-lg bg-amber-600 text-white px-3 py-2 text-sm hover:bg-amber-700 shadow-sm hover:shadow transition-all"
-        disabled={!hasSelection}
+        disabled={!hasSelection || bulkActionAvailability.interview === 0}
       >
         <CalendarClock className="h-4 w-4" /> Interview
       </button>
       <button
         onClick={() => bulkAction('accept')}
         className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm hover:bg-emerald-700 shadow-sm hover:shadow transition-all"
-        disabled={!hasSelection}
+        disabled={!hasSelection || bulkActionAvailability.accept === 0}
       >
         <Handshake className="h-4 w-4" /> Accept
       </button>
@@ -656,7 +754,10 @@ const JobApplicationsPage = () => {
           cancelLabel="Cancel"
           variant="info"
           onConfirm={() => {
-            bulkAction('interview', { notes: interviewData.instructions, feedback: '', scheduledAt: interviewData.date });
+            bulkAction('interview', {
+              interviewWindowEnd: interviewData.date,
+              instructions: interviewData.instructions,
+            });
             setInterviewDialog(false);
             setInterviewData({ date: '', instructions: '' });
           }}
@@ -664,11 +765,12 @@ const JobApplicationsPage = () => {
         >
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Interview Date</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Interview Deadline</label>
               <input
-                type="datetime-local"
+                type="date"
                 value={interviewData.date}
                 onChange={(e) => setInterviewData(prev => ({ ...prev, date: e.target.value }))}
+                min={new Date().toISOString().split('T')[0]}
                 className="w-full rounded-lg border border-slate-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>

@@ -19,6 +19,87 @@ const ensureCandidateUser = async (userId) => {
   return user;
 };
 
+const toDayStart = (dateInput) => {
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const validateSpecificExperienceDates = (experienceData) => {
+  if (!experienceData.startDate) {
+    throw new ValidationError('Start date is required');
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const startDate = toDayStart(experienceData.startDate);
+  if (!startDate) {
+    throw new ValidationError('Start date is invalid');
+  }
+
+  if (startDate > today) {
+    throw new ValidationError('Start date cannot be in the future');
+  }
+
+  if (experienceData.currentlyWorking) return;
+
+  if (!experienceData.endDate) {
+    throw new ValidationError('End date is required if not currently working');
+  }
+
+  const endDate = toDayStart(experienceData.endDate);
+  if (!endDate) {
+    throw new ValidationError('End date is invalid');
+  }
+
+  if (endDate > today) {
+    throw new ValidationError('End date cannot be in the future');
+  }
+
+  if (endDate <= startDate) {
+    throw new ValidationError('End date must be after start date');
+  }
+};
+
+const validateEducationDates = (educationData) => {
+  if (!educationData.startDate) {
+    throw new ValidationError('Start date is required');
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const startDate = toDayStart(educationData.startDate);
+  if (!startDate) {
+    throw new ValidationError('Start date is invalid');
+  }
+
+  if (startDate > today) {
+    throw new ValidationError('Start date cannot be in the future');
+  }
+
+  if (educationData.currentlyEnrolled) return;
+
+  if (!educationData.endDate) {
+    throw new ValidationError('End date is required if not currently enrolled');
+  }
+
+  const endDate = toDayStart(educationData.endDate);
+  if (!endDate) {
+    throw new ValidationError('End date is invalid');
+  }
+
+  if (endDate > today) {
+    throw new ValidationError('End date cannot be in the future');
+  }
+
+  if (endDate <= startDate) {
+    throw new ValidationError('End date must be after start date');
+  }
+};
+
 /**
  * Get candidate profile
  */
@@ -185,6 +266,8 @@ const addEducation = async (userId, educationData) => {
       throw new ValidationError(`${field} is required`);
     }
   }
+
+  validateEducationDates(educationData);
   
   let profile = await CandidateProfile.findOne({ user: userId });
   
@@ -221,7 +304,11 @@ const updateEducation = async (userId, educationId, educationData) => {
 
   // Merge existing data with updates
   const currentEducation = profile.education[educationIndex].toObject();
-  profile.education[educationIndex] = { ...currentEducation, ...educationData };
+  const mergedEducation = { ...currentEducation, ...educationData };
+
+  validateEducationDates(mergedEducation);
+
+  profile.education[educationIndex] = mergedEducation;
   
   await profile.save();
   
@@ -248,6 +335,27 @@ const deleteEducation = async (userId, educationId) => {
  * Add experience
  */
 const addExperience = async (userId, experienceData) => {
+  const experienceType = experienceData?.experienceType || 'specific';
+
+  let profile = await CandidateProfile.findOne({ user: userId });
+  
+  if (!profile) {
+    profile = new CandidateProfile({ user: userId });
+  }
+
+  if (experienceType === 'none') {
+    profile.noWorkExperience = true;
+    profile.experience = [];
+    await profile.save();
+
+    const updatedProfile = await CandidateProfile.findOne({ user: userId }).populate('user', 'fullName email phoneNumber');
+
+    return {
+      profile: updatedProfile,
+      completion: updatedProfile.profileCompletion
+    };
+  }
+
   // Validate required fields
   const requiredFields = ['title', 'companyName'];
   for (const field of requiredFields) {
@@ -257,22 +365,15 @@ const addExperience = async (userId, experienceData) => {
   }
   
   // Validate experience type specific requirements
-  if (experienceData.experienceType === 'specific') {
-    if (!experienceData.startDate) {
-      throw new ValidationError('Start date is required for specific date experience');
-    }
-  } else if (experienceData.experienceType === 'years') {
+  if (experienceType === 'specific') {
+    validateSpecificExperienceDates(experienceData);
+  } else if (experienceType === 'years') {
     if (!experienceData.yearsOfExperience || experienceData.yearsOfExperience < 0) {
       throw new ValidationError('Years of experience is required');
     }
   }
-  
-  let profile = await CandidateProfile.findOne({ user: userId });
-  
-  if (!profile) {
-    profile = new CandidateProfile({ user: userId });
-  }
 
+  profile.noWorkExperience = false;
   profile.experience.push(experienceData);
   await profile.save();
   
@@ -301,7 +402,13 @@ const updateExperience = async (userId, experienceId, experienceData) => {
   }
 
   const currentExperience = profile.experience[experienceIndex].toObject();
-  profile.experience[experienceIndex] = { ...currentExperience, ...experienceData };
+  const mergedExperience = { ...currentExperience, ...experienceData };
+
+  if ((mergedExperience.experienceType || 'specific') === 'specific') {
+    validateSpecificExperienceDates(mergedExperience);
+  }
+
+  profile.experience[experienceIndex] = mergedExperience;
   
   await profile.save();
   

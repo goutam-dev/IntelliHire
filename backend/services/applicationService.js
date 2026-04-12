@@ -99,6 +99,192 @@ const filterBySearch = (applications, search) => {
 };
 
 const TERMINAL_INTERVIEW_STATUSES = ['completed', 'terminated', 'abandoned', 'completing'];
+const ALLOWED_APPLICATION_STATUSES = [
+  'Applied',
+  'Under Review',
+  'Shortlisted',
+  'Interview Scheduled',
+  'Interviewed',
+  'Rejected',
+  'Hired',
+  'Withdrawn',
+  'Job Closed',
+  'Job Deleted',
+];
+const TERMINAL_APPLICATION_STATUSES = ['Rejected', 'Hired', 'Withdrawn', 'Job Closed', 'Job Deleted'];
+const EXPERIENCE_LEVEL_RANK = {
+  'no-experience': 0,
+  entry: 1,
+  mid: 2,
+  senior: 3,
+  expert: 4,
+};
+
+const EXPERIENCE_LABELS = {
+  'no-experience': 'No Experience',
+  entry: 'Entry Level',
+  mid: 'Mid Level',
+  senior: 'Senior',
+  expert: 'Expert',
+};
+
+const EDUCATION_LEVEL_RANK = {
+  none: 0,
+  'high-school': 1,
+  associate: 2,
+  bachelor: 3,
+  master: 4,
+  phd: 5,
+};
+const APPLICATION_TRANSITIONS = {
+  Applied: ['Under Review', 'Shortlisted', 'Rejected'],
+  'Under Review': ['Shortlisted', 'Rejected'],
+  Shortlisted: ['Interview Scheduled', 'Rejected'],
+  'Interview Scheduled': ['Interviewed', 'Rejected'],
+  Interviewed: ['Hired', 'Rejected'],
+  Rejected: [],
+  Hired: [],
+  Withdrawn: [],
+  'Job Closed': [],
+  'Job Deleted': [],
+};
+
+const assertValidApplicationStatus = (status) => {
+  if (!ALLOWED_APPLICATION_STATUSES.includes(status)) {
+    throw new ValidationError(`Invalid status. Allowed: ${ALLOWED_APPLICATION_STATUSES.join(', ')}`);
+  }
+};
+
+const assertStatusTransitionAllowed = (currentStatus, nextStatus) => {
+  if (currentStatus === nextStatus) return;
+
+  const allowedNext = APPLICATION_TRANSITIONS[currentStatus] || [];
+  if (!allowedNext.includes(nextStatus)) {
+    throw new ValidationError(`Invalid status transition from ${currentStatus} to ${nextStatus}`);
+  }
+};
+
+const assertApplicationMutableForEmployer = (application) => {
+  const job = application.jobId;
+  if (!job || job.isDeleted) {
+    throw new ValidationError('This job has been deleted. Application status can no longer be changed.');
+  }
+
+  if (TERMINAL_APPLICATION_STATUSES.includes(application.status)) {
+    throw new ValidationError(`Application is already terminal (${application.status}) and cannot be updated.`);
+  }
+};
+
+const normalizeStatusForDeletedJob = (application) => {
+  if (!application) return application;
+
+  const isDeletedJob = Boolean(application.jobId?.isDeleted);
+  if (!isDeletedJob) return application;
+
+  if (['Rejected', 'Hired', 'Withdrawn', 'Job Deleted'].includes(application.status)) {
+    return application;
+  }
+
+  return {
+    ...application,
+    status: 'Job Deleted',
+  };
+};
+
+const monthsBetweenDates = (start, end) => {
+  const yearDiff = end.getFullYear() - start.getFullYear();
+  const monthDiff = end.getMonth() - start.getMonth();
+  const totalMonths = yearDiff * 12 + monthDiff;
+  return totalMonths > 0 ? totalMonths : 0;
+};
+
+const inferEducationRank = (value) => {
+  if (!value || typeof value !== 'string') return 0;
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized === 'none' || normalized === 'no specific requirement') return EDUCATION_LEVEL_RANK.none;
+
+  if (normalized.includes('phd') || normalized.includes('doctor')) return EDUCATION_LEVEL_RANK.phd;
+  if (normalized.includes('master')) return EDUCATION_LEVEL_RANK.master;
+  if (normalized.includes('bachelor')) return EDUCATION_LEVEL_RANK.bachelor;
+  if (normalized.includes('associate')) return EDUCATION_LEVEL_RANK.associate;
+  if (normalized.includes('high school') || normalized.includes('secondary')) return EDUCATION_LEVEL_RANK['high-school'];
+
+  if (Object.prototype.hasOwnProperty.call(EDUCATION_LEVEL_RANK, normalized)) {
+    return EDUCATION_LEVEL_RANK[normalized];
+  }
+
+  return 0;
+};
+
+const inferExperienceRankFromYears = (years = 0) => {
+  if (years >= 8) return EXPERIENCE_LEVEL_RANK.expert;
+  if (years >= 5) return EXPERIENCE_LEVEL_RANK.senior;
+  if (years >= 2) return EXPERIENCE_LEVEL_RANK.mid;
+  if (years > 0) return EXPERIENCE_LEVEL_RANK.entry;
+  return EXPERIENCE_LEVEL_RANK['no-experience'];
+};
+
+const estimateCandidateExperienceYears = (profile) => {
+  if (!profile || profile.noWorkExperience) return 0;
+
+  const now = new Date();
+  const experiences = Array.isArray(profile.experience) ? profile.experience : [];
+
+  let totalYears = 0;
+
+  for (const exp of experiences) {
+    if (!exp) continue;
+
+    if (exp.experienceType === 'years' && Number.isFinite(Number(exp.yearsOfExperience))) {
+      const years = Number(exp.yearsOfExperience);
+      if (years > 0) totalYears += years;
+      continue;
+    }
+
+    const startDate = exp.startDate ? new Date(exp.startDate) : null;
+    if (!startDate || Number.isNaN(startDate.getTime())) continue;
+
+    const endDate = exp.currentlyWorking ? now : (exp.endDate ? new Date(exp.endDate) : now);
+    if (!endDate || Number.isNaN(endDate.getTime()) || endDate <= startDate) continue;
+
+    totalYears += monthsBetweenDates(startDate, endDate) / 12;
+  }
+
+  return totalYears;
+};
+
+const assertCandidateEligibilityForJob = async (candidateId, job) => {
+  const profile = await CandidateProfile.findOne({ user: candidateId }).lean();
+
+  if (!profile) {
+    throw new ValidationError('Please complete your candidate profile before applying to this job.');
+  }
+
+  const requiredExperienceRank = EXPERIENCE_LEVEL_RANK[job.experienceLevel] ?? EXPERIENCE_LEVEL_RANK['no-experience'];
+  const candidateExperienceYears = estimateCandidateExperienceYears(profile);
+  const candidateExperienceRank = inferExperienceRankFromYears(candidateExperienceYears);
+
+  if (candidateExperienceRank < requiredExperienceRank) {
+    throw new ValidationError(
+      `This role requires at least ${EXPERIENCE_LABELS[job.experienceLevel] || job.experienceLevel} experience.`
+    );
+  }
+
+  const requiredEducationRank = inferEducationRank(job.educationRequirements);
+  if (requiredEducationRank <= EDUCATION_LEVEL_RANK.none) return;
+
+  const candidateEducationRank = (profile.education || []).reduce((bestRank, edu) => {
+    const rank = inferEducationRank(edu?.degree);
+    return Math.max(bestRank, rank);
+  }, 0);
+
+  if (candidateEducationRank < requiredEducationRank) {
+    throw new ValidationError(
+      `This role requires minimum ${job.educationRequirements} education qualification.`
+    );
+  }
+};
 
 const toAbsoluteUploadPath = (relativePath = '') => {
   const cleaned = String(relativePath || '').replace(/^[/\\]+/, '');
@@ -363,6 +549,7 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
   if (!status) {
     throw new ValidationError('Status is required');
   }
+  assertValidApplicationStatus(status);
 
   const application = await JobApplication.findById(applicationId).populate('jobId');
   if (!application) {
@@ -382,6 +569,20 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
 
   // Track old status for stats update
   const oldStatus = application.status;
+  assertApplicationMutableForEmployer(application);
+  assertStatusTransitionAllowed(oldStatus, status);
+
+  if (status === 'Interview Scheduled' && application.jobId.status !== 'active') {
+    throw new ValidationError('Interviews can only be scheduled while the job is active.');
+  }
+
+  if (application.jobId.status === 'closed' && !['Rejected', 'Hired'].includes(status)) {
+    throw new ValidationError('For closed jobs, only final decisions (Rejected or Hired) are allowed.');
+  }
+
+  if (status === 'Withdrawn' || status === 'Job Closed' || status === 'Job Deleted') {
+    throw new ValidationError('This status is system-managed and cannot be set manually.');
+  }
 
   application.status = status;
   if (status === 'Interview Scheduled' && oldStatus !== status) {
@@ -472,6 +673,11 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
   if (!status) {
     throw new ValidationError('Status is required');
   }
+  assertValidApplicationStatus(status);
+
+  if (status === 'Withdrawn' || status === 'Job Closed' || status === 'Job Deleted') {
+    throw new ValidationError('This status is system-managed and cannot be set manually.');
+  }
 
   // Verify ownership for ALL applications
   const user = await User.findOne({ clerkUserId: userId });
@@ -488,6 +694,15 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
       // Skip or throw? Let's skip to avoid breaking bulk op if one is bad, or throw to be strict.
       // Strict is safer.
       throw new ForbiddenError(`You do not have permission to update application ${app._id}`);
+    }
+
+    assertApplicationMutableForEmployer(app);
+    assertStatusTransitionAllowed(app.status, status);
+    if (status === 'Interview Scheduled' && app.jobId.status !== 'active') {
+      throw new ValidationError('Interviews can only be scheduled while the job is active.');
+    }
+    if (app.jobId.status === 'closed' && !['Rejected', 'Hired'].includes(status)) {
+      throw new ValidationError('For closed jobs, only final decisions (Rejected or Hired) are allowed.');
     }
   }
 
@@ -568,6 +783,14 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
     throw new ForbiddenError('You do not have permission to schedule interview for this application');
   }
 
+  if (application.jobId.isDeleted || application.jobId.status !== 'active') {
+    throw new ValidationError('This job is not accepting interview scheduling.');
+  }
+
+  if (application.status !== 'Shortlisted') {
+    throw new ValidationError('Only shortlisted applications can be moved to interview scheduling.');
+  }
+
   application.status = 'Interview Scheduled';
   application.interviewNotificationSentAt = null;
   application.interviewWindowStart = startDate;
@@ -637,7 +860,7 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
  * Check if candidate has already applied to a job
  */
 const checkApplicationStatus = async (candidateId, jobId) => {
-  const existingApplication = await JobApplication.findOne({
+  let existingApplication = await JobApplication.findOne({
     jobId,
     candidateId,
     status: { $ne: 'Withdrawn' }
@@ -651,6 +874,10 @@ const checkApplicationStatus = async (candidateId, jobId) => {
         select: 'companyName'
       }
     });
+
+  if (existingApplication) {
+    existingApplication = normalizeStatusForDeletedJob(existingApplication);
+  }
 
   if (existingApplication && existingApplication.jobId && existingApplication.jobId.employer) {
     existingApplication.jobId.company = existingApplication.jobId.employer.companyName;
@@ -738,7 +965,7 @@ const submitApplication = async (candidateId, applicationData, files) => {
     throw new NotFoundError('Job not found');
   }
 
-  if (job.status !== 'active') {
+  if (job.isDeleted || job.status !== 'active') {
     throw new ValidationError('This job is no longer accepting applications');
   }
 
@@ -752,6 +979,8 @@ const submitApplication = async (candidateId, applicationData, files) => {
   if (existingApplication) {
     throw new ValidationError('You have already applied to this job');
   }
+
+  await assertCandidateEligibilityForJob(candidateId, job);
 
   // Handle resume
   let resumeData;
@@ -992,10 +1221,10 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  const applications = await JobApplication.find(filter)
+  let applications = await JobApplication.find(filter)
     .populate({
       path: 'jobId',
-      select: 'title location salaryRange employmentType employer',
+      select: 'title location salaryRange employmentType employer status isDeleted',
       populate: {
         path: 'employer',
         select: 'companyName'
@@ -1013,6 +1242,8 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
       delete app.jobId.employer;
     }
   });
+
+  applications = applications.map(normalizeStatusForDeletedJob);
 
   const enrichedApplications = await enrichApplicationsWithInterviewState(applications);
 
@@ -1041,7 +1272,7 @@ const getApplicationById = async (candidateId, applicationId) => {
   })
     .populate({
       path: 'jobId',
-      select: 'title location salaryRange employmentType description requirements benefits employer',
+      select: 'title location salaryRange employmentType description requirements benefits employer status isDeleted',
       populate: {
         path: 'employer',
         select: 'companyName'
@@ -1059,16 +1290,18 @@ const getApplicationById = async (candidateId, applicationId) => {
     throw new NotFoundError('Application not found');
   }
 
+  const normalizedApplication = normalizeStatusForDeletedJob(application);
+
   // Format the response to match expected structure
-  const [enrichedApplication] = await enrichApplicationsWithInterviewState([application]);
+  const [enrichedApplication] = await enrichApplicationsWithInterviewState([normalizedApplication]);
 
   return {
     ...enrichedApplication,
     candidate: {
-      user: application.candidateId,
-      ...application.applicationProfile
+      user: normalizedApplication.candidateId,
+      ...normalizedApplication.applicationProfile
     },
-    job: application.jobId
+    job: normalizedApplication.jobId
   };
 };
 
@@ -1077,11 +1310,7 @@ const getApplicationById = async (candidateId, applicationId) => {
  */
 const withdrawApplication = async (candidateId, applicationId) => {
   try {
-    const application = await JobApplication.findOneAndUpdate(
-      { applicationId, candidateId },
-      { status: 'Withdrawn' },
-      { new: true }
-    ).populate({
+    const application = await JobApplication.findOne({ applicationId, candidateId }).populate({
       path: 'jobId',
       select: 'title employer',
       populate: {
@@ -1094,6 +1323,14 @@ const withdrawApplication = async (candidateId, applicationId) => {
       throw new NotFoundError('Application not found');
     }
 
+    const oldStatus = application.status;
+    if (TERMINAL_APPLICATION_STATUSES.includes(oldStatus)) {
+      throw new ValidationError(`Application is already ${oldStatus} and cannot be withdrawn.`);
+    }
+
+    application.status = 'Withdrawn';
+    await application.save();
+
     if (application.jobId && application.jobId.employer) {
       application.jobId.company = application.jobId.employer.companyName;
       delete application.jobId.employer;
@@ -1104,13 +1341,13 @@ const withdrawApplication = async (candidateId, applicationId) => {
       $inc: { applicationsCount: -1 }
     });
 
-    // Update candidate profile stats based on current status
+    // Update candidate profile stats based on previous status
     const statUpdates = { 'stats.totalApplications': -1 };
-    if (application.status === 'Applied') {
+    if (oldStatus === 'Applied') {
       statUpdates['stats.pending'] = -1;
-    } else if (['Shortlisted', 'Interview Scheduled'].includes(application.status)) {
+    } else if (['Shortlisted', 'Interview Scheduled'].includes(oldStatus)) {
       statUpdates['stats.shortlisted'] = -1;
-    } else if (application.status === 'Rejected') {
+    } else if (oldStatus === 'Rejected') {
       statUpdates['stats.rejected'] = -1;
     }
 

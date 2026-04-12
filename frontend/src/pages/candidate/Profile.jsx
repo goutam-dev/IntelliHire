@@ -34,8 +34,10 @@ const Profile = () => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
-    dispatch(fetchCandidateProfile());
-  }, [dispatch]);
+    if (!profile && !loading && !error) {
+      dispatch(fetchCandidateProfile());
+    }
+  }, [dispatch, profile, loading, error]);
 
   useEffect(() => {
     if (error) {
@@ -174,8 +176,8 @@ const Profile = () => {
               {activeSection === 'experience' && (
                 <ExperienceSection 
                   profile={profile}
-                  onAdd={(experience) => dispatch(addExperience(experience))}
-                  onDelete={(id) => dispatch(deleteExperience(id))}
+                  onAdd={(experience) => dispatch(addExperience(experience)).unwrap()}
+                  onDelete={(id) => dispatch(deleteExperience(id)).unwrap()}
                 />
               )}
 

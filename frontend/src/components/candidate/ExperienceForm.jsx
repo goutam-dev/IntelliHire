@@ -8,6 +8,7 @@ import { fetchProfileCompletion } from '../../store/slices/profileCompletionSlic
 const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
   const dispatch = useDispatch();
   const { loading } = useSelector((state) => state.candidate);
+  const todayIso = new Date().toISOString().split('T')[0];
   
   const [formData, setFormData] = useState({
     title: editData?.title || '',
@@ -27,6 +28,11 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
 
   const validateForm = () => {
     const newErrors = {};
+
+    if (formData.experienceType === 'none') {
+      setErrors({});
+      return true;
+    }
     
     if (!formData.title.trim()) {
       newErrors.title = 'Job title is required';
@@ -40,9 +46,17 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
       if (!formData.startDate) {
         newErrors.startDate = 'Start date is required';
       }
+
+      if (formData.startDate && new Date(formData.startDate) > new Date(todayIso)) {
+        newErrors.startDate = 'Start date cannot be in the future';
+      }
       
       if (!formData.currentlyWorking && !formData.endDate) {
         newErrors.endDate = 'End date is required if not currently working';
+      }
+
+      if (formData.endDate && new Date(formData.endDate) > new Date(todayIso)) {
+        newErrors.endDate = 'End date cannot be in the future';
       }
       
       if (formData.startDate && formData.endDate && !formData.currentlyWorking) {
@@ -88,12 +102,15 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
       
       // Build experience data based on type
       const experienceData = {
-        title: formData.title,
-        companyName: formData.companyName,
-        location: formData.location,
-        description: formData.description,
         experienceType: formData.experienceType
       };
+
+      if (formData.experienceType !== 'none') {
+        experienceData.title = formData.title;
+        experienceData.companyName = formData.companyName;
+        experienceData.location = formData.location;
+        experienceData.description = formData.description;
+      }
 
       // Add type-specific fields
       if (formData.experienceType === 'specific') {
@@ -249,7 +266,7 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
             <label className="block text-sm font-medium text-gray-700 mb-3">
               How would you like to specify your experience? *
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
                 <input
                   type="radio"
@@ -278,6 +295,20 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
                   <div className="text-xs text-gray-500">Specify total years in this role</div>
                 </div>
               </label>
+              <label className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="radio"
+                  name="experienceType"
+                  value="none"
+                  checked={formData.experienceType === 'none'}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300"
+                />
+                <div className="ml-3">
+                  <div className="text-sm font-medium text-gray-900">No Experience</div>
+                  <div className="text-xs text-gray-500">I am a fresher</div>
+                </div>
+              </label>
             </div>
           </div>
 
@@ -295,6 +326,7 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
                     name="startDate"
                     value={formData.startDate}
                     onChange={handleInputChange}
+                    max={todayIso}
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                       errors.startDate ? 'border-red-300' : 'border-gray-300'
                     }`}
@@ -313,6 +345,7 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
                     name="endDate"
                     value={formData.endDate}
                     onChange={handleInputChange}
+                    max={todayIso}
                     disabled={formData.currentlyWorking}
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                       formData.currentlyWorking ? 'bg-gray-100 cursor-not-allowed' : ''
@@ -341,7 +374,7 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
                 </label>
               </div>
             </>
-          ) : (
+          ) : formData.experienceType === 'years' ? (
             <>
               {/* Years of Experience */}
               <div>
@@ -377,6 +410,10 @@ const ExperienceForm = ({ onClose, onSuccess, editData = null }) => {
                 </p>
               </div>
             </>
+          ) : (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              Selecting this marks your profile as fresher with no prior work experience.
+            </div>
           )}
 
           {/* Description */}

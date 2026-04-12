@@ -2,6 +2,18 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 
+const DEGREE_OPTIONS = [
+  'High School',
+  "Associate's Degree",
+  "Bachelor's Degree",
+  "Master's Degree",
+  'Doctoral Degree (PhD)',
+  'Professional Degree',
+  'Diploma',
+  'Certificate',
+  'Other'
+];
+
 const EducationSection = ({ profile, onAdd, onDelete }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -16,6 +28,8 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
     description: ''
   });
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
+  const currentMonth = new Date().toISOString().slice(0, 7);
 
   const resetForm = () => {
     setFormData({
@@ -30,6 +44,7 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
     });
     setShowForm(false);
     setEditingId(null);
+    setErrors({});
   };
 
   const handleChange = (e) => {
@@ -38,6 +53,13 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -49,12 +71,39 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
       return;
     }
 
-    // Validate dates
+    const newErrors = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const startDate = new Date(formData.startDate);
-    const endDate = formData.endDate ? new Date(formData.endDate) : null;
-    
-    if (endDate && !formData.currentlyEnrolled && endDate <= startDate) {
-      toast.error('End date must be after start date');
+    startDate.setHours(0, 0, 0, 0);
+
+    if (Number.isNaN(startDate.getTime())) {
+      newErrors.startDate = 'Start date is invalid';
+    } else if (startDate > today) {
+      newErrors.startDate = 'Start date cannot be in the future';
+    }
+
+    if (!formData.currentlyEnrolled) {
+      if (!formData.endDate) {
+        newErrors.endDate = 'End date is required if not currently enrolled';
+      } else {
+        const endDate = new Date(formData.endDate);
+        endDate.setHours(0, 0, 0, 0);
+
+        if (Number.isNaN(endDate.getTime())) {
+          newErrors.endDate = 'End date is invalid';
+        } else if (endDate > today) {
+          newErrors.endDate = 'End date cannot be in the future';
+        } else if (!Number.isNaN(startDate.getTime()) && endDate <= startDate) {
+          newErrors.endDate = 'End date must be after start date';
+        }
+      }
+    }
+
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      toast.error('Please fix the date errors');
       return;
     }
 
@@ -177,15 +226,20 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Degree/Qualification *
                 </label>
-                <input
-                  type="text"
+                <select
                   name="degree"
                   value={formData.degree}
                   onChange={handleChange}
-                  placeholder="e.g., Bachelor of Science, Master's Degree"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   required
-                />
+                >
+                  <option value="">Select degree</option>
+                  {DEGREE_OPTIONS.map((degree) => (
+                    <option key={degree} value={degree}>
+                      {degree}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -229,9 +283,15 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                   name="startDate"
                   value={formData.startDate}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  max={currentMonth}
+                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.startDate ? 'border-red-300' : 'border-gray-300'
+                  }`}
                   required
                 />
+                {errors.startDate && (
+                  <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>
+                )}
               </div>
 
               <div>
@@ -243,9 +303,15 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                   name="endDate"
                   value={formData.endDate}
                   onChange={handleChange}
+                  max={currentMonth}
                   disabled={formData.currentlyEnrolled}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed ${
+                    errors.endDate ? 'border-red-300' : 'border-gray-300'
+                  }`}
                 />
+                {errors.endDate && (
+                  <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
+                )}
               </div>
             </div>
 

@@ -217,6 +217,7 @@ const JobCard = ({ job, index }) => {
 
   const formatExperienceLevel = (level) => {
     const levelMap = {
+      'no-experience': 'No Experience (Fresher)',
       'entry': 'Entry Level',
       'mid': 'Mid Level',
       'senior': 'Senior Level',
@@ -236,6 +237,7 @@ const JobCard = ({ job, index }) => {
   const salaryInfo = getSalaryDisplay();
   const deadlineStatus = getDeadlineStatus();
   const jobStatus = getJobStatus();
+  const isJobClosed = job.status === 'closed';
 
   return (
     <motion.div
@@ -455,25 +457,27 @@ const JobCard = ({ job, index }) => {
             onClick={async () => {
               if (applicationStatus?.hasApplied) {
                 navigate('/candidate/applications');
-              } else if (completion && isComplete && completion.percentage === 100) {
+              } else if (!isJobClosed && completion && isComplete && completion.percentage === 100) {
                 await handleApplyNow();
               }
             }}
-            disabled={(!completion || !isComplete || completion.percentage < 100) && !applicationStatus?.hasApplied}
+            disabled={(isJobClosed || !completion || !isComplete || completion.percentage < 100) && !applicationStatus?.hasApplied}
             className={`flex-1 px-4 py-2 rounded-lg transition-all text-sm font-medium flex items-center justify-center gap-2 ${
               applicationStatus?.hasApplied
                 ? 'bg-green-600 text-white cursor-pointer'
+                : isJobClosed
+                ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
                 : completion && isComplete && completion.percentage === 100
                 ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
             whileHover={
-              applicationStatus?.hasApplied || (completion && isComplete && completion.percentage === 100) 
+              applicationStatus?.hasApplied || (!isJobClosed && completion && isComplete && completion.percentage === 100) 
                 ? { scale: 1.02 } 
                 : {}
             }
             whileTap={
-              applicationStatus?.hasApplied || (completion && isComplete && completion.percentage === 100) 
+              applicationStatus?.hasApplied || (!isJobClosed && completion && isComplete && completion.percentage === 100) 
                 ? { scale: 0.98 } 
                 : {}
             }
@@ -482,6 +486,11 @@ const JobCard = ({ job, index }) => {
               <>
                 <CheckCircle className="w-4 h-4" />
                 Applied
+              </>
+            ) : isJobClosed ? (
+              <>
+                <AlertCircle className="w-4 h-4" />
+                Closed
               </>
             ) : completion && isComplete && completion.percentage === 100 ? (
               <>
