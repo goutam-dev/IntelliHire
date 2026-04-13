@@ -152,6 +152,13 @@ const JobApplicationsPage = () => {
 
   const singleAction = async (id, type, payload = {}) => {
     try {
+      const actionLabelMap = {
+        shortlist: 'shortlisted',
+        reject: 'rejected',
+        accept: 'accepted',
+        interview: 'updated to interview',
+      };
+
       if (type === 'interview') {
         await applicationApi.scheduleInterview(id, {
           interviewWindowStart: payload.interviewWindowStart,
@@ -166,10 +173,11 @@ const JobApplicationsPage = () => {
           feedback: payload.feedback
         });
       }
-      refresh();
+      toast.success(`Application ${actionLabelMap[type] || 'updated'} successfully.`);
+      await refresh();
     } catch (err) {
       console.error(err);
-      alert(err.message || 'Action failed');
+      toast.error(err.message || 'Failed to update application status.');
     }
   };
 

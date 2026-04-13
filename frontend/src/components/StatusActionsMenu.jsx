@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MoreHorizontal, CheckCircle2, XCircle, CalendarClock, Handshake } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import Textarea from './forms/Textarea';
 
 const MenuItem = ({ icon: Icon, label, onClick }) => (
@@ -20,6 +21,9 @@ const StatusActionsMenu = ({ application, onAction }) => {
   const [interviewDeadline, setInterviewDeadline] = useState('');
   const [instructions, setInstructions] = useState('');
   const menuRef = React.useRef(null);
+  const buttonRef = React.useRef(null);
+  const dropdownRef = React.useRef(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
   const status = application?.status;
   const isTerminal = ['Rejected', 'Hired', 'Withdrawn', 'Job Closed', 'Job Deleted'].includes(status);
@@ -41,7 +45,10 @@ const StatusActionsMenu = ({ application, onAction }) => {
 
   React.useEffect(() => {
     const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
+      const clickedInsideTrigger = menuRef.current && menuRef.current.contains(event.target);
+      const clickedInsideDropdown = dropdownRef.current && dropdownRef.current.contains(event.target);
+
+      if (!clickedInsideTrigger && !clickedInsideDropdown) {
         setOpen(false);
       }
     };
@@ -55,9 +62,37 @@ const StatusActionsMenu = ({ application, onAction }) => {
     };
   }, [open]);
 
+  React.useEffect(() => {
+    const updateMenuPosition = () => {
+      if (!buttonRef.current) return;
+
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuWidth = 208; // Tailwind w-52
+      const gap = 8;
+      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+
+      setMenuPosition({
+        top: rect.bottom + gap,
+        left,
+      });
+    };
+
+    if (open) {
+      updateMenuPosition();
+      window.addEventListener('resize', updateMenuPosition);
+      window.addEventListener('scroll', updateMenuPosition, true);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [open]);
+
   return (
     <div ref={menuRef} className="relative inline-flex justify-end text-left">
       <button
+        ref={buttonRef}
         type="button"
         onClick={(e) => {
           e.stopPropagation();
@@ -68,23 +103,30 @@ const StatusActionsMenu = ({ application, onAction }) => {
         <MoreHorizontal className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-slate-200 bg-white shadow-xl z-30 overflow-hidden">
-          {allowedActions.includes('shortlist') && (
-            <MenuItem icon={CheckCircle2} label="Shortlist" onClick={() => { setOpen(false); onAction('shortlist'); }} />
-          )}
-          {allowedActions.includes('accept') && (
-            <MenuItem icon={Handshake} label="Accept" onClick={() => { setOpen(false); onAction('accept'); }} />
-          )}
-          {allowedActions.includes('interview') && (
-            <MenuItem icon={CalendarClock} label="Interview" onClick={() => { setOpen(false); setInterviewOpen(true); }} />
-          )}
-          {allowedActions.includes('reject') && (
-            <MenuItem icon={XCircle} label="Reject" onClick={() => { setOpen(false); setRejectOpen(true); }} />
-          )}
-          {allowedActions.length === 0 && (
-            <div className="px-3 py-2 text-xs text-slate-500">No actions available for this status.</div>
-          )}
-        </div>
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="fixed w-52 rounded-xl border border-slate-200 bg-white shadow-xl z-40 overflow-hidden"
+            style={{ top: menuPosition.top, left: menuPosition.left }}
+          >
+            {allowedActions.includes('shortlist') && (
+              <MenuItem icon={CheckCircle2} label="Shortlist" onClick={() => { setOpen(false); onAction('shortlist'); }} />
+            )}
+            {allowedActions.includes('accept') && (
+              <MenuItem icon={Handshake} label="Accept" onClick={() => { setOpen(false); onAction('accept'); }} />
+            )}
+            {allowedActions.includes('interview') && (
+              <MenuItem icon={CalendarClock} label="Interview" onClick={() => { setOpen(false); setInterviewOpen(true); }} />
+            )}
+            {allowedActions.includes('reject') && (
+              <MenuItem icon={XCircle} label="Reject" onClick={() => { setOpen(false); setRejectOpen(true); }} />
+            )}
+            {allowedActions.length === 0 && (
+              <div className="px-3 py-2 text-xs text-slate-500">No actions available for this status.</div>
+            )}
+          </div>,
+          document.body
+        )
       )}
 
       {/* Reject dialog */}
