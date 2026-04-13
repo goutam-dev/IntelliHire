@@ -1,9 +1,73 @@
 import { useState, useEffect } from 'react';
 import { useSignUp, useSignIn } from '@clerk/clerk-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import 'react-phone-number-input/style.css';
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
+import { toast } from 'react-toastify';
+
+const BREACH_ERROR_TEXT = 'Password has been found in an online data breach';
+
+const getPasswordChecks = (password, fullName = '', email = '') => {
+  const safePassword = password || '';
+  const normalizedPassword = safePassword.toLowerCase();
+  const normalizedName = fullName.trim().toLowerCase();
+  const emailPrefix = (email.split('@')[0] || '').toLowerCase();
+
+  const containsPersonalInfo = (normalizedName && normalizedPassword.includes(normalizedName))
+    || (emailPrefix && normalizedPassword.includes(emailPrefix));
+
+  return [
+    {
+      id: 'length',
+      label: 'Use at least 12 characters',
+      passed: safePassword.length >= 12,
+    },
+    {
+      id: 'case',
+      label: 'Include uppercase and lowercase letters',
+      passed: /[a-z]/.test(safePassword) && /[A-Z]/.test(safePassword),
+    },
+    {
+      id: 'number',
+      label: 'Add at least one number',
+      passed: /\d/.test(safePassword),
+    },
+    {
+      id: 'symbol',
+      label: 'Add at least one special character',
+      passed: /[^A-Za-z0-9]/.test(safePassword),
+    },
+    {
+      id: 'personal-info',
+      label: 'Avoid using your name or email in the password',
+      passed: !containsPersonalInfo,
+    },
+  ];
+};
+
+const isBreachedPasswordError = (message = '') =>
+  message.toLowerCase().includes(BREACH_ERROR_TEXT.toLowerCase());
+
+const ERROR_LABELS = {
+  fullName: 'Full name',
+  email: 'Email address',
+  phoneNumber: 'Phone number',
+  password: 'Password',
+  confirmPassword: 'Confirm password',
+  companyName: 'Company name',
+  industry: 'Industry/Sector',
+};
+
+const FIELD_SELECTORS = {
+  fullName: '[name="fullName"]',
+  email: '[name="email"]',
+  phoneNumber: '.PhoneInputInput',
+  password: '[name="password"]',
+  confirmPassword: '[name="confirmPassword"]',
+  companyName: '[name="companyName"]',
+  industry: '[name="industry"]',
+};
 
 const LogoMark = ({ className }) => (
   <svg
@@ -43,6 +107,16 @@ export function SignUp() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const passwordChecks = getPasswordChecks(formData.password, formData.fullName, formData.email);
+  const passedChecks = passwordChecks.filter((check) => check.passed).length;
+  const allPasswordChecksPassed = passwordChecks.every((check) => check.passed);
+  const confirmPasswordStatus = !formData.confirmPassword
+    ? 'idle'
+    : !formData.password
+      ? 'missing-password'
+      : formData.password === formData.confirmPassword
+        ? 'match'
+        : 'mismatch';
 
   useEffect(() => {
     let timer;
@@ -83,9 +157,13 @@ export function SignUp() {
       sessionStorage.removeItem('pendingRole');
       
       if (err.errors && err.errors.length > 0) {
-        setErrors({ general: err.errors[0].message });
+        const message = err.errors[0].message;
+        setErrors({ general: message });
+        toast.error(message);
       } else {
-        setErrors({ general: 'Failed to sign up with Google. Please try again.' });
+        const message = 'Failed to sign up with Google. Please try again.';
+        setErrors({ general: message });
+        toast.error(message);
       }
       setLoading(false);
     }
@@ -120,6 +198,8 @@ export function SignUp() {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters';
+    } else if (!allPasswordChecksPassed) {
+      newErrors.password = 'Password does not meet all security checks';
     }
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
@@ -131,6 +211,33 @@ export function SignUp() {
     }
 
     setErrors(newErrors);
+
+    const errorKeys = Object.keys(newErrors);
+    if (errorKeys.length > 0) {
+      const firstErrorKey = errorKeys[0];
+      const selector = FIELD_SELECTORS[firstErrorKey];
+      if (selector) {
+        const fieldElement = document.querySelector(selector);
+        if (fieldElement) {
+          fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          if (typeof fieldElement.focus === 'function') {
+            fieldElement.focus();
+          }
+        }
+      }
+
+      if (errorKeys.length === 1) {
+        toast.error(newErrors[firstErrorKey]);
+      } else {
+        const friendlyNames = errorKeys
+          .slice(0, 3)
+          .map((key) => ERROR_LABELS[key] || key)
+          .join(', ');
+        const remaining = errorKeys.length > 3 ? ` and ${errorKeys.length - 3} more fields` : '';
+        toast.error(`Please complete the required fields: ${friendlyNames}${remaining}.`);
+      }
+    }
+
     return Object.keys(newErrors).length === 0;
   };
 
@@ -173,11 +280,19 @@ export function SignUp() {
         const errorMessage = err.errors[0].message;
         if (errorMessage.includes('email')) {
           setErrors({ email: errorMessage });
+          toast.error(errorMessage);
+        } else if (isBreachedPasswordError(errorMessage)) {
+          const helpMessage = 'This password was exposed in known data breaches. Please create a new one using the suggestions below.';
+          setErrors({ password: helpMessage });
+          toast.error(helpMessage);
         } else {
           setErrors({ general: errorMessage });
+          toast.error(errorMessage);
         }
       } else {
-        setErrors({ general: 'An error occurred during sign up' });
+        const message = 'An error occurred during sign up';
+        setErrors({ general: message });
+        toast.error(message);
       }
     } finally {
       setLoading(false);
@@ -520,6 +635,20 @@ export function SignUp() {
                   </button>
                 </div>
                 {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
+
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-medium text-slate-700 mb-2">
+                    Password quality: {passedChecks}/{passwordChecks.length} checks passed
+                  </p>
+                  <ul className="space-y-1">
+                    {passwordChecks.map((check) => (
+                      <li key={check.id} className={`text-xs flex items-center gap-2 ${check.passed ? 'text-emerald-700' : 'text-slate-600'}`}>
+                        <span aria-hidden="true">{check.passed ? '✓' : '○'}</span>
+                        <span>{check.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
 
               <div>
@@ -533,8 +662,14 @@ export function SignUp() {
                     value={formData.confirmPassword}
                     onChange={handleInputChange}
                     className={`w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent ${
-                      errors.confirmPassword ? 'border-red-500' : 'border-slate-300'
-                    }`}
+                      errors.confirmPassword
+                        ? 'border-red-500'
+                        : confirmPasswordStatus === 'match'
+                          ? 'border-emerald-500'
+                          : confirmPasswordStatus === 'mismatch'
+                            ? 'border-amber-500'
+                            : 'border-slate-300'
+                    } transition-colors duration-200`}
                     placeholder="••••••••"
                   />
                   <button
@@ -555,6 +690,48 @@ export function SignUp() {
                   </button>
                 </div>
                 {errors.confirmPassword && <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>}
+
+                <AnimatePresence mode="wait" initial={false}>
+                  {confirmPasswordStatus === 'match' && (
+                    <motion.p
+                      key="confirm-match"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 4 }}
+                      transition={{ duration: 0.18 }}
+                      className="mt-2 text-xs text-emerald-700 flex items-center gap-2"
+                    >
+                      <span aria-hidden="true">✓</span>
+                      Passwords match.
+                    </motion.p>
+                  )}
+                  {confirmPasswordStatus === 'mismatch' && (
+                    <motion.p
+                      key="confirm-mismatch"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 4 }}
+                      transition={{ duration: 0.18 }}
+                      className="mt-2 text-xs text-amber-700 flex items-center gap-2"
+                    >
+                      <span aria-hidden="true">!</span>
+                      Passwords do not match yet.
+                    </motion.p>
+                  )}
+                  {confirmPasswordStatus === 'missing-password' && (
+                    <motion.p
+                      key="confirm-missing"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 4 }}
+                      transition={{ duration: 0.18 }}
+                      className="mt-2 text-xs text-slate-500 flex items-center gap-2"
+                    >
+                      <span aria-hidden="true">i</span>
+                      Enter the password above first, then confirm it.
+                    </motion.p>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Employer-specific fields */}
