@@ -18,6 +18,7 @@ const candidateRoutes = require('./routes/candidate.routes');
 const jobRoutes = require('./routes/jobRoutes');
 const resumeRankingRoutes = require('./routes/resumeRanking.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const { handleWebhook } = require('./controllers/auth.controller');
 
 const app = express();
 
@@ -72,6 +73,11 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Clerk webhook must receive raw body for Svix signature verification.
+app.post('/api/auth/webhook', express.raw({ type: 'application/json' }), handleWebhook);
+app.post('/api/auth/webhooks', express.raw({ type: 'application/json' }), handleWebhook);
+app.post('/api/webhooks', express.raw({ type: 'application/json' }), handleWebhook);
 
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));

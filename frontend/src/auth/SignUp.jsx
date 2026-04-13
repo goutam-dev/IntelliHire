@@ -248,6 +248,15 @@ export function SignUp() {
     );
   }
 
+  const CaptchaMount = () => (
+    <div className="mt-4">
+      <div id="clerk-captcha" className="min-h-[78px]" />
+      <p className="mt-2 text-xs text-slate-500 text-center">
+        Security verification may appear here to protect sign-up.
+      </p>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <motion.div
@@ -385,6 +394,8 @@ export function SignUp() {
                   Please select a role above to continue
                 </p>
               )}
+
+              {role && <CaptchaMount />}
             </motion.div>
 
             <div className="mt-6 text-center text-sm text-slate-600">
@@ -623,6 +634,8 @@ export function SignUp() {
               >
                 {loading ? 'Creating Account...' : 'Create Account'}
               </button>
+
+              <CaptchaMount />
             </form>
           </motion.div>
         )}
