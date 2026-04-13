@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 import time
 from collections import deque
@@ -11,6 +12,9 @@ from ultralytics import YOLO
 from app import config
 
 
+logger = logging.getLogger(__name__)
+
+
 class ObjectDetectorEngine:
     def __init__(self):
         resolved_model_path = self._resolve_model_path(config.OBJECT_MODEL_PATH)
@@ -19,6 +23,16 @@ class ObjectDetectorEngine:
         self.suspicious_objects = {
             k: v for k, v in config.SUSPICIOUS_OBJECTS.items() if v.get("enabled", True)
         }
+        logger.info(
+            "[ObjectMonitor] model=%s conf_threshold=%.2f confirm_time=%.2fs min_hits=%d missing_grace=%.2fs cooldown=%ss enabled_objects=%s",
+            resolved_model_path,
+            self.confidence_threshold,
+            config.VIOLATION_CONFIRMATION_TIME,
+            config.MIN_DETECTIONS_FOR_ALERT,
+            config.OBJECT_MISSING_GRACE_TIME,
+            config.ALERT_COOLDOWN,
+            sorted(list(self.suspicious_objects.keys())),
+        )
 
     @staticmethod
     def _resolve_model_path(configured_path: str) -> str:
@@ -38,8 +52,11 @@ class ObjectMonitorSession:
         self.detection_buffer = deque(maxlen=config.DETECTION_BUFFER_SIZE)
         self.last_alert_time: Dict[str, float] = {}
         self.violation_start_times: Dict[str, float] = {}
+        self.object_last_seen_times: Dict[str, float] = {}
+        self.object_hit_counts: Dict[str, int] = {}
         self.violation_confirmation_time = config.VIOLATION_CONFIRMATION_TIME
         self.alert_cooldown = config.ALERT_COOLDOWN
+        self.frame_index = 0
         self._prev_stable_flags = {
             "no_person": False,
             "multiple_people": False,
@@ -47,6 +64,7 @@ class ObjectMonitorSession:
         }
 
     def analyze_frame(self, frame: np.ndarray) -> dict:
+        self.frame_index += 1
         results = self.engine.model(frame, conf=self.engine.confidence_threshold, verbose=False)
 
         violations = {
@@ -58,6 +76,7 @@ class ObjectMonitorSession:
         }
 
         boxes_for_annotation = []
+        raw_detections = []
 
         if len(results) > 0:
             boxes = results[0].boxes
@@ -70,6 +89,7 @@ class ObjectMonitorSession:
                 class_name = self.engine.model.names[cls_id]
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                 bbox = [int(x1), int(y1), int(x2), int(y2)]
+                raw_detections.append({"class": class_name, "confidence": confidence})
 
                 if class_name == "person":
                     if confidence < config.PERSON_CONFIDENCE_THRESHOLD:
@@ -118,6 +138,28 @@ class ObjectMonitorSession:
         crossed_this_frame = self._get_crossed_threshold_violations(stable_violations)
         alert_result = self._handle_violation(stable_violations)
 
+        raw_summary = [f"{d['class']}:{d['confidence']:.2f}" for d in raw_detections[:10]]
+        stable_objects = [obj.get("object", "unknown") for obj in stable_violations.get("suspicious_objects", [])]
+        logger.info(
+            "[ObjectMonitor] frame=%d raw=%s person_count=%d stable_objects=%s crossed=%s new_alert=%s alert_types=%s",
+            self.frame_index,
+            raw_summary if raw_summary else ["none"],
+            stable_violations.get("person_count", 0),
+            stable_objects if stable_objects else ["none"],
+            crossed_this_frame if crossed_this_frame else ["none"],
+            alert_result.get("new_alert", False),
+            alert_result.get("alert_types", []),
+        )
+
+        if alert_result.get("new_alert"):
+            logger.warning(
+                "[ObjectMonitor] ALERT frame=%d alert_types=%s suspicious=%s person_count=%d",
+                self.frame_index,
+                alert_result.get("alert_types", []),
+                stable_violations.get("suspicious_objects", []),
+                stable_violations.get("person_count", 0),
+            )
+
         annotated = self._annotate_frame(frame, boxes_for_annotation, stable_violations)
         snapshot_b64 = self._encode_frame(annotated) if alert_result["new_alert"] else None
 
@@ -136,6 +178,7 @@ class ObjectMonitorSession:
             "alert_types": alert_result["alert_types"],
             "snapshot_base64": snapshot_b64,
         }
+
 
     def _get_stable_violations(self) -> dict:
         if not self.detection_buffer:
@@ -171,20 +214,35 @@ class ObjectMonitorSession:
 
             if obj_key not in self.violation_start_times:
                 self.violation_start_times[obj_key] = current_time
+                self.object_hit_counts[obj_key] = 0
+
+            self.object_last_seen_times[obj_key] = current_time
+            self.object_hit_counts[obj_key] = self.object_hit_counts.get(obj_key, 0) + 1
 
             duration = current_time - self.violation_start_times[obj_key]
-            if duration >= self.violation_confirmation_time:
+            if (
+                duration >= self.violation_confirmation_time
+                or self.object_hit_counts.get(obj_key, 0) >= config.MIN_DETECTIONS_FOR_ALERT
+            ):
                 obj_copy = obj.copy()
                 obj_copy["confirmed_duration"] = duration
+                obj_copy["hits"] = self.object_hit_counts.get(obj_key, 0)
                 stable_suspicious_objects.append(obj_copy)
 
-        object_keys_to_remove = [
-            k
-            for k in self.violation_start_times.keys()
-            if k.startswith("object_") and k.replace("object_", "") not in current_object_types
-        ]
+        object_keys_to_remove = []
+        for key in list(self.violation_start_times.keys()):
+            if not key.startswith("object_"):
+                continue
+            if key.replace("object_", "") in current_object_types:
+                continue
+            last_seen = self.object_last_seen_times.get(key, self.violation_start_times[key])
+            if (current_time - last_seen) >= config.OBJECT_MISSING_GRACE_TIME:
+                object_keys_to_remove.append(key)
+
         for key in object_keys_to_remove:
             self.violation_start_times.pop(key, None)
+            self.object_last_seen_times.pop(key, None)
+            self.object_hit_counts.pop(key, None)
 
         stable["suspicious_objects"] = stable_suspicious_objects
         return stable
