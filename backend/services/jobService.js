@@ -8,6 +8,17 @@ const { validateRequiredFields } = require('../utils/validators');
 
 const DELETE_IMMUTABLE_APPLICATION_STATUSES = ['Rejected', 'Hired', 'Withdrawn', 'Job Deleted'];
 
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildSearchRegex = (value = '') => {
+  const normalized = String(value).trim().replace(/\s+/g, ' ');
+  if (!normalized) return null;
+
+  // Allow flexible whitespace so queries like "Systems L" still match naturally.
+  const pattern = escapeRegex(normalized).replace(/\s+/g, '\\s+');
+  return new RegExp(pattern, 'i');
+};
+
 const resolveEmployerProfileFromClerkUser = async (clerkUserId) => {
   const user = await User.findOne({ clerkUserId });
   if (!user) {
@@ -45,7 +56,6 @@ const getOwnedJobOrThrow = async (jobId, clerkUserId) => {
  */
 const buildFilters = ({
   status,
-  search,
   employerId,
   location,
   department,
@@ -65,15 +75,6 @@ const buildFilters = ({
 
   if (employerId) {
     filters.employer = employerId;
-  }
-
-  if (search) {
-    filters.$or = [
-      { title: { $regex: search, $options: 'i' } },
-      { department: { $regex: search, $options: 'i' } },
-      { description: { $regex: search, $options: 'i' } },
-      { requiredSkills: { $elemMatch: { $regex: search, $options: 'i' } } },
-    ];
   }
 
   if (location) {
@@ -157,6 +158,9 @@ const normalizeApplicationDeadline = (rawDeadline) => {
  * Get jobs by employer (with optional filters)
  */
 const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
+  const searchRegex = buildSearchRegex(queryFilters.search);
+  const { search: _ignoredSearch, ...filtersWithoutSearch } = queryFilters;
+
   // Get employer profile ID from authenticated user
   const user = await User.findOne({ clerkUserId });
   let isEmployer = false;
@@ -170,7 +174,7 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
     }
   }
 
-  let filters = buildFilters(queryFilters);
+  let filters = buildFilters(filtersWithoutSearch);
   
   // If not an employer, only show active jobs (hide draft, archived, closed)
   if (!isEmployer) {
@@ -199,10 +203,49 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
   const skip = (page - 1) * limit;
   const sortStage = getSortStage(queryFilters.sortBy, queryFilters.sortOrder);
 
-  const totalJobs = await Job.countDocuments(filters);
+  const searchStage = searchRegex
+    ? {
+        $match: {
+          $or: [
+            { title: { $regex: searchRegex } },
+            { department: { $regex: searchRegex } },
+            { description: { $regex: searchRegex } },
+            { requiredSkills: { $elemMatch: { $regex: searchRegex } } },
+            { company: { $regex: searchRegex } },
+          ],
+        },
+      }
+    : null;
+
+  const basePipeline = [
+    { $match: filters },
+    {
+      $lookup: {
+        from: 'employerprofiles',
+        localField: 'employer',
+        foreignField: '_id',
+        as: 'employerProfile',
+      },
+    },
+    {
+      $addFields: {
+        company: { $arrayElemAt: ['$employerProfile.companyName', 0] },
+      },
+    },
+  ];
+
+  if (searchStage) {
+    basePipeline.push(searchStage);
+  }
+
+  const totalJobsResult = await Job.aggregate([
+    ...basePipeline,
+    { $count: 'count' },
+  ]);
+  const totalJobs = totalJobsResult[0]?.count || 0;
 
   const jobs = await Job.aggregate([
-    { $match: filters },
+    ...basePipeline,
     { $sort: sortStage },
     { $skip: skip },
     { $limit: limit },
@@ -218,19 +261,10 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
       },
     },
     {
-      $lookup: {
-        from: 'employerprofiles',
-        localField: 'employer',
-        foreignField: '_id',
-        as: 'employerProfile',
-      },
-    },
-    {
       $addFields: {
         applicationsCount: {
           $ifNull: [{ $arrayElemAt: ['$appCounts.count', 0] }, 0],
         },
-        company: { $arrayElemAt: ['$employerProfile.companyName', 0] },
       },
     },
     { $project: { appCounts: 0, employerProfile: 0 } },
