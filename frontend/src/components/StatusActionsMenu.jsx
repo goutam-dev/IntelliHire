@@ -67,12 +67,15 @@ const StatusActionsMenu = ({ application, onAction }) => {
       if (!buttonRef.current) return;
 
       const rect = buttonRef.current.getBoundingClientRect();
+      const menuHeight = dropdownRef.current?.offsetHeight || 220;
       const menuWidth = 208; // Tailwind w-52
       const gap = 8;
       const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+      const preferredTop = rect.top - menuHeight - gap;
+      const top = preferredTop >= 8 ? preferredTop : rect.bottom + gap;
 
       setMenuPosition({
-        top: rect.bottom + gap,
+        top,
         left,
       });
     };
