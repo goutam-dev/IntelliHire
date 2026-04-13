@@ -15,6 +15,7 @@ import React, {
   useState, useEffect, useRef, useCallback, useMemo,
 } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, AlertTriangle, Camera, Mic, Monitor, Mic2,
@@ -600,6 +601,7 @@ function PermissionsScreen({ onGranted, onDenied }) {
 
 function InterviewInterface({ streams, applicationId, onComplete }) {
   const { camera: cameraStream } = streams;
+  const { getToken } = useAuth();
 
   // ── Hooks setup ────────────────────────────────────────────────────────────
   const { isRecording: isAudioRecording, startRecording, stopRecording } = useAudioRecorder(cameraStream);
@@ -633,6 +635,11 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   const fpRetryTimerRef = useRef(null);
   const fpRetryCountRef = useRef(0);
   const fpForwardFailCountRef = useRef(0);
+  const fpSocketRef = useRef(null);
+  const fpSocketReadyRef = useRef(false);
+  const fpFrameSeqRef = useRef(0);
+  const fpPendingFrameResolversRef = useRef(new Map());
+  const fpWsAuthedRef = useRef(false);
   const [fpActive, setFpActive] = useState(false);
   const [fpEnrollmentStatus, setFpEnrollmentStatus] = useState('unknown');
   const pauseInterviewRef = useRef(null);
@@ -832,61 +839,116 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     fpStartedRef.current = true;
     console.debug(
       FACE_PROCTORING_LOG_PREFIX,
-      'start request',
+      'opening frontend-backend face stream websocket',
       {
         sessionId: engine.sessionId,
         elapsedSeconds: engine.elapsedSeconds,
         frameIntervalMs: FACE_PROCTORING_FRAME_INTERVAL_MS,
       }
     );
-    faceProctoringApi.startFaceProctoring(engine.sessionId, engine.elapsedSeconds)
-      .then((result) => {
-        const data = result?.data || {};
-        if (data.started) {
-          console.debug(
-            FACE_PROCTORING_LOG_PREFIX,
-            'start success',
-            { sessionId: engine.sessionId, candidateId: data.candidateId || null }
-          );
-          setFpActive(true);
-          setFpEnrollmentStatus('enrolled');
-          fpRetryCountRef.current = 0;
-          fpForwardFailCountRef.current = 0;
-        } else {
-          console.warn(
-            FACE_PROCTORING_LOG_PREFIX,
-            'start returned not started',
-            { sessionId: engine.sessionId, reason: data?.reason || 'unknown' }
-          );
-          setFpActive(false);
-          setFpEnrollmentStatus('not_enrolled');
 
-          const reason = String(data?.reason || '').toLowerCase();
-          const shouldRetry = reason.includes('not yet complete') || reason.includes('wait');
-          if (shouldRetry && fpRetryCountRef.current < 15) {
-            fpRetryCountRef.current += 1;
-            console.debug(
-              FACE_PROCTORING_LOG_PREFIX,
-              'scheduling enrollment retry',
-              { sessionId: engine.sessionId, retryCount: fpRetryCountRef.current, retryDelayMs: 8000 }
-            );
-            fpRetryTimerRef.current = setTimeout(() => {
-              fpStartedRef.current = false;
-              setFpEnrollmentStatus(prev => (prev === 'retrying' ? 'not_enrolled' : 'retrying'));
-            }, 8000);
-          }
+    const ws = faceProctoringApi.createFaceStreamSocket();
+    fpSocketRef.current = ws;
+    fpSocketReadyRef.current = false;
+    fpWsAuthedRef.current = false;
+
+    const scheduleRetry = (reason = 'unknown') => {
+      if (fpRetryCountRef.current >= 15) return;
+      fpRetryCountRef.current += 1;
+      console.warn(
+        FACE_PROCTORING_LOG_PREFIX,
+        'face ws retry scheduled',
+        { sessionId: engine.sessionId, retryCount: fpRetryCountRef.current, reason, retryDelayMs: 8000 }
+      );
+      fpRetryTimerRef.current = setTimeout(() => {
+        fpStartedRef.current = false;
+        setFpEnrollmentStatus(prev => (prev === 'retrying' ? 'not_enrolled' : 'retrying'));
+      }, 8000);
+    };
+
+    ws.onopen = async () => {
+      try {
+        let token = await getToken();
+        if (!token && window?.Clerk?.session?.getToken) {
+          token = await window.Clerk.session.getToken();
         }
-      })
-      .catch((err) => {
-        console.warn(
-          FACE_PROCTORING_LOG_PREFIX,
-          'start request failed',
-          { sessionId: engine.sessionId, error: err?.message || 'unknown' }
-        );
+        if (!token) throw new Error('Missing Clerk token for face stream websocket');
+
+        faceProctoringApi.sendFaceStreamAuth(ws, {
+          token,
+          sessionId: engine.sessionId,
+          elapsedSeconds: engine.elapsedSeconds,
+        });
+      } catch (err) {
+        console.warn(FACE_PROCTORING_LOG_PREFIX, 'face ws onopen auth setup failed', err?.message || err);
+        scheduleRetry(err?.message || 'token_error');
+      }
+    };
+
+    ws.onmessage = (event) => {
+      let msg;
+      try {
+        msg = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+
+      if (msg.type === 'auth_ok') {
+        fpSocketReadyRef.current = true;
+        fpWsAuthedRef.current = true;
+        setFpActive(true);
+        setFpEnrollmentStatus('enrolled');
+        fpRetryCountRef.current = 0;
+        fpForwardFailCountRef.current = 0;
+        console.debug(FACE_PROCTORING_LOG_PREFIX, 'face ws auth_ok', { sessionId: engine.sessionId });
+        return;
+      }
+
+      if (msg.type === 'auth_error') {
+        fpSocketReadyRef.current = false;
+        fpWsAuthedRef.current = false;
         setFpActive(false);
-        setFpEnrollmentStatus('failed');
-      });
-  }, [engine.sessionId, engine.engineState, engine.elapsedSeconds, fpEnrollmentStatus]);
+        const reason = String(msg?.message || '').toLowerCase();
+        console.warn(FACE_PROCTORING_LOG_PREFIX, 'face ws auth_error', {
+          sessionId: engine.sessionId,
+          code: msg?.code || 'unknown',
+          message: msg?.message || 'unknown',
+        });
+        setFpEnrollmentStatus(reason.includes('not yet complete') ? 'not_enrolled' : 'failed');
+        scheduleRetry(msg?.code || reason || 'auth_error');
+        return;
+      }
+
+      if (msg.type === 'analysis') {
+        const frameId = msg?.frameId;
+        if (frameId && fpPendingFrameResolversRef.current.has(frameId)) {
+          const { resolve } = fpPendingFrameResolversRef.current.get(frameId);
+          fpPendingFrameResolversRef.current.delete(frameId);
+          resolve(msg?.data || {});
+        }
+      }
+    };
+
+    ws.onerror = () => {
+      fpSocketReadyRef.current = false;
+      fpWsAuthedRef.current = false;
+      setFpActive(false);
+      if (!fpWsAuthedRef.current) {
+        scheduleRetry('ws_error_before_auth');
+      }
+    };
+
+    ws.onclose = () => {
+      fpSocketReadyRef.current = false;
+      const wasAuthed = fpWsAuthedRef.current;
+      fpWsAuthedRef.current = false;
+      setFpActive(false);
+      if (!wasAuthed) {
+        scheduleRetry('ws_closed_before_auth');
+      }
+    };
+
+  }, [engine.sessionId, engine.engineState, getToken]);
 
   useEffect(() => {
     if (!engine.sessionId) return;
@@ -982,10 +1044,29 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       const image = await captureFaceFrame();
       if (!image) return;
 
+      const ws = fpSocketRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN || !fpSocketReadyRef.current) {
+        return;
+      }
+
       fpFrameInFlightRef.current = true;
       try {
-        const frameResponse = await faceProctoringApi.sendFaceFrame(engine.sessionId, image);
-        const frameData = frameResponse?.data || {};
+        const frameId = `f_${Date.now()}_${fpFrameSeqRef.current += 1}`;
+        const frameData = await new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            fpPendingFrameResolversRef.current.delete(frameId);
+            resolve({ forwarded: false, failReason: 'analysis_timeout' });
+          }, 4000);
+
+          fpPendingFrameResolversRef.current.set(frameId, {
+            resolve: (data) => {
+              clearTimeout(timeout);
+              resolve(data || {});
+            },
+          });
+
+          faceProctoringApi.sendFaceStreamFrame(ws, { frameId, image });
+        });
 
         if (frameData.forwarded === false) {
           fpForwardFailCountRef.current += 1;
@@ -1114,6 +1195,16 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
         clearInterval(fpFrameIntervalRef.current);
         fpFrameIntervalRef.current = null;
       }
+      if (fpSocketRef.current) {
+        try {
+          fpSocketRef.current.close();
+        } catch { }
+        fpSocketRef.current = null;
+      }
+      for (const [, pending] of fpPendingFrameResolversRef.current.entries()) {
+        pending.resolve({ forwarded: false, failReason: 'ws_closed' });
+      }
+      fpPendingFrameResolversRef.current.clear();
       if (engine.sessionId) {
         faceProctoringApi.stopFaceProctoring(engine.sessionId).catch(() => { });
       }

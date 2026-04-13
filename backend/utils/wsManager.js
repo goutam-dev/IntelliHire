@@ -1,6 +1,8 @@
 const { WebSocketServer } = require('ws');
 const { verifyToken } = require('@clerk/clerk-sdk-node');
 const User = require('../models/User');
+const InterviewSession = require('../models/InterviewSession');
+const JobApplication = require('../models/JobApplication');
 const logger = require('./logger');
 
 /**
@@ -56,7 +58,63 @@ async function authenticateSocket(authMessage = {}) {
     throw new Error('Token/user mismatch');
   }
 
-  return resolvedUserId;
+  return {
+    mongoUserId: resolvedUserId,
+    clerkUserId: String(payload.sub),
+  };
+}
+
+async function ensureFaceSessionReady(sessionId, authCtx, elapsedSeconds = 0) {
+  const faceProctoringService = require('../services/faceProctoringService');
+  const session = await InterviewSession.findById(sessionId, 'applicationId candidateId status').lean();
+  if (!session) return { ok: false, code: 'invalid_session', message: 'Session not found' };
+
+  const sessionCandidateId = String(session.candidateId || '');
+  const ownsSession = sessionCandidateId === String(authCtx?.clerkUserId || '')
+    || sessionCandidateId === String(authCtx?.mongoUserId || '');
+
+  if (!ownsSession) {
+    return { ok: false, code: 'unauthorized', message: 'Session not found' };
+  }
+
+  if (!['created', 'started', 'in_progress', 'completing'].includes(session.status)) {
+    return { ok: false, code: 'invalid_status', message: `Cannot start face proctoring in status: ${session.status}` };
+  }
+
+  const application = await JobApplication.findOne(
+    { applicationId: session.applicationId },
+    'applicationId faceEnrollment'
+  ).lean();
+
+  const hasEmbedding = Array.isArray(application?.faceEnrollment?.canonicalEmbedding)
+    && application.faceEnrollment.canonicalEmbedding.length > 0;
+
+  if (!hasEmbedding) {
+    return {
+      ok: false,
+      code: 'not_enrolled',
+      message: application?.faceEnrollment?.status === 'failed'
+        ? 'Face enrollment failed during application - proctoring unavailable'
+        : 'Face enrollment not yet complete. Please wait a few seconds and retry.',
+    };
+  }
+
+  const canonicalEmbedding = application.faceEnrollment.canonicalEmbedding;
+  const faceCandidateId = application.faceEnrollment.candidateId || application.applicationId;
+
+  const ownerCandidateId = sessionCandidateId || String(authCtx?.clerkUserId || authCtx?.mongoUserId || '');
+
+  if (!faceProctoringService.isSessionActive(sessionId, ownerCandidateId)) {
+    await faceProctoringService.connectVerificationWS(
+      sessionId,
+      faceCandidateId,
+      canonicalEmbedding,
+      elapsedSeconds,
+      { candidateId: ownerCandidateId }
+    );
+  }
+
+  return { ok: true, candidateId: faceCandidateId, ownerCandidateId };
 }
 
 /**
@@ -70,12 +128,16 @@ function init(server) {
 
   wss.on('connection', (ws) => {
     let userId = null;
+    let faceSessionId = null;
+    let faceOwnerCandidateId = null;
+    let registeredNotificationClient = false;
 
     ws.on('message', async (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
         if (msg.type === 'auth') {
-          const authenticatedUserId = await authenticateSocket(msg);
+          const authCtx = await authenticateSocket(msg);
+          const authenticatedUserId = authCtx.mongoUserId;
 
           // Ensure only one active socket per user in this process.
           const previousSocket = clients.get(authenticatedUserId);
@@ -89,10 +151,82 @@ function init(server) {
 
           userId = authenticatedUserId;
           clients.set(userId, ws);
+          registeredNotificationClient = true;
           logger.info(`[wsManager] Client registered: userId=${userId}`);
           ws.send(JSON.stringify({ type: 'auth_ok' }));
+          return;
+        }
+
+        if (msg.type === 'face_auth') {
+          logger.info(`[wsManager] Face stream auth attempt: sessionId=${msg?.sessionId || 'n/a'}`);
+          const authCtx = await authenticateSocket({ token: msg?.token, userId: msg?.userId });
+          userId = authCtx.mongoUserId;
+          const sessionId = msg?.sessionId;
+          const elapsedSeconds = Number(msg?.elapsedSeconds || 0);
+
+          if (!sessionId) {
+            ws.send(JSON.stringify({ type: 'auth_error', code: 'invalid_session', message: 'sessionId is required' }));
+            return;
+          }
+
+          const readiness = await ensureFaceSessionReady(sessionId, authCtx, elapsedSeconds);
+          if (!readiness.ok) {
+            logger.info(`[wsManager] Face stream auth rejected: sessionId=${sessionId} code=${readiness.code} message=${readiness.message}`);
+            ws.send(JSON.stringify({ type: 'auth_error', code: readiness.code, message: readiness.message }));
+            return;
+          }
+
+          faceSessionId = String(sessionId);
+          faceOwnerCandidateId = readiness.ownerCandidateId || null;
+
+          ws.send(JSON.stringify({
+            type: 'auth_ok',
+            data: {
+              started: true,
+              sessionId: faceSessionId,
+              candidateId: readiness.candidateId,
+            },
+          }));
+          logger.info(`[wsManager] Face stream authenticated: ownerCandidateId=${faceOwnerCandidateId} sessionId=${faceSessionId}`);
+          return;
+        }
+
+        if (msg.type === 'face_frame') {
+          const faceProctoringService = require('../services/faceProctoringService');
+          const frameId = msg?.frameId ?? null;
+          if (!faceSessionId || !faceOwnerCandidateId) {
+            ws.send(JSON.stringify({
+              type: 'analysis',
+              frameId,
+              data: { forwarded: false, failReason: 'not_authenticated' },
+            }));
+            return;
+          }
+
+          const image = msg?.image;
+          if (!image || typeof image !== 'string') {
+            ws.send(JSON.stringify({
+              type: 'analysis',
+              frameId,
+              data: { forwarded: false, failReason: 'missing_image' },
+            }));
+            return;
+          }
+
+          logger.debug(`[wsManager] Face frame received: sessionId=${faceSessionId} frameId=${frameId || 'n/a'}`);
+          const frameResult = faceProctoringService.processFrame(faceSessionId, image, faceOwnerCandidateId);
+          if (!frameResult?.forwarded) {
+            logger.warn(
+              `[wsManager] Face frame not forwarded: sessionId=${faceSessionId} frameId=${frameId || 'n/a'} reason=${frameResult?.failReason || 'unknown'} wsState=${frameResult?.wsReadyState || 'n/a'}`
+            );
+          }
+          ws.send(JSON.stringify({ type: 'analysis', frameId, data: frameResult }));
+          return;
         }
       } catch (err) {
+        if (typeof msg?.type === 'string' && msg.type.startsWith('face_')) {
+          logger.warn(`[wsManager] Face stream message failed: type=${msg.type} error=${err.message}`);
+        }
         if (!userId) {
           ws.send(JSON.stringify({ type: 'auth_error', message: 'Authentication failed' }));
           ws.close();
@@ -102,9 +236,12 @@ function init(server) {
     });
 
     ws.on('close', () => {
-      if (userId) {
+      if (registeredNotificationClient && userId) {
         clients.delete(userId);
         logger.info(`[wsManager] Client disconnected: userId=${userId}`);
+      }
+      if (faceSessionId) {
+        logger.info(`[wsManager] Face stream disconnected: sessionId=${faceSessionId} ownerCandidateId=${faceOwnerCandidateId || 'n/a'}`);
       }
     });
 
