@@ -42,9 +42,9 @@ function buildInterviewerPersona(jobTitle = '') {
 
   return (
     `${baseLine}, now serving as the lead technical interviewer at a top-tier tech company. ` +
-    `You are rigorous, insightful, and know exactly what separates great ${title}s from average ones. ` +
-    `You have personally hired dozens of ${title}s and understand every trick candidates use to bluff. ` +
-    `Your interview style is conversational yet precise — you push deeper when you spot interesting signals, ` +
+    `You are rigorous, fair, and know exactly what separates great ${title}s from average ones. ` +
+    `You have personally hired dozens of ${title}s and consistently evaluate evidence, depth, and role fit. ` +
+    `Your interview style is conversational yet precise: you push deeper when you spot strong signals, ` +
     `change topics when an answer is weak, and always keep the overall picture of the candidate in mind. ` +
     `You NEVER break character. You do NOT explain that you are an AI. You stay professional throughout.`
   );
@@ -72,6 +72,10 @@ function buildSystemPrompt(session, lastEval = null) {
   const elapsedSeconds = session.totalDurationSec || 0;
   const persona = buildInterviewerPersona(jobTitle);
   const phaseHint = getInterviewPhaseHint(elapsedSeconds, config);
+  const qCount = interviewState.questionCount || 0;
+  const unanswered = interviewState.totalUnanswered || 0;
+  const minQuestionsBeforeEnd = Math.max(6, config?.minQuestionsBeforeEnd || 8);
+  const candidateName = context.candidateName?.trim() || 'the candidate';
 
   let prompt = `${persona}\n\n`;
 
@@ -85,18 +89,43 @@ function buildSystemPrompt(session, lastEval = null) {
   }
 
   prompt += `## Interview Phase\n${phaseHint}\n\n`;
+  prompt +=
+    `## Interview Objective\n` +
+    `Assess technical depth, practical execution ability, communication clarity, and ownership for this ${jobTitle} role. ` +
+    `Every question must produce high-signal evidence that helps hiring decisions.\n\n`;
+
+  prompt +=
+    `## Question Design Rules\n` +
+    `- Ask exactly ONE question per turn.\n` +
+    `- Keep questions concise (max 35 words), specific, and role-relevant.\n` +
+    `- Prefer evidence-seeking prompts: ask for concrete examples, decisions, trade-offs, metrics, and outcomes.\n` +
+    `- Avoid generic fillers (e.g., "Tell me about yourself" after opening, "Any final thoughts").\n` +
+    `- Avoid repeating covered topics unless a deeper follow-up is clearly justified.\n` +
+    `- Do not include commentary, praise, scoring, or explanations in output.\n\n`;
+
+  prompt +=
+    `## Progression Strategy\n` +
+    `- Questions 1-2: establish role context and recent hands-on work.\n` +
+    `- Questions 3-6: deep technical and execution probing with realistic scenarios.\n` +
+    `- Questions 7+: challenge edge cases, trade-offs, failure handling, and prioritization under constraints.\n\n`;
 
   // Adaptive difficulty based on last evaluation
   if (lastEval?.score != null) {
     if (lastEval.score >= 7) {
       prompt += `The candidate's last answer was strong (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
-        `Consider going DEEPER on the same topic or exploring an advanced edge case.\n\n`;
+        `Escalate difficulty with a deeper follow-up, architectural trade-off, or edge-case stress test.\n\n`;
     } else if (lastEval.score <= 4) {
       prompt += `The candidate's last answer was weak (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
-        `PIVOT to a completely different topic to give them a fresh chance.\n\n`;
+        `Pivot to another key requirement and ask a clearer but still rigorous question.\n\n`;
     } else {
-      prompt += `The last answer was average (score ${lastEval.score}/10). Continue naturally to the next relevant topic.\n\n`;
+      prompt += `The last answer was average (score ${lastEval.score}/10). Continue with a targeted follow-up or adjacent topic.\n\n`;
     }
+  }
+
+  if (unanswered > 0) {
+    prompt +=
+      `The candidate has ${unanswered} unanswered question(s). If they were recently silent, ` +
+      `use a simpler, direct prompt that is easier to answer while still evaluating a core requirement.\n\n`;
   }
 
   // Topic awareness — avoid repetition
@@ -105,12 +134,10 @@ function buildSystemPrompt(session, lastEval = null) {
       `Avoid repeating these topics unless you need a deeper follow-up.\n\n`;
   }
 
-  const qCount = interviewState.questionCount || 0;
-  const unanswered = interviewState.totalUnanswered || 0;
-
   if (qCount === 0) {
-    prompt += `This is the FIRST question. Welcome the candidate briefly (one sentence), address them by name if known, ` +
-      `and ask them to introduce themselves and describe their most relevant experience for this ${jobTitle} role.`;
+    prompt +=
+      `This is the FIRST question. Begin with one short welcome sentence, mention ${candidateName}, and ask for ` +
+      `their most relevant recent experience for this ${jobTitle} role with one concrete project example.`;
   } else {
     prompt +=
       `## Cross-Examination Strategy\n` +
@@ -122,7 +149,7 @@ function buildSystemPrompt(session, lastEval = null) {
       `## When to End the Interview\n` +
       `You have asked ${qCount} question(s) so far. The candidate has left ${unanswered} question(s) unanswered. ` +
       `You MAY decide to end the interview when BOTH conditions are true: ` +
-      `(a) you have asked at least 8 questions, AND ` +
+      `(a) you have asked at least ${minQuestionsBeforeEnd} questions, AND ` +
       `(b) you feel confident in your overall assessment — ` +
       `whether positive (thoroughly impressed) or negative (consistently poor or evasive answers). ` +
       `To signal that the interview should end, output ONLY this exact token on its own: [END_INTERVIEW]\n\n` +
@@ -393,8 +420,8 @@ async function startSession(sessionId) {
 }
 
 /**
- * Submit an answer (text) and get the next question + evaluation of the current answer.
- * This is the core turn-by-turn loop.
+ * Submit an answer (text) and get the next question.
+ * During the interview we only collect transcript; full LLM evaluation happens at completion.
  */
 async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs = 0 }) {
   const session = await InterviewSession.findById(sessionId);
@@ -425,43 +452,18 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
     session.interviewState.consecutiveSilent = 0;
   }
 
-  // ── Parallel: Evaluate answer + Generate next question ──────────────────
-  const [evalResult, nextQuestionResult] = await Promise.allSettled([
-    isUnanswered
-      ? Promise.resolve({ score: 0, feedback: 'No response given — question skipped.', topics: [], strengths: [], weaknesses: ['No response'] })
-      : evaluateAnswer(turn.question, answerText, session.jobTitle),
-    generateNextQuestion(session),
-  ]);
-
-  // Process evaluation
-  const evaluation = evalResult.status === 'fulfilled' ? evalResult.value : { score: null, feedback: '', topics: [] };
+  // Keep per-turn evaluation empty until interview completion.
   turn.evaluation = {
-    score: evaluation.score,
-    feedback: evaluation.feedback,
-    topics: evaluation.topics || [],
-    strengths: evaluation.strengths || [],
-    weaknesses: evaluation.weaknesses || [],
+    score: null,
+    feedback: '',
+    topics: [],
+    strengths: [],
+    weaknesses: [],
   };
 
-  // Update interview intelligence state
-  if (evaluation.score != null) {
-    session.interviewState.lastEvalScore = evaluation.score;
-    session.interviewState.lastEvalFeedback = evaluation.feedback || '';
-  }
-  if (evaluation.topics?.length > 0) {
-    const existing = new Set(session.interviewState.topicsCovered || []);
-    evaluation.topics.forEach(t => existing.add(t));
-    session.interviewState.topicsCovered = Array.from(existing);
-  }
-
-  // Adjust difficulty dynamically
-  const recentScores = session.turns.slice(-3).map(t => t.evaluation?.score).filter(s => s != null);
-  if (recentScores.length >= 2) {
-    const recentAvg = recentScores.reduce((a, b) => a + b, 0) / recentScores.length;
-    if (recentAvg >= 7.5) session.interviewState.difficultyLevel = 'hard';
-    else if (recentAvg <= 4) session.interviewState.difficultyLevel = 'easy';
-    else session.interviewState.difficultyLevel = 'medium';
-  }
+  const nextQuestionResult = await Promise.allSettled([
+    generateNextQuestion(session),
+  ]).then((results) => results[0]);
 
   // Process next question
   let nextQuestion = null;
@@ -495,17 +497,22 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
     }
   }
 
-  // Recompute averages
-  session.computeScoring();
-
   if (shouldEnd) {
     session.status = 'completing';
   }
 
   await session.save();
 
+  const deferredEvaluation = {
+    score: null,
+    feedback: 'Evaluation will be generated after interview completion using full transcript context.',
+    topics: [],
+    strengths: [],
+    weaknesses: [],
+  };
+
   return {
-    evaluation: turn.evaluation,
+    evaluation: deferredEvaluation,
     nextQuestion,
     shouldEnd,
     turnIndex: nextQuestion ? session.turns.length - 1 : turnIndex,
@@ -554,7 +561,6 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
     session.status = 'completed';
   }
 
-  session.computeScoring();
   session.computeIntegrityVerdict();
 
   // Calculate total duration
@@ -562,15 +568,51 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
     session.totalDurationSec = Math.floor((session.completedAt - session.startedAt) / 1000);
   }
 
-  // ── Generate Final Summary via LLM ──────────────────────────────────────
+  // ── Generate Final Evaluation via LLM with full transcript context ─────
   try {
     const summaryPrompt = buildFinalSummaryPrompt(session);
     const summaryText = await callGroqChat([
       { role: 'system', content: summaryPrompt },
-    ], { maxTokens: 600, temperature: 0.3 });
+    ], { maxTokens: 900, temperature: 0.2 });
 
-    const summary = parseFinalSummary(summaryText);
+    const summary = normalizeFinalSummary(parseFinalSummary(summaryText), session.turns);
     if (summary) {
+      const perAnswer = Array.isArray(summary.perAnswerEvaluations)
+        ? summary.perAnswerEvaluations
+        : [];
+
+      session.turns.forEach((turn, idx) => {
+        const byIndex = perAnswer.find((item) => Number(item?.turnIndex) === idx);
+        const byOrder = perAnswer[idx];
+        const source = byIndex || byOrder;
+
+        if (source) {
+          turn.evaluation = {
+            score: typeof source.score === 'number' ? source.score : null,
+            feedback: source.feedback || '',
+            topics: Array.isArray(source.topics) ? source.topics : [],
+            strengths: Array.isArray(source.strengths) ? source.strengths : [],
+            weaknesses: Array.isArray(source.weaknesses) ? source.weaknesses : [],
+          };
+        } else if (turn.isUnanswered) {
+          turn.evaluation = {
+            score: 0,
+            feedback: 'No response given.',
+            topics: [],
+            strengths: [],
+            weaknesses: ['No response'],
+          };
+        }
+      });
+
+      const topics = new Set();
+      session.turns.forEach((turn) => {
+        (turn.evaluation?.topics || []).forEach((topic) => topics.add(topic));
+      });
+      session.interviewState.topicsCovered = Array.from(topics);
+
+      session.computeScoring();
+
       session.scoring.technicalScore = summary.technicalScore ?? session.scoring.averageScore;
       session.scoring.communicationScore = summary.communicationScore ?? null;
       session.scoring.problemSolvingScore = summary.problemSolvingScore ?? null;
@@ -636,34 +678,6 @@ async function getActiveSession(applicationId, candidateId) {
 //  INTERNAL HELPERS
 // ═════════════════════════════════════════════════════════════════════════════
 
-async function evaluateAnswer(question, answer, jobTitle = '') {
-  try {
-    const raw = await callGroqChat([
-      {
-        role: 'system',
-        content:
-          `You are a strict technical interviewer evaluating a candidate for a ${jobTitle} role. ` +
-          `Evaluate the answer thoroughly. Respond ONLY with a JSON object — no markdown, no extra text:\n` +
-          `{ "score": <1-10>, "feedback": "<one sentence>", "topics": ["<topic covered>"], ` +
-          `"strengths": ["<strength>"], "weaknesses": ["<weakness>"] }`,
-      },
-      { role: 'user', content: `Question: ${question}\n\nAnswer: ${answer}` },
-    ], { maxTokens: 200, temperature: 0.2 });
-
-    const parsed = JSON.parse(raw);
-    return {
-      score: parsed.score ?? null,
-      feedback: parsed.feedback ?? '',
-      topics: parsed.topics ?? [],
-      strengths: parsed.strengths ?? [],
-      weaknesses: parsed.weaknesses ?? [],
-    };
-  } catch (err) {
-    logger.warn('[Interview] Evaluation parsing failed:', err.message);
-    return { score: null, feedback: '', topics: [], strengths: [], weaknesses: [] };
-  }
-}
-
 async function generateNextQuestion(session) {
   // Rebuild system prompt with updated state
   const lastEval = {
@@ -684,7 +698,32 @@ async function generateNextQuestion(session) {
     return { endInterview: true, question: null };
   }
 
-  return { endInterview: false, question };
+  return { endInterview: false, question: normalizeQuestionOutput(question) };
+}
+
+function normalizeQuestionOutput(rawText) {
+  const text = (rawText || '').trim();
+  if (!text) {
+    return 'Can you walk me through a recent project where you made a key technical decision and explain the trade-offs you considered?';
+  }
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const cleaned = lines.length > 0 ? lines[0] : text;
+  const withoutPrefix = cleaned
+    .replace(/^\d+[\).:-]\s*/, '')
+    .replace(/^(question\s*[:.-]?\s*)/i, '')
+    .replace(/^[-*]\s*/, '')
+    .trim();
+
+  if (!withoutPrefix) {
+    return 'Can you describe how you would approach solving a high-impact technical problem in your current stack?';
+  }
+
+  return withoutPrefix;
 }
 
 function getPhaseForElapsed(elapsedSec, config) {
@@ -698,20 +737,70 @@ function getPhaseForElapsed(elapsedSec, config) {
 }
 
 function buildFinalSummaryPrompt(session) {
-  const turns = session.turns.map((t, i) => {
-    const scoreStr = t.evaluation?.score != null ? `${t.evaluation.score}/10` : 'N/A';
-    return `Q${i + 1}: ${t.question}\nA: ${t.answer}\nEval: ${scoreStr} — ${t.evaluation?.feedback || 'N/A'}`;
-  }).join('\n\n');
+  const turns = session.turns.map((t, i) => (
+    `TurnIndex: ${i}\n` +
+    `Phase: ${t.phase || 'main'}\n` +
+    `Question: ${t.question}\n` +
+    `Answer: ${t.answer || '(no response)'}\n` +
+    `Answered: ${t.isUnanswered ? 'NO' : 'YES'}`
+  )).join('\n\n');
+
+  const messageHistory = (session.conversationHistory || [])
+    .filter((m) => m?.role && m.role !== 'system')
+    .map((m, idx) => `${idx + 1}. ${m.role.toUpperCase()}: ${String(m.content || '').slice(0, 1000)}`)
+    .join('\n');
+
+  const requirements = Array.isArray(session.context?.requirements)
+    ? session.context.requirements.filter(Boolean)
+    : [];
+  const skills = Array.isArray(session.context?.skills)
+    ? session.context.skills.filter(Boolean)
+    : [];
 
   return (
-    `You are a senior hiring evaluator. Below is the complete transcript of an interview ` +
-    `for a ${session.jobTitle} position.\n\n` +
-    `## Interview Transcript\n${turns}\n\n` +
-    `## Current Average Score: ${session.scoring.averageScore ?? 'N/A'}/10\n\n` +
-    `Provide a final evaluation. Respond ONLY with JSON — no markdown:\n` +
-    `{ "technicalScore": <1-10>, "communicationScore": <1-10>, "problemSolvingScore": <1-10>, ` +
-    `"overallVerdict": "<Strong/Moderate/Needs Improvement>", ` +
-    `"strengths": ["..."], "weaknesses": ["..."], "recommendations": ["..."] }`
+    `You are a principal hiring evaluator conducting a final assessment for a ${session.jobTitle} interview.\n\n` +
+    `## Evaluation Goal\n` +
+    `Score each answer only AFTER reviewing the complete interview context. ` +
+    `Use later answers to calibrate earlier ambiguous answers (and vice versa), while still assigning a distinct score per turn.\n\n` +
+    `## Role Context\n` +
+    `Job Title: ${session.jobTitle}\n` +
+    `Key Requirements: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
+    `Candidate Skills: ${skills.length ? skills.join(', ') : 'Not provided'}\n\n` +
+    `## Structured Interview Turns\n${turns}\n\n` +
+    `## Complete Conversation History\n${messageHistory || 'Not available'}\n\n` +
+    `## Scoring Rubric (0-10 per turn)\n` +
+    `- 9-10: exceptional depth, precise reasoning, clear ownership, strong trade-off analysis.\n` +
+    `- 7-8: solid and mostly complete, minor gaps but technically credible.\n` +
+    `- 5-6: partially correct, moderate gaps in detail, weak evidence.\n` +
+    `- 3-4: shallow or inconsistent understanding, major missing reasoning.\n` +
+    `- 0-2: incorrect, evasive, or no meaningful response.\n\n` +
+    `## Evaluation Rules\n` +
+    `- Evaluate ALL turns from TurnIndex 0 to TurnIndex ${Math.max(session.turns.length - 1, 0)}.\n` +
+    `- Return EXACTLY ${session.turns.length} objects in perAnswerEvaluations.\n` +
+    `- For unanswered turns, set score to 0 and explain briefly.\n` +
+    `- feedback must be 1-2 concise sentences and reference concrete evidence from the interview context.\n` +
+    `- topics, strengths, weaknesses should be specific and non-generic.\n` +
+    `- Keep overall scores consistent with per-turn evidence.\n\n` +
+    `Respond ONLY with valid JSON (no markdown, no prose) in this schema:\n` +
+    `{\n` +
+    `  "perAnswerEvaluations": [\n` +
+    `    {\n` +
+    `      "turnIndex": <number>,\n` +
+    `      "score": <0-10>,\n` +
+    `      "feedback": "<1-2 sentence rationale with evidence>",\n` +
+    `      "topics": ["<topic>"],\n` +
+    `      "strengths": ["<strength>"],\n` +
+    `      "weaknesses": ["<weakness>"]\n` +
+    `    }\n` +
+    `  ],\n` +
+    `  "technicalScore": <1-10>,\n` +
+    `  "communicationScore": <1-10>,\n` +
+    `  "problemSolvingScore": <1-10>,\n` +
+    `  "overallVerdict": "<Strong Performance|Moderate Performance|Needs Improvement>",\n` +
+    `  "strengths": ["..."],\n` +
+    `  "weaknesses": ["..."],\n` +
+    `  "recommendations": ["..."]\n` +
+    `}`
   );
 }
 
@@ -724,6 +813,55 @@ function parseFinalSummary(text) {
   } catch {
     return null;
   }
+}
+
+function normalizeFinalSummary(summary, turns = []) {
+  if (!summary || typeof summary !== 'object') return null;
+
+  const turnCount = Array.isArray(turns) ? turns.length : 0;
+  const inputEvaluations = Array.isArray(summary.perAnswerEvaluations)
+    ? summary.perAnswerEvaluations
+    : [];
+
+  const normalizedPerAnswer = Array.from({ length: turnCount }, (_, idx) => {
+    const byIndex = inputEvaluations.find((item) => Number(item?.turnIndex) === idx);
+    const byOrder = inputEvaluations[idx];
+    const source = byIndex || byOrder || {};
+
+    const isUnanswered = turns[idx]?.isUnanswered;
+    const parsedScore = Number(source.score);
+    const boundedScore = Number.isFinite(parsedScore)
+      ? Math.max(0, Math.min(10, parsedScore))
+      : (isUnanswered ? 0 : null);
+
+    return {
+      turnIndex: idx,
+      score: boundedScore,
+      feedback: typeof source.feedback === 'string' && source.feedback.trim()
+        ? source.feedback.trim()
+        : (isUnanswered ? 'No response given.' : ''),
+      topics: Array.isArray(source.topics) ? source.topics.filter(Boolean).slice(0, 5) : [],
+      strengths: Array.isArray(source.strengths) ? source.strengths.filter(Boolean).slice(0, 5) : [],
+      weaknesses: Array.isArray(source.weaknesses) ? source.weaknesses.filter(Boolean).slice(0, 5) : [],
+    };
+  });
+
+  return {
+    perAnswerEvaluations: normalizedPerAnswer,
+    technicalScore: normalizeAggregateScore(summary.technicalScore),
+    communicationScore: normalizeAggregateScore(summary.communicationScore),
+    problemSolvingScore: normalizeAggregateScore(summary.problemSolvingScore),
+    overallVerdict: typeof summary.overallVerdict === 'string' ? summary.overallVerdict.trim() : '',
+    strengths: Array.isArray(summary.strengths) ? summary.strengths.filter(Boolean).slice(0, 8) : [],
+    weaknesses: Array.isArray(summary.weaknesses) ? summary.weaknesses.filter(Boolean).slice(0, 8) : [],
+    recommendations: Array.isArray(summary.recommendations) ? summary.recommendations.filter(Boolean).slice(0, 8) : [],
+  };
+}
+
+function normalizeAggregateScore(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(1, Math.min(10, n));
 }
 
 function formatSessionSummary(session) {
