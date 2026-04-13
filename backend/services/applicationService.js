@@ -969,6 +969,10 @@ const submitApplication = async (candidateId, applicationData, files) => {
     throw new ValidationError('This job is no longer accepting applications');
   }
 
+  if (job.applicationDeadline && new Date() > new Date(job.applicationDeadline)) {
+    throw new ValidationError('Application deadline has passed for this job');
+  }
+
   // Check if already applied
   const existingApplication = await JobApplication.findOne({
     jobId,
