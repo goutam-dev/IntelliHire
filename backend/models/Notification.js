@@ -20,6 +20,7 @@ const NotificationSchema = new Schema(
         'interview_completed',    // employer: candidate completed interview
         'status_updated',         // candidate: employer changed status
         'interview_scheduled',    // candidate: interview window set
+        'interview_rescheduled',  // candidate: interview window changed
       ],
     },
     title: { type: String, required: true },

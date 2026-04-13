@@ -33,6 +33,7 @@ const typeIcons = {
   interview_completed: CalendarDays,
   status_updated: ClipboardList,
   interview_scheduled: CalendarDays,
+  interview_rescheduled: CalendarDays,
 };
 
 const NotificationBell = () => {

@@ -60,6 +60,7 @@ function statusUpdatedEmail({ jobTitle, newStatus, applicationLink }) {
     'Under Review':        'is now under review',
     'Shortlisted':         'has been shortlisted',
     'Interview Scheduled': 'has been scheduled for an interview',
+    'Interview Rescheduled': 'has been rescheduled for an interview',
     'Interviewed':         'has been marked as interviewed',
     'Hired':               'has been accepted — Congratulations!',
     'Rejected':            'has not moved forward at this time',
@@ -251,6 +252,7 @@ async function notifyCandidateStatusUpdate({ candidateUserId, jobTitle, newStatu
     'Under Review':        `Your application for "${jobTitle}" is now under review.`,
     'Shortlisted':         `Great news! You've been shortlisted for "${jobTitle}".`,
     'Interview Scheduled': `An interview has been scheduled for your application to "${jobTitle}".`,
+    'Interview Rescheduled': `Your interview for "${jobTitle}" has been rescheduled. Please check the updated schedule.`,
     'Interviewed':         `Your interview for "${jobTitle}" has been completed.`,
     'Hired':               `Congratulations! You've been hired for "${jobTitle}"! 🎉`,
     'Rejected':            `Your application for "${jobTitle}" has not moved forward.`,
@@ -262,6 +264,7 @@ async function notifyCandidateStatusUpdate({ candidateUserId, jobTitle, newStatu
     'Under Review':        'Application Under Review',
     'Shortlisted':         'You\'ve Been Shortlisted!',
     'Interview Scheduled': 'Interview Scheduled',
+    'Interview Rescheduled': 'Interview Rescheduled',
     'Interviewed':         'Interview Completed',
     'Hired':               'Application Accepted!',
     'Rejected':            'Application Update',
@@ -283,7 +286,7 @@ async function notifyCandidateStatusUpdate({ candidateUserId, jobTitle, newStatu
  * Send interview scheduled notification only when both enrollments are completed.
  * This is safe to call repeatedly from multiple code paths.
  */
-async function notifyInterviewScheduledWhenEnrollmentReady({ applicationId }) {
+async function notifyInterviewScheduledWhenEnrollmentReady({ applicationId, notificationStatus }) {
   if (!applicationId) return { sent: false, reason: 'missing_application_id' };
 
   const claimedAt = new Date();
@@ -309,13 +312,16 @@ async function notifyInterviewScheduledWhenEnrollmentReady({ applicationId }) {
     return { sent: false, reason: 'not_ready_or_already_sent' };
   }
 
+  const resolvedStatus =
+    notificationStatus || app.interviewNotificationStatus || 'Interview Scheduled';
+
   try {
     await notifyCandidateStatusUpdate({
       candidateUserId: app.candidateId,
       jobTitle: app.jobId?.title || 'the job',
-      newStatus: 'Interview Scheduled',
+      newStatus: resolvedStatus,
       applicationId: app.applicationId,
-      notifType: 'interview_scheduled',
+      notifType: resolvedStatus === 'Interview Rescheduled' ? 'interview_rescheduled' : 'interview_scheduled',
     });
     return { sent: true };
   } catch (err) {

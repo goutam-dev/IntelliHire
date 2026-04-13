@@ -15,10 +15,13 @@ import { fetchEmployerProfile } from '../store/slices/employerSlice';
 import {
   JOB_CATEGORIES,
   EXPERIENCE_LEVELS,
+  EXPERIENCE_LEVEL_DURATION_GUIDE,
   EMPLOYMENT_TYPES,
   EDUCATION_OPTIONS,
   CURRENCY_OPTIONS,
 } from '../constants/jobConstants';
+
+const DEPARTMENT_OPTION_VALUES = new Set(JOB_CATEGORIES.map((option) => option.value));
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -40,6 +43,7 @@ const EditJobPage = () => {
   const [formData, setFormData] = useState({
     title: '',
     department: '',
+    customDepartment: '',
     description: '',
     requiredSkills: [],
     experienceLevel: '',
@@ -71,9 +75,13 @@ const EditJobPage = () => {
 
   useEffect(() => {
     if (currentJob?._id === jobId) {
+      const existingDepartment = currentJob.department || '';
+      const hasPresetDepartment = DEPARTMENT_OPTION_VALUES.has(existingDepartment);
+
       setFormData({
         title: currentJob.title || '',
-        department: currentJob.department || '',
+        department: hasPresetDepartment ? existingDepartment : (existingDepartment ? 'other' : ''),
+        customDepartment: hasPresetDepartment ? '' : existingDepartment,
         description: currentJob.description || '',
         requiredSkills: currentJob.requiredSkills || [],
         experienceLevel: currentJob.experienceLevel || '',
@@ -116,10 +124,20 @@ const EditJobPage = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => {
+      if (name === 'department') {
+        return {
+          ...prev,
+          department: value,
+          customDepartment: value === 'other' ? prev.customDepartment : '',
+        };
+      }
+
+      return {
+        ...prev,
+        [name]: value,
+      };
+    });
     if (validationErrors[name]) {
       dispatch(
         setValidationErrors({
@@ -174,6 +192,20 @@ const EditJobPage = () => {
           errors.description = 'Job description must be at least 50 characters';
         } else {
           errors.description = null;
+        }
+        break;
+      case 'department':
+        if (value === 'other' && (!formData.customDepartment || formData.customDepartment.trim() === '')) {
+          errors.department = 'Please enter a custom department name';
+        } else {
+          errors.department = null;
+        }
+        break;
+      case 'customDepartment':
+        if (formData.department === 'other' && (!value || value.trim() === '')) {
+          errors.department = 'Please enter a custom department name';
+        } else {
+          errors.department = null;
         }
         break;
       case 'requiredSkills':
@@ -318,6 +350,11 @@ const EditJobPage = () => {
       isValid = false;
     }
 
+    if (formData.department === 'other' && (!formData.customDepartment || formData.customDepartment.trim() === '')) {
+      errors.department = 'Please enter a custom department name';
+      isValid = false;
+    }
+
     if (formData.salaryMin && (isNaN(formData.salaryMin) || parseFloat(formData.salaryMin) < 0)) {
       errors.salaryMin = 'Salary must be a valid positive number';
       isValid = false;
@@ -375,8 +412,13 @@ const EditJobPage = () => {
     e.preventDefault();
     if (!validateForm()) return;
 
+    const { customDepartment, ...baseFormData } = formData;
+
     const jobData = {
-      ...formData,
+      ...baseFormData,
+      department: formData.department === 'other'
+        ? (formData.customDepartment.trim() || undefined)
+        : (formData.department || undefined),
       salaryRange:
         formData.salaryMin || formData.salaryMax
           ? {
@@ -443,10 +485,27 @@ const EditJobPage = () => {
           value={formData.department}
           onChange={handleChange}
           onBlur={() => handleBlur('department')}
-          error={touched.department ? validationErrors.department : null}
+          error={
+            touched.department && formData.department !== 'other'
+              ? validationErrors.department
+              : null
+          }
           placeholder="Select department"
           options={JOB_CATEGORIES}
         />
+
+        {formData.department === 'other' && (
+          <Input
+            label="Custom Department"
+            name="customDepartment"
+            type="text"
+            value={formData.customDepartment}
+            onChange={handleChange}
+            onBlur={() => handleBlur('customDepartment')}
+            error={touched.customDepartment ? validationErrors.department : null}
+            placeholder="Enter custom department name"
+          />
+        )}
 
         <Textarea
           label="Job Description"
@@ -482,6 +541,9 @@ const EditJobPage = () => {
           placeholder="Select experience level"
           options={EXPERIENCE_LEVELS}
         />
+        <p className="-mt-4 text-xs text-slate-500">
+          Guide: Entry = {EXPERIENCE_LEVEL_DURATION_GUIDE.entry}, Mid = {EXPERIENCE_LEVEL_DURATION_GUIDE.mid}, Senior = {EXPERIENCE_LEVEL_DURATION_GUIDE.senior}, Expert = {EXPERIENCE_LEVEL_DURATION_GUIDE.expert}
+        </p>
 
         <Select
           label="Education Requirements"

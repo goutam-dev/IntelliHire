@@ -59,6 +59,13 @@ const sortApplications = (applications, sort) => {
     const timeA = getTimestamp(a);
     const timeB = getTimestamp(b);
 
+    if (sort === 'ai_score') {
+      const scoreA = typeof a.aiScore === 'number' ? a.aiScore : -1;
+      const scoreB = typeof b.aiScore === 'number' ? b.aiScore : -1;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return timeB - timeA;
+    }
+
     if (sort === 'newest') {
       return timeB - timeA;
     } else if (sort === 'oldest') {
@@ -128,6 +135,14 @@ const EXPERIENCE_LABELS = {
   expert: 'Expert',
 };
 
+const EXPERIENCE_MIN_YEARS = {
+  'no-experience': 0,
+  entry: 1,
+  mid: 2,
+  senior: 5,
+  expert: 8,
+};
+
 const EDUCATION_LEVEL_RANK = {
   none: 0,
   'high-school': 1,
@@ -139,9 +154,9 @@ const EDUCATION_LEVEL_RANK = {
 const APPLICATION_TRANSITIONS = {
   Applied: ['Under Review', 'Shortlisted', 'Rejected'],
   'Under Review': ['Shortlisted', 'Rejected'],
-  Shortlisted: ['Interview Scheduled', 'Rejected'],
+  Shortlisted: ['Interview Scheduled', 'Rejected', 'Hired'],
   'Interview Scheduled': ['Interviewed', 'Rejected'],
-  Interviewed: ['Hired', 'Rejected'],
+  Interviewed: ['Hired', 'Rejected', 'Shortlisted'],
   Rejected: [],
   Hired: [],
   Withdrawn: [],
@@ -162,6 +177,69 @@ const assertStatusTransitionAllowed = (currentStatus, nextStatus) => {
   if (!allowedNext.includes(nextStatus)) {
     throw new ValidationError(`Invalid status transition from ${currentStatus} to ${nextStatus}`);
   }
+};
+
+const hasInterviewWindowExpired = (application, now = new Date()) => {
+  if (!application?.interviewWindowEnd) return false;
+  const endDate = new Date(application.interviewWindowEnd);
+  if (Number.isNaN(endDate.getTime())) return false;
+  return endDate <= now;
+};
+
+const hasInterviewBeenTaken = async (application) => {
+  if (!application?.applicationId) return false;
+  if (application.status === 'Interviewed') return true;
+
+  const latestSession = await InterviewSession.findOne({ applicationId: application.applicationId })
+    .sort({ createdAt: -1 })
+    .select('status startedAt completedAt')
+    .lean();
+
+  if (!latestSession) return false;
+
+  return (
+    Boolean(latestSession.startedAt) ||
+    Boolean(latestSession.completedAt) ||
+    TERMINAL_INTERVIEW_STATUSES.includes(latestSession.status)
+  );
+};
+
+const parseInterviewDateTime = (value, fieldName) => {
+  if (!value) {
+    throw new ValidationError(`${fieldName} is required.`);
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    throw new ValidationError(`${fieldName} is required.`);
+  }
+
+  // Handle date-only values as local midnight instead of UTC midnight to avoid timezone drift.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [yearStr, monthStr, dayStr] = raw.split('-');
+    const parsed = new Date(
+      Number(yearStr),
+      Number(monthStr) - 1,
+      Number(dayStr),
+      0,
+      0,
+      0,
+      0
+    );
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new ValidationError(`Invalid ${fieldName}.`);
+    }
+
+    return parsed;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ValidationError(`Invalid ${fieldName}.`);
+  }
+
+  return parsed;
 };
 
 const assertApplicationMutableForEmployer = (application) => {
@@ -254,36 +332,54 @@ const estimateCandidateExperienceYears = (profile) => {
   return totalYears;
 };
 
-const assertCandidateEligibilityForJob = async (candidateId, job) => {
-  const profile = await CandidateProfile.findOne({ user: candidateId }).lean();
-
-  if (!profile) {
-    throw new ValidationError('Please complete your candidate profile before applying to this job.');
-  }
-
-  const requiredExperienceRank = EXPERIENCE_LEVEL_RANK[job.experienceLevel] ?? EXPERIENCE_LEVEL_RANK['no-experience'];
+const evaluateCandidateRequirementMatch = (profile, job) => {
+  const requiredExperienceRank = EXPERIENCE_LEVEL_RANK[job?.experienceLevel] ?? EXPERIENCE_LEVEL_RANK['no-experience'];
+  const requiredExperienceYears = EXPERIENCE_MIN_YEARS[job?.experienceLevel] ?? 0;
   const candidateExperienceYears = estimateCandidateExperienceYears(profile);
   const candidateExperienceRank = inferExperienceRankFromYears(candidateExperienceYears);
 
-  if (candidateExperienceRank < requiredExperienceRank) {
-    throw new ValidationError(
-      `This role requires at least ${EXPERIENCE_LABELS[job.experienceLevel] || job.experienceLevel} experience.`
-    );
-  }
+  const experienceMet = candidateExperienceRank >= requiredExperienceRank;
 
-  const requiredEducationRank = inferEducationRank(job.educationRequirements);
-  if (requiredEducationRank <= EDUCATION_LEVEL_RANK.none) return;
-
-  const candidateEducationRank = (profile.education || []).reduce((bestRank, edu) => {
+  const requiredEducationRank = inferEducationRank(job?.educationRequirements);
+  const candidateEducationRank = (profile?.education || []).reduce((bestRank, edu) => {
     const rank = inferEducationRank(edu?.degree);
     return Math.max(bestRank, rank);
   }, 0);
 
-  if (candidateEducationRank < requiredEducationRank) {
-    throw new ValidationError(
-      `This role requires minimum ${job.educationRequirements} education qualification.`
-    );
+  const hasEducationRequirement = requiredEducationRank > EDUCATION_LEVEL_RANK.none;
+  const educationMet = !hasEducationRequirement || candidateEducationRank >= requiredEducationRank;
+
+  const missingParts = [];
+  if (!experienceMet && requiredExperienceYears > 0) {
+    missingParts.push(`${requiredExperienceYears}+ years of experience`);
   }
+  if (!educationMet && job?.educationRequirements) {
+    missingParts.push(`${job.educationRequirements} education level`);
+  }
+
+  const meetsAll = experienceMet && educationMet;
+  const totalRequirements = (requiredExperienceYears > 0 ? 1 : 0) + (hasEducationRequirement ? 1 : 0);
+  const matchedRequirements =
+    (requiredExperienceYears > 0 && experienceMet ? 1 : 0) +
+    (hasEducationRequirement && educationMet ? 1 : 0);
+  const warningMessage = missingParts.length
+    ? `You match ${matchedRequirements} of ${totalRequirements} requirements for this role. You can still apply - the employer makes the final call.`
+    : null;
+
+  return {
+    meetsAll,
+    matchedRequirements,
+    totalRequirements,
+    experienceMet,
+    educationMet,
+    candidateExperienceYears: Number(candidateExperienceYears.toFixed(1)),
+    requiredExperienceLevel: job?.experienceLevel || null,
+    requiredExperienceLabel: EXPERIENCE_LABELS[job?.experienceLevel] || job?.experienceLevel || null,
+    requiredExperienceYears,
+    requiredEducationLevel: hasEducationRequirement ? (job?.educationRequirements || null) : null,
+    positiveMessage: 'Great news! Your profile matches the requirements for this job.',
+    warningMessage,
+  };
 };
 
 const toAbsoluteUploadPath = (relativePath = '') => {
@@ -572,6 +668,13 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
   assertApplicationMutableForEmployer(application);
   assertStatusTransitionAllowed(oldStatus, status);
 
+  if (oldStatus === 'Shortlisted' && status === 'Hired') {
+    const interviewTaken = await hasInterviewBeenTaken(application);
+    if (!interviewTaken) {
+      throw new ValidationError('Candidate can be accepted only after interview completion.');
+    }
+  }
+
   if (status === 'Interview Scheduled' && application.jobId.status !== 'active') {
     throw new ValidationError('Interviews can only be scheduled while the job is active.');
   }
@@ -587,6 +690,7 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
   application.status = status;
   if (status === 'Interview Scheduled' && oldStatus !== status) {
     application.interviewNotificationSentAt = null;
+    application.interviewNotificationStatus = 'Interview Scheduled';
   }
   if (feedback) application.employerNotes = feedback;
   else if (notes) application.employerNotes = notes;
@@ -698,6 +802,14 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
 
     assertApplicationMutableForEmployer(app);
     assertStatusTransitionAllowed(app.status, status);
+
+    if (app.status === 'Shortlisted' && status === 'Hired') {
+      const interviewTaken = await hasInterviewBeenTaken(app);
+      if (!interviewTaken) {
+        throw new ValidationError('Candidate can be accepted only after interview completion.');
+      }
+    }
+
     if (status === 'Interview Scheduled' && app.jobId.status !== 'active') {
       throw new ValidationError('Interviews can only be scheduled while the job is active.');
     }
@@ -710,6 +822,7 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
     app.status = status;
     if (status === 'Interview Scheduled') {
       app.interviewNotificationSentAt = null;
+      app.interviewNotificationStatus = 'Interview Scheduled';
     }
     if (feedback) app.employerNotes = feedback;
     else if (notes) app.employerNotes = notes;
@@ -753,18 +866,19 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   }
 
   if (!interviewWindowStart || !interviewWindowEnd) {
-    throw new ValidationError('Interview window start and end dates are required');
+    throw new ValidationError('Interview start date/time and end date/time are required');
   }
 
-  const startDate = new Date(interviewWindowStart);
-  const endDate = new Date(interviewWindowEnd);
+  const startDate = parseInterviewDateTime(interviewWindowStart, 'Interview start date/time');
+  const endDate = parseInterviewDateTime(interviewWindowEnd, 'Interview end date/time');
 
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    throw new ValidationError('Invalid interview window dates');
+  const now = new Date();
+  if (startDate < now) {
+    throw new ValidationError('Interview start date/time cannot be in the past.');
   }
 
   if (endDate <= startDate) {
-    throw new ValidationError('Interview window end date must be after start date');
+    throw new ValidationError('Interview end date/time must be after start date/time.');
   }
 
   const application = await JobApplication.findById(applicationId).populate('jobId');
@@ -787,12 +901,28 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
     throw new ValidationError('This job is not accepting interview scheduling.');
   }
 
-  if (application.status !== 'Shortlisted') {
-    throw new ValidationError('Only shortlisted applications can be moved to interview scheduling.');
+  const isInitialSchedule = application.status === 'Shortlisted';
+  const isReschedule = application.status === 'Interview Scheduled';
+  const interviewNotificationStatus = isReschedule ? 'Interview Rescheduled' : 'Interview Scheduled';
+
+  if (!isInitialSchedule && !isReschedule) {
+    throw new ValidationError('Interview can only be scheduled from Shortlisted or rescheduled from Interview Scheduled status.');
+  }
+
+  if (isReschedule) {
+    if (hasInterviewWindowExpired(application, now)) {
+      throw new ValidationError('Interview can no longer be rescheduled because the current interview window has already ended.');
+    }
+
+    const interviewTaken = await hasInterviewBeenTaken(application);
+    if (interviewTaken) {
+      throw new ValidationError('Interview cannot be rescheduled because the candidate has already started or completed the interview.');
+    }
   }
 
   application.status = 'Interview Scheduled';
   application.interviewNotificationSentAt = null;
+  application.interviewNotificationStatus = interviewNotificationStatus;
   application.interviewWindowStart = startDate;
   application.interviewWindowEnd = endDate;
   application.employerNotes = `Interview window: ${startDate.toDateString()} – ${endDate.toDateString()}. ${instructions || ''}`.trim();
@@ -825,14 +955,36 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
 
   await application.save();
 
-  // Attempt deferred notification immediately in case enrollments are already done.
+  let immediateNotificationSent = false;
   setImmediate(async () => {
     try {
-      await notificationService.notifyInterviewScheduledWhenEnrollmentReady({
+      await notificationService.notifyCandidateStatusUpdate({
+        candidateUserId: application.candidateId,
+        jobTitle: application.jobId?.title || 'the job',
+        newStatus: interviewNotificationStatus,
         applicationId: application.applicationId,
+        notifType: interviewNotificationStatus === 'Interview Rescheduled' ? 'interview_rescheduled' : 'interview_scheduled',
       });
+
+      immediateNotificationSent = true;
+      await JobApplication.updateOne(
+        { _id: application._id, interviewNotificationSentAt: null },
+        { $set: { interviewNotificationSentAt: new Date() } }
+      ).catch(() => {});
     } catch (notifErr) {
-      logger.error(`[applicationService] Deferred interview scheduled notification failed: ${notifErr.message}`);
+      logger.error(`[applicationService] Immediate interview notification failed: ${notifErr.message}`);
+
+      // Fallback for initial schedule: send once enrollments are ready.
+      if (!isReschedule && !immediateNotificationSent) {
+        try {
+          await notificationService.notifyInterviewScheduledWhenEnrollmentReady({
+            applicationId: application.applicationId,
+            notificationStatus: interviewNotificationStatus,
+          });
+        } catch (deferredNotifErr) {
+          logger.error(`[applicationService] Deferred interview scheduled notification failed: ${deferredNotifErr.message}`);
+        }
+      }
     }
   });
 
@@ -902,14 +1054,14 @@ const checkApplicationStatus = async (candidateId, jobId) => {
 /**
  * Get candidate's profile data for application
  */
-const getProfileDataForApplication = async (candidateId) => {
+const getProfileDataForApplication = async (candidateId, jobId) => {
   const profile = await CandidateProfile.findOne({ user: candidateId }).populate('user');
 
   if (!profile) {
     throw new NotFoundError('Profile not found');
   }
 
-  return {
+  const result = {
     personalInfo: {
       name: profile.user?.fullName || '',
       email: profile.user?.email || '',
@@ -935,6 +1087,15 @@ const getProfileDataForApplication = async (candidateId) => {
       fileSize: profile.video.fileSize
     } : null
   };
+
+  if (jobId && mongoose.Types.ObjectId.isValid(jobId)) {
+    const job = await Job.findById(jobId).select('experienceLevel educationRequirements').lean();
+    if (job) {
+      result.jobRequirementMatch = evaluateCandidateRequirementMatch(profile.toObject ? profile.toObject() : profile, job);
+    }
+  }
+
+  return result;
 };
 
 /**
@@ -983,8 +1144,6 @@ const submitApplication = async (candidateId, applicationData, files) => {
   if (existingApplication) {
     throw new ValidationError('You have already applied to this job');
   }
-
-  await assertCandidateEligibilityForJob(candidateId, job);
 
   // Handle resume
   let resumeData;

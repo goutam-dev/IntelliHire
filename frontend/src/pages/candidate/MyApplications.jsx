@@ -16,8 +16,7 @@ import {
   Search,
   FileText,
   ExternalLink,
-  Video,
-  CalendarClock
+  Video
 } from 'lucide-react';
 
 import {
@@ -26,6 +25,7 @@ import {
   clearError,
   clearSuccessMessage
 } from '../../store/slices/jobApplicationsSlice';
+import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
 
 const MyApplications = () => {
   const dispatch = useDispatch();
@@ -109,20 +109,34 @@ const MyApplications = () => {
   };
 
   /**
-   * Returns true if today is on or before the interview deadline.
+   * Returns true only when current time is within interview start/end window.
    */
   const isInterviewWindowActive = (app) => {
-    if (!app.interviewWindowEnd) return false;
+    if (!app.interviewWindowStart || !app.interviewWindowEnd) return false;
     const now = new Date();
+    const start = new Date(app.interviewWindowStart);
     const deadline = new Date(app.interviewWindowEnd);
-    // Set deadline to end-of-day
-    deadline.setHours(23, 59, 59, 999);
-    return now <= deadline;
+    if (Number.isNaN(start.getTime()) || Number.isNaN(deadline.getTime())) return false;
+    return now >= start && now <= deadline;
   };
 
-  const formatInterviewDeadline = (app) => {
-    if (!app.interviewWindowEnd) return null;
-    return new Date(app.interviewWindowEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const formatInterviewWindow = (app) => {
+    if (!app.interviewWindowStart || !app.interviewWindowEnd) return null;
+    const start = new Date(app.interviewWindowStart);
+    const end = new Date(app.interviewWindowEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+    const formatDateTime = (value) => value.toLocaleString(undefined, {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    return {
+      start: formatDateTime(start),
+      end: formatDateTime(end),
+    };
   };
 
   const getStatusColor = (status) => {
@@ -334,8 +348,8 @@ const MyApplications = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                      <div className="flex items-center gap-4">
+                    <div className="flex flex-col gap-4 pt-4 border-t border-slate-100 md:flex-row md:items-start md:justify-between">
+                      <div className="flex flex-wrap items-center gap-4">
                         <button
                           onClick={() => navigate(`/candidate/applications/${application.applicationId}`)}
                           className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
@@ -374,7 +388,12 @@ const MyApplications = () => {
 
                       {application.status === 'Interview Scheduled' && (() => {
                         const active = isInterviewWindowActive(application);
-                        const deadline = formatInterviewDeadline(application);
+                        const windowLabel = formatInterviewWindow(application);
+                        const now = new Date();
+                        const start = application.interviewWindowStart ? new Date(application.interviewWindowStart) : null;
+                        const end = application.interviewWindowEnd ? new Date(application.interviewWindowEnd) : null;
+                        const beforeStart = start && !Number.isNaN(start.getTime()) ? now < start : false;
+                        const afterDeadline = end && !Number.isNaN(end.getTime()) ? now > end : false;
                         const interviewLocked = Boolean(application.interviewLocked);
                         const voiceEnrollmentStatus = application.voiceEnrollment?.status;
                         const faceEnrollmentStatus = application.faceEnrollment?.status;
@@ -385,32 +404,41 @@ const MyApplications = () => {
                           ? 'Interview already submitted. Results are under review.'
                           : !enrollmentsReady
                             ? 'Interview setup is in progress. Please wait for audio and video verification to complete.'
-                          : active
-                            ? 'Give your interview now'
-                            : deadline
-                              ? `Deadline was ${deadline}`
-                              : 'Interview deadline not set';
+                            : beforeStart
+                              ? start
+                                ? `Interview starts at ${start.toLocaleString()}`
+                                : 'Interview start time not set'
+                              : afterDeadline
+                                ? end
+                                  ? `Interview deadline was ${end.toLocaleString()}`
+                                  : 'Interview deadline not set'
+                                : active
+                                  ? 'Give your interview now'
+                                  : 'Interview window is not available';
                         const ctaLabel = interviewLocked
                           ? 'Interview Submitted'
-                          : active
-                            ? 'Give Interview'
-                            : 'Interview Deadline Passed';
+                          : beforeStart
+                            ? 'Starts Soon'
+                            : active
+                              ? 'Give Interview'
+                              : 'Window Closed';
 
                         return (
-                          <div className="flex flex-col items-end gap-1">
-                            {deadline && (
-                              <span className="flex items-center gap-1 text-xs text-slate-500">
-                                <CalendarClock className="w-3.5 h-3.5" />
-                                Interview deadline: {deadline}
-                              </span>
+                          <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
+                            {windowLabel && (
+                              <InterviewSlotCard
+                                start={windowLabel.start}
+                                end={windowLabel.end}
+                                className="md:w-[290px]"
+                              />
                             )}
                             {interviewLocked && (
-                              <span className="text-xs text-slate-500">
+                              <span className="text-xs text-slate-500 md:max-w-[290px] md:text-right">
                                 Your interview is under review.
                               </span>
                             )}
                             {!enrollmentsReady && !interviewLocked && (
-                              <span className="text-xs text-slate-500" title={ctaTitle}>
+                              <span className="text-xs text-slate-500 md:max-w-[290px] md:text-right" title={ctaTitle}>
                                 {enrollmentFailed
                                   ? 'Interview setup failed. Please contact support or ask the employer to reschedule.'
                                   : 'Interview setup in progress. Please wait...'}
@@ -429,7 +457,7 @@ const MyApplications = () => {
                                   })
                                 }
                                 title={ctaTitle}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all md:min-w-[190px] ${
                                   !ctaDisabled
                                     ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow'
                                     : 'bg-slate-100 text-slate-400 cursor-not-allowed'

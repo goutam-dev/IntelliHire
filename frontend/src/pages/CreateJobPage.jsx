@@ -10,6 +10,7 @@ import EmployerHeader from '../components/layout/EmployerHeader';
 import {
   JOB_CATEGORIES,
   EXPERIENCE_LEVELS,
+  EXPERIENCE_LEVEL_DURATION_GUIDE,
   EMPLOYMENT_TYPES,
   EDUCATION_OPTIONS,
   CURRENCY_OPTIONS,
@@ -31,6 +32,7 @@ const CreateJobPage = () => {
   const [formData, setFormData] = useState({
     title: '',
     department: '',
+    customDepartment: '',
     description: '',
     requiredSkills: [],
     experienceLevel: '',
@@ -56,10 +58,20 @@ const CreateJobPage = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => {
+      if (name === 'department') {
+        return {
+          ...prev,
+          department: value,
+          customDepartment: value === 'other' ? prev.customDepartment : '',
+        };
+      }
+
+      return {
+        ...prev,
+        [name]: value,
+      };
+    });
     
     // Clear error for this field when user starts typing
     if (validationErrors[name]) {
@@ -107,8 +119,18 @@ const CreateJobPage = () => {
         }
         break;
       case 'department':
-        // Department is optional, no validation needed
-        errors.department = null;
+        if (value === 'other' && (!formData.customDepartment || formData.customDepartment.trim() === '')) {
+          errors.department = 'Please enter a custom department name';
+        } else {
+          errors.department = null;
+        }
+        break;
+      case 'customDepartment':
+        if (formData.department === 'other' && (!value || value.trim() === '')) {
+          errors.department = 'Please enter a custom department name';
+        } else {
+          errors.department = null;
+        }
         break;
       case 'description':
         if (!value || value.trim() === '') {
@@ -300,11 +322,14 @@ const CreateJobPage = () => {
 
   const handleSaveDraft = async (e) => {
     e.preventDefault();
+    const { customDepartment, ...baseFormData } = formData;
     
     const jobData = {
-      ...formData,
+      ...baseFormData,
       status: 'draft',
-      department: formData.department || undefined,
+      department: formData.department === 'other'
+        ? (formData.customDepartment.trim() || undefined)
+        : (formData.department || undefined),
       educationRequirements: formData.educationRequirements || undefined,
       salaryRange: formData.salaryMin || formData.salaryMax
         ? {
@@ -333,10 +358,14 @@ const CreateJobPage = () => {
       return;
     }
 
+    const { customDepartment, ...baseFormData } = formData;
+
     const jobData = {
-      ...formData,
+      ...baseFormData,
       status: 'active',
-      department: formData.department || undefined,
+      department: formData.department === 'other'
+        ? (formData.customDepartment.trim() || undefined)
+        : (formData.department || undefined),
       educationRequirements: formData.educationRequirements || undefined,
       salaryRange: formData.salaryMin || formData.salaryMax
         ? {
@@ -413,10 +442,27 @@ const CreateJobPage = () => {
                 value={formData.department}
                 onChange={handleChange}
                 onBlur={() => handleBlur('department')}
-                error={touched.department ? validationErrors.department : null}
+                error={
+                  touched.department && formData.department !== 'other'
+                    ? validationErrors.department
+                    : null
+                }
                 placeholder="Select department"
                 options={JOB_CATEGORIES}
               />
+
+              {formData.department === 'other' && (
+                <Input
+                  label="Custom Department"
+                  name="customDepartment"
+                  type="text"
+                  value={formData.customDepartment}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('customDepartment')}
+                  error={touched.customDepartment ? validationErrors.department : null}
+                  placeholder="Enter custom department name"
+                />
+              )}
 
               {/* Job Description */}
               <Textarea
@@ -455,6 +501,9 @@ const CreateJobPage = () => {
                 placeholder="Select experience level"
                 options={EXPERIENCE_LEVELS}
               />
+              <p className="-mt-4 text-xs text-slate-500">
+                Guide: Entry = {EXPERIENCE_LEVEL_DURATION_GUIDE.entry}, Mid = {EXPERIENCE_LEVEL_DURATION_GUIDE.mid}, Senior = {EXPERIENCE_LEVEL_DURATION_GUIDE.senior}, Expert = {EXPERIENCE_LEVEL_DURATION_GUIDE.expert}
+              </p>
 
               {/* Education Requirements */}
               <Select

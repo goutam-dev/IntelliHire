@@ -363,6 +363,7 @@ const JobApplication = () => {
   const applicationStatus = applicationStatuses[jobId];
   const hasApplied = applicationStatus?.hasApplied || false;
   const existingApplication = applicationStatus?.application;
+  const requirementMatch = profileData?.jobRequirementMatch;
 
   // Load data on component mount
   useEffect(() => {
@@ -372,7 +373,7 @@ const JobApplication = () => {
     }
 
     // Fetch profile data
-    dispatch(fetchProfileData());
+    dispatch(fetchProfileData(jobId));
 
     // Check application status for this job
     if (jobId) {
@@ -976,6 +977,27 @@ const JobApplication = () => {
             </div>
           </div>
         </div>
+
+        {requirementMatch && (
+          <div
+            className={`mb-8 p-4 rounded-lg border flex items-start gap-3 ${
+              requirementMatch.meetsAll
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
+            }`}
+          >
+            {requirementMatch.meetsAll ? (
+              <CheckCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            )}
+            <p className="text-sm font-medium">
+              {requirementMatch.meetsAll
+                ? requirementMatch.positiveMessage
+                : requirementMatch.warningMessage}
+            </p>
+          </div>
+        )}
 
         {/* Application Form */}
         <div className="space-y-8">
