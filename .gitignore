@@ -70,6 +70,27 @@ uploads/
 *.temp
 .cache/
 
+# Python artifacts (voice/face services)
+__pycache__/
+*.py[cod]
+*.cpython-*.pyc
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Generated runtime artifacts (voice/face proctoring)
+voice_verification_only/embeddings/
+voice_verification_only/mismatch_logs/
+voice_verification_only/app/embeddings/
+voice_verification_only/app/mismatch_logs/
+Face proctoring/app/__pycache__/
+
 # IDE - VSCode
 .vscode/settings.json
 .vscode/tasks.json
