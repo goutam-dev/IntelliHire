@@ -6,6 +6,36 @@ const EmployerProfile = require('../models/EmployerProfile');
 const { NotFoundError, ValidationError } = require('../utils/errorHandler');
 const { validateRequiredFields } = require('../utils/validators');
 
+const DELETE_IMMUTABLE_APPLICATION_STATUSES = ['Rejected', 'Hired', 'Withdrawn', 'Job Deleted'];
+
+const resolveEmployerProfileFromClerkUser = async (clerkUserId) => {
+  const user = await User.findOne({ clerkUserId });
+  if (!user) {
+    throw new NotFoundError('User not found');
+  }
+
+  const employerProfile = await EmployerProfile.findOne({ user: user._id });
+  if (!employerProfile) {
+    throw new NotFoundError('Employer profile not found');
+  }
+
+  return employerProfile;
+};
+
+const getOwnedJobOrThrow = async (jobId, clerkUserId) => {
+  const employerProfile = await resolveEmployerProfileFromClerkUser(clerkUserId);
+  const job = await Job.findById(jobId);
+  if (!job || job.isDeleted) {
+    throw new NotFoundError('Job not found');
+  }
+
+  if (String(job.employer) !== String(employerProfile._id)) {
+    throw new ValidationError('You do not have permission to modify this job');
+  }
+
+  return { job, employerProfile };
+};
+
 /**
  * Job service - handles all job-related business logic
  */
@@ -25,7 +55,9 @@ const buildFilters = ({
   salaryMax,
   postedDate,
 }) => {
-  const filters = {};
+  const filters = {
+    isDeleted: { $ne: true },
+  };
 
   if (status && status !== 'all') {
     filters.status = status;
@@ -142,7 +174,16 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
   
   // If not an employer, only show active jobs (hide draft, archived, closed)
   if (!isEmployer) {
-    filters.status = 'active';
+    const includeClosed = queryFilters.includeClosed === true || queryFilters.includeClosed === 'true';
+    if (includeClosed) {
+      if (queryFilters.status && queryFilters.status !== 'all' && ['active', 'closed'].includes(queryFilters.status)) {
+        filters.status = queryFilters.status;
+      } else {
+        filters.status = { $in: ['active', 'closed'] };
+      }
+    } else {
+      filters.status = 'active';
+    }
   }
 
   // Ensure aggregation matches by ObjectId for employer
@@ -230,7 +271,7 @@ const getJobById = async (jobId, userId = null) => {
     .populate('employer', 'companyName user') // Populate user to check ownership
     .lean();
   
-  if (!job) {
+  if (!job || job.isDeleted) {
     throw new NotFoundError('Job not found');
   }
 
@@ -318,7 +359,7 @@ const createJob = async (clerkUserId, jobData) => {
   }
   
   // Validate experience level
-  const experienceLevels = ['entry', 'mid', 'senior', 'expert'];
+  const experienceLevels = ['no-experience', 'entry', 'mid', 'senior', 'expert'];
   if (!experienceLevels.includes(experienceLevel)) {
     throw new ValidationError(`Experience level must be one of: ${experienceLevels.join(', ')}`);
   }
@@ -399,30 +440,31 @@ const createJob = async (clerkUserId, jobData) => {
 /**
  * Update a job
  */
-const updateJob = async (jobId, updates) => {
-  const job = await Job.findByIdAndUpdate(jobId, updates, {
-    new: true,
-    runValidators: true,
-  });
+const updateJob = async (jobId, updates, clerkUserId) => {
+  const { job } = await getOwnedJobOrThrow(jobId, clerkUserId);
 
-  if (!job) {
-    throw new NotFoundError('Job not found');
-  }
-
+  Object.assign(job, updates);
+  await job.save();
   return job;
 };
 
 /**
  * Update job status
  */
-const updateJobStatus = async (jobId, status) => {
+const updateJobStatus = async (jobId, status, clerkUserId) => {
   if (!status) {
     throw new ValidationError('Status is required');
   }
 
-  const job = await Job.findById(jobId);
-  if (!job) {
-    throw new NotFoundError('Job not found');
+  const allowedStatuses = ['draft', 'active', 'closed', 'archived'];
+  if (!allowedStatuses.includes(status)) {
+    throw new ValidationError(`Status must be one of: ${allowedStatuses.join(', ')}`);
+  }
+
+  const { job } = await getOwnedJobOrThrow(jobId, clerkUserId);
+
+  if (job.isDeleted) {
+    throw new ValidationError('Deleted jobs cannot be reactivated or updated');
   }
 
   job.status = status;
@@ -432,21 +474,57 @@ const updateJobStatus = async (jobId, status) => {
   }
 
   await job.save();
+
+  if (status === 'closed') {
+    await JobApplication.updateMany(
+      {
+        jobId: job._id,
+        status: { $in: ['Applied', 'Under Review', 'Shortlisted'] },
+      },
+      {
+        $set: {
+          status: 'Job Closed',
+          lastUpdated: new Date(),
+        },
+      }
+    );
+  }
+
   return job;
 };
 
 /**
  * Delete a job
  */
-const deleteJob = async (jobId) => {
-  const job = await Job.findByIdAndDelete(jobId);
-  if (!job) {
-    throw new NotFoundError('Job not found');
+const deleteJob = async (jobId, clerkUserId) => {
+  const { job } = await getOwnedJobOrThrow(jobId, clerkUserId);
+
+  if (job.isDeleted) {
+    return job;
   }
-  
-  // Delete associated applications
-  await JobApplication.deleteMany({ jobId });
-  
+
+  job.isDeleted = true;
+  job.deletedAt = new Date();
+  job.status = 'archived';
+  job.lastStatusChangeAt = new Date();
+  await job.save();
+
+  await JobApplication.updateMany(
+    {
+      jobId: job._id,
+      $or: [
+        { status: { $nin: DELETE_IMMUTABLE_APPLICATION_STATUSES } },
+        { status: /^job\s*closed$/i },
+      ],
+    },
+    {
+      $set: {
+        status: 'Job Deleted',
+        lastUpdated: new Date(),
+      },
+    }
+  );
+
   return job;
 };
 
@@ -456,7 +534,7 @@ const deleteJob = async (jobId) => {
  */
 const getFilterOptions = async () => {
   // Only get options from active jobs
-  const activeJobsFilter = { status: 'active' };
+  const activeJobsFilter = { status: 'active', isDeleted: { $ne: true } };
 
   const countByField = async (field) => {
     return Job.aggregate([
@@ -478,7 +556,7 @@ const getFilterOptions = async () => {
   // Filter out null/undefined/empty values and sort
   const cleanAndSort = (arr) => arr.filter(val => val && val.trim()).sort();
 
-  const EXPERIENCE_LEVELS = ['entry', 'mid', 'senior', 'expert'];
+  const EXPERIENCE_LEVELS = ['no-experience', 'entry', 'mid', 'senior', 'expert'];
   const EMPLOYMENT_TYPES = ['full-time', 'part-time', 'contract', 'remote'];
 
   const mergeWithDefaults = (defaults, counts) => {
@@ -501,13 +579,13 @@ const getFilterOptions = async () => {
  * Increment job views count
  */
 const incrementJobViews = async (jobId, viewerClerkUserId = null) => {
-  const job = await Job.findById(jobId).select('status metadata.views').lean();
+  const job = await Job.findById(jobId).select('status isDeleted metadata.views').lean();
 
   if (!job) {
     throw new NotFoundError('Job not found');
   }
 
-  if (job.status !== 'active') {
+  if (job.isDeleted || job.status !== 'active') {
     throw new NotFoundError('Job not found');
   }
 

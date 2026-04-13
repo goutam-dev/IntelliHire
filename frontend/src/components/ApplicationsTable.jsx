@@ -8,6 +8,8 @@ const statusColors = {
   'Shortlisted': 'bg-blue-100 text-blue-700',
   'Interview Scheduled': 'bg-amber-100 text-amber-700',
   'Interviewed': 'bg-teal-100 text-teal-700',
+  'Job Closed': 'bg-orange-100 text-orange-700',
+  'Job Deleted': 'bg-gray-200 text-gray-800',
   'Hired': 'bg-emerald-100 text-emerald-700',
   'Rejected': 'bg-rose-100 text-rose-700',
   'Withdrawn': 'bg-gray-100 text-gray-700',
@@ -87,7 +89,7 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
+    <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto overflow-y-visible">
       <table className="min-w-full divide-y divide-slate-200">
         <thead className="bg-slate-50">
           <tr>
@@ -202,9 +204,17 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                   </div>
                 </td>
                 <td className="p-3">
-                  <StatusBadge status={app.status} />
+                  <div className="flex flex-col gap-1">
+                    <StatusBadge status={app.status} />
+                    {app.status === 'Job Closed' && (
+                      <span className="text-[11px] text-orange-700">Role closed before final decision.</span>
+                    )}
+                    {app.status === 'Job Deleted' && (
+                      <span className="text-[11px] text-slate-600">Role deleted, record kept for audit.</span>
+                    )}
+                  </div>
                 </td>
-                <td className="p-3 text-right">
+                <td className="p-3 text-right align-top relative">
                   <StatusActionsMenu
                     application={app}
                     onAction={(type, payload) => onSingleAction(app._id, type, payload)}

@@ -30,6 +30,7 @@ function timeAgo(dateStr) {
 
 const typeIcons = {
   application_received: FileText,
+  interview_completed: CalendarDays,
   status_updated: ClipboardList,
   interview_scheduled: CalendarDays,
 };

@@ -1,4 +1,5 @@
 venv/
+.venv/
 mismatch_logs/
 pretrained_models/
 __pycache__/

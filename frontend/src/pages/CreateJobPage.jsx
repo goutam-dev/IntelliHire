@@ -440,7 +440,7 @@ const CreateJobPage = () => {
                 onBlur={() => handleBlur('requiredSkills')}
                 error={touched.requiredSkills ? validationErrors.requiredSkills : null}
                 required
-                placeholder="Type a skill and press Enter"
+                placeholder="Type skills (comma-separated or press Enter per skill)"
               />
 
               {/* Experience Level */}

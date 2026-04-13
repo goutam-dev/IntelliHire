@@ -4,7 +4,6 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { 
   MapPin, 
-  DollarSign, 
   Clock,
   Users,
   Eye,
@@ -124,35 +123,32 @@ const JobCard = ({ job, index }) => {
 
   const getSalaryDisplay = () => {
     if (!job.salaryRange || (!job.salaryRange.min && !job.salaryRange.max)) {
-      return { display: 'Salary not disclosed', range: null };
+      return { display: 'Salary not disclosed', range: null, symbol: null };
     }
     
     const { min, max, currency = 'USD' } = job.salaryRange;
-    const formatSalary = (amount) => {
-      if (amount >= 100000) {
-        return `${(amount / 1000).toFixed(0)}k`;
-      } else if (amount >= 1000) {
-        return `${(amount / 1000).toFixed(1)}k`;
-      }
-      return amount.toString();
-    };
-
-    const currencySymbol = currency === 'USD' ? '$' : currency;
+    const currencySymbol = getCurrencySymbol(currency);
+    const formatSalary = (amount) => Number(amount).toLocaleString('en-US', {
+      maximumFractionDigits: 0,
+    });
 
     if (min && max) {
       return { 
         display: `${currencySymbol}${formatSalary(min)} - ${currencySymbol}${formatSalary(max)}`,
-        range: `${currencySymbol}${min.toLocaleString()} - ${currencySymbol}${max.toLocaleString()} per year`
+        range: `${currencySymbol}${formatSalary(min)} - ${currencySymbol}${formatSalary(max)} per year`,
+        symbol: currencySymbol,
       };
     } else if (min) {
       return { 
         display: `${currencySymbol}${formatSalary(min)}+`,
-        range: `${currencySymbol}${min.toLocaleString()}+ per year`
+        range: `${currencySymbol}${formatSalary(min)}+ per year`,
+        symbol: currencySymbol,
       };
     } else if (max) {
       return { 
         display: `Up to ${currencySymbol}${formatSalary(max)}`,
-        range: `Up to ${currencySymbol}${max.toLocaleString()} per year`
+        range: `Up to ${currencySymbol}${formatSalary(max)} per year`,
+        symbol: currencySymbol,
       };
     }
   };
@@ -217,6 +213,7 @@ const JobCard = ({ job, index }) => {
 
   const formatExperienceLevel = (level) => {
     const levelMap = {
+      'no-experience': 'No Experience (Fresher)',
       'entry': 'Entry Level',
       'mid': 'Mid Level',
       'senior': 'Senior Level',
@@ -236,6 +233,11 @@ const JobCard = ({ job, index }) => {
   const salaryInfo = getSalaryDisplay();
   const deadlineStatus = getDeadlineStatus();
   const jobStatus = getJobStatus();
+  const isJobClosed = job.status === 'closed';
+  const applicationDetailId =
+    applicationStatus?.application?.applicationId ||
+    applicationStatus?.applicationId ||
+    applicationStatus?.application?._id;
 
   return (
     <motion.div
@@ -290,7 +292,11 @@ const JobCard = ({ job, index }) => {
             <span>{formatExperienceLevel(job.experienceLevel)}</span>
           </div>
           <div className="flex items-center gap-1">
-            <DollarSign className="w-4 h-4" />
+            {salaryInfo.symbol && (
+              <span className="w-4 h-4 inline-flex items-center justify-center text-xs font-semibold">
+                {salaryInfo.symbol}
+              </span>
+            )}
             <span className="font-medium text-gray-900">{salaryInfo.display}</span>
           </div>
           <div className="flex items-center gap-1 text-gray-500">
@@ -454,26 +460,32 @@ const JobCard = ({ job, index }) => {
           <motion.button
             onClick={async () => {
               if (applicationStatus?.hasApplied) {
-                navigate('/candidate/applications');
-              } else if (completion && isComplete && completion.percentage === 100) {
+                if (applicationDetailId) {
+                  navigate(`/candidate/applications/${applicationDetailId}`);
+                } else {
+                  navigate('/candidate/applications');
+                }
+              } else if (!isJobClosed && completion && isComplete && completion.percentage === 100) {
                 await handleApplyNow();
               }
             }}
-            disabled={(!completion || !isComplete || completion.percentage < 100) && !applicationStatus?.hasApplied}
+            disabled={(isJobClosed || !completion || !isComplete || completion.percentage < 100) && !applicationStatus?.hasApplied}
             className={`flex-1 px-4 py-2 rounded-lg transition-all text-sm font-medium flex items-center justify-center gap-2 ${
               applicationStatus?.hasApplied
                 ? 'bg-green-600 text-white cursor-pointer'
+                : isJobClosed
+                ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
                 : completion && isComplete && completion.percentage === 100
                 ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
             whileHover={
-              applicationStatus?.hasApplied || (completion && isComplete && completion.percentage === 100) 
+              applicationStatus?.hasApplied || (!isJobClosed && completion && isComplete && completion.percentage === 100) 
                 ? { scale: 1.02 } 
                 : {}
             }
             whileTap={
-              applicationStatus?.hasApplied || (completion && isComplete && completion.percentage === 100) 
+              applicationStatus?.hasApplied || (!isJobClosed && completion && isComplete && completion.percentage === 100) 
                 ? { scale: 0.98 } 
                 : {}
             }
@@ -482,6 +494,11 @@ const JobCard = ({ job, index }) => {
               <>
                 <CheckCircle className="w-4 h-4" />
                 Applied
+              </>
+            ) : isJobClosed ? (
+              <>
+                <AlertCircle className="w-4 h-4" />
+                Closed
               </>
             ) : completion && isComplete && completion.percentage === 100 ? (
               <>

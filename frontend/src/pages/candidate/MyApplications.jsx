@@ -55,6 +55,8 @@ const MyApplications = () => {
     { value: 'Under Review', label: 'Under Review', count: 0 },
     { value: 'Shortlisted', label: 'Shortlisted', count: 0 },
     { value: 'Interview Scheduled', label: 'Interview Scheduled', count: 0 },
+    { value: 'Job Closed', label: 'Job Closed', count: 0 },
+    { value: 'Job Deleted', label: 'Job Deleted', count: 0 },
     { value: 'Rejected', label: 'Rejected', count: 0 },
     { value: 'Hired', label: 'Hired', count: 0 },
     { value: 'Withdrawn', label: 'Withdrawn', count: 0 }
@@ -129,6 +131,8 @@ const MyApplications = () => {
       'Under Review': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'Shortlisted': 'bg-purple-100 text-purple-800 border-purple-200',
       'Interview Scheduled': 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      'Job Closed': 'bg-amber-100 text-amber-800 border-amber-200',
+      'Job Deleted': 'bg-slate-200 text-slate-800 border-slate-300',
       'Rejected': 'bg-red-100 text-red-800 border-red-200',
       'Hired': 'bg-green-100 text-green-800 border-green-200',
       'Withdrawn': 'bg-gray-100 text-gray-800 border-gray-200'
@@ -142,6 +146,8 @@ const MyApplications = () => {
       'Under Review': <Eye className="w-4 h-4" />,
       'Shortlisted': <CheckCircle className="w-4 h-4" />,
       'Interview Scheduled': <Calendar className="w-4 h-4" />,
+      'Job Closed': <AlertCircle className="w-4 h-4" />,
+      'Job Deleted': <AlertCircle className="w-4 h-4" />,
       'Rejected': <XCircle className="w-4 h-4" />,
       'Hired': <CheckCircle className="w-4 h-4" />,
       'Withdrawn': <XCircle className="w-4 h-4" />
@@ -307,6 +313,24 @@ const MyApplications = () => {
                             </>
                           )}
                         </div>
+
+                        {application.status === 'Job Closed' && (
+                          <p className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                            This role has been closed by the employer. New applications are stopped.
+                          </p>
+                        )}
+
+                        {application.status === 'Job Deleted' && (
+                          <p className="mt-3 text-sm text-slate-700 bg-slate-100 border border-slate-300 rounded-md px-3 py-2">
+                            This role was removed by the employer. This application is retained for your records only.
+                          </p>
+                        )}
+
+                        {application.status === 'Interview Scheduled' && application.jobId?.status === 'closed' && (
+                          <p className="mt-3 text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-3 py-2">
+                            The job is closed for new applicants, but your scheduled interview remains valid.
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -320,7 +344,7 @@ const MyApplications = () => {
                           View Details
                         </button>
                         
-                        {(typeof application.jobId === 'string' || application.jobId?._id) && (
+                        {!application.jobId?.isDeleted && (typeof application.jobId === 'string' || application.jobId?._id) && (
                           <button
                             onClick={() =>
                               navigate(`/candidate/jobs/${typeof application.jobId === 'string' ? application.jobId : application.jobId._id}`)

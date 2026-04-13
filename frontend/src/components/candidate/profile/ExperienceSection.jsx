@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 
 const ExperienceSection = ({ profile, onAdd, onDelete }) => {
+  const today = new Date();
+  const maxMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -14,6 +16,8 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
     description: ''
   });
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
 
   const resetForm = () => {
     setFormData({
@@ -26,6 +30,8 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
       description: ''
     });
     setShowForm(false);
+    setErrors({});
+    setSubmitError('');
   };
 
   const handleChange = (e) => {
@@ -34,29 +40,73 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+
+    setErrors((prev) => ({ ...prev, [name]: null }));
+    setSubmitError('');
+  };
+
+  const handleMarkNoExperience = async () => {
+    if (!window.confirm('Mark profile as fresher with no work experience?')) return;
+
+    setSaving(true);
+    setSubmitError('');
+    try {
+      await onAdd({ experienceType: 'none' });
+      toast.success('Profile marked as fresher (no work experience)');
+    } catch (error) {
+      const message = error?.message || error || 'Failed to save preference';
+      setSubmitError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validate required fields
-    if (!formData.title || !formData.companyName) {
-      toast.error('Please fill in all required fields');
+    const newErrors = {};
+
+    if (!formData.title) {
+      newErrors.title = 'Job title is required';
+    }
+
+    if (!formData.companyName) {
+      newErrors.companyName = 'Company name is required';
+    }
+
+    if (!formData.startDate) {
+      newErrors.startDate = 'Start date is required';
+    }
+
+    const startDate = formData.startDate ? new Date(`${formData.startDate}-01`) : null;
+    const todayMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    if (startDate && startDate > todayMonth) {
+      newErrors.startDate = 'Start date cannot be in the future';
+    }
+
+    if (!formData.currentlyWorking && !formData.endDate) {
+      newErrors.endDate = 'End date is required if not currently working';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 
     // Validate dates if provided
     if (formData.startDate && formData.endDate && !formData.currentlyWorking) {
-      const startDate = new Date(formData.startDate);
-      const endDate = new Date(formData.endDate);
+      const startDate = new Date(`${formData.startDate}-01`);
+      const endDate = new Date(`${formData.endDate}-01`);
       
       if (endDate <= startDate) {
-        toast.error('End date must be after start date');
+        setErrors((prev) => ({ ...prev, endDate: 'End date must be after start date' }));
         return;
       }
     }
 
     setSaving(true);
+    setSubmitError('');
     try {
       const submitData = {
         ...formData,
@@ -68,8 +118,9 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
       toast.success('Work experience added successfully');
       resetForm();
     } catch (error) {
-      console.error('Add experience error:', error);
-      toast.error('Failed to add work experience');
+      const message = error?.message || error || 'Failed to add work experience';
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -138,12 +189,21 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
             </svg>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Work Experience Added</h3>
             <p className="text-gray-600 mb-4">Add your professional experience to showcase your career journey</p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Add Your First Experience
-            </button>
+            <div className="flex flex-wrap gap-2 justify-center">
+              <button
+                onClick={() => setShowForm(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Add Your First Experience
+              </button>
+              <button
+                onClick={handleMarkNoExperience}
+                disabled={saving}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                I am a Fresher (No Experience)
+              </button>
+            </div>
           </div>
         ) : (
           experienceList.map((experience) => (
@@ -257,8 +317,12 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                   name="startDate"
                   value={formData.startDate}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  max={maxMonth}
+                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.startDate ? 'border-red-300' : 'border-gray-300'}`}
                 />
+                {errors.startDate && (
+                  <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>
+                )}
               </div>
 
               <div>
@@ -270,9 +334,13 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                   name="endDate"
                   value={formData.endDate}
                   onChange={handleChange}
+                  max={maxMonth}
                   disabled={formData.currentlyWorking}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed ${errors.endDate ? 'border-red-300' : 'border-gray-300'}`}
                 />
+                {errors.endDate && (
+                  <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
+                )}
               </div>
             </div>
 
@@ -326,6 +394,10 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                 Add Experience
               </button>
             </div>
+
+            {submitError && (
+              <p className="text-sm text-red-600">{submitError}</p>
+            )}
           </form>
         </div>
       )}

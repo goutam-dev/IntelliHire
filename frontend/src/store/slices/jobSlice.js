@@ -78,8 +78,12 @@ export const updateJobStatus = createAsyncThunk(
 
 export const deleteJob = createAsyncThunk(
   'job/deleteJob',
-  async (jobId, { rejectWithValue }) => {
+  async (payload, { rejectWithValue }) => {
     try {
+      const jobId = typeof payload === 'string' ? payload : payload?.jobId;
+      if (!jobId) {
+        throw new Error('jobId is required');
+      }
       await jobApi.deleteJob(jobId);
       return { id: jobId };
     } catch (error) {

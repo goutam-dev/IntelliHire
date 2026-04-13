@@ -75,7 +75,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
   const { filters, filterOptions, filtersLoading } = useSelector(state => state.jobs);
   const [localFilters, setLocalFilters] = useState(filters);
 
-  const DEFAULT_EXPERIENCE_LEVELS = ['entry', 'mid', 'senior', 'expert'];
+  const DEFAULT_EXPERIENCE_LEVELS = ['no-experience', 'entry', 'mid', 'senior', 'expert'];
   const DEFAULT_EMPLOYMENT_TYPES = ['full-time', 'part-time', 'contract', 'remote'];
 
   const normalizeOptionItems = (items, fallbackValues = []) => {
@@ -112,7 +112,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
     // Apply filters immediately for desktop, or wait for mobile apply button
     if (isDesktop) {
       dispatch(setFilters(newFilters));
-      const filterPromise = dispatch(fetchJobs({ ...newFilters, page: 1 }));
+      const filterPromise = dispatch(fetchJobs({ ...newFilters, page: 1, includeClosed: true }));
       
       // Scroll to top when filters change
       if (jobsContainerRef && jobsContainerRef.current) {
@@ -128,7 +128,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
 
   const applyFilters = () => {
     dispatch(setFilters(localFilters));
-    dispatch(fetchJobs({ ...localFilters, page: 1 }));
+    dispatch(fetchJobs({ ...localFilters, page: 1, includeClosed: true }));
     onClose();
   };
 
@@ -147,7 +147,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
     };
     dispatch(resetFilters());
     setLocalFilters(clearedFilters);
-    dispatch(fetchJobs({ page: 1 }));
+    dispatch(fetchJobs({ page: 1, includeClosed: true }));
     if (onClose) onClose();
   };
 
@@ -629,7 +629,7 @@ const BrowseJobs = () => {
 
   useEffect(() => {
     dispatch(fetchFilterOptions());
-    dispatch(fetchJobs({ page: 1 }));
+    dispatch(fetchJobs({ page: 1, includeClosed: true }));
     dispatch(fetchProfileCompletion());
   }, [dispatch]);
 
@@ -667,7 +667,7 @@ const BrowseJobs = () => {
       dispatch(setFilters({ search: debouncedSearchTerm }));
       
       const abortController = new AbortController();
-      const searchPromise = dispatch(fetchJobs({ ...filters, search: debouncedSearchTerm, page: 1 }));
+      const searchPromise = dispatch(fetchJobs({ ...filters, search: debouncedSearchTerm, page: 1, includeClosed: true }));
       
       // Scroll to top when search results change
       if (jobsContainerRef?.current) {
@@ -707,7 +707,7 @@ const BrowseJobs = () => {
     }
     
     // Then fetch the new jobs
-    dispatch(fetchJobs({ ...filters, page }));
+    dispatch(fetchJobs({ ...filters, page, includeClosed: true }));
   };
 
   const renderPagination = () => {
@@ -768,7 +768,7 @@ const BrowseJobs = () => {
           <div className="text-red-500 text-lg mb-4">Error loading jobs</div>
           <p className="text-slate-600 mb-4">{error}</p>
           <button 
-            onClick={() => dispatch(fetchJobs({ page: 1 }))}
+            onClick={() => dispatch(fetchJobs({ page: 1, includeClosed: true }))}
             className="bg-slate-900 text-white px-6 py-2 rounded-lg hover:bg-slate-800"
           >
             Try Again
@@ -881,7 +881,7 @@ const BrowseJobs = () => {
                   <button
                     onClick={() => {
                       dispatch(resetFilters());
-                      dispatch(fetchJobs({ page: 1 }));
+                      dispatch(fetchJobs({ page: 1, includeClosed: true }));
                       setSearchTerm('');
                     }}
                     className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"

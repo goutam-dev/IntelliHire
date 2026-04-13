@@ -41,7 +41,7 @@ exports.createJob = asyncHandler(async (req, res) => {
  * Update a job
  */
 exports.updateJob = asyncHandler(async (req, res) => {
-  const job = await jobService.updateJob(req.params.jobId, req.body);
+  const job = await jobService.updateJob(req.params.jobId, req.body, req.auth.userId);
   res.json(job);
 });
 
@@ -50,7 +50,7 @@ exports.updateJob = asyncHandler(async (req, res) => {
  */
 exports.updateJobStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
-  const job = await jobService.updateJobStatus(req.params.jobId, status);
+  const job = await jobService.updateJobStatus(req.params.jobId, status, req.auth.userId);
   res.json(job);
 });
 
@@ -58,7 +58,7 @@ exports.updateJobStatus = asyncHandler(async (req, res) => {
  * Delete a job
  */
 exports.deleteJob = asyncHandler(async (req, res) => {
-  await jobService.deleteJob(req.params.jobId);
+  await jobService.deleteJob(req.params.jobId, req.auth.userId);
   res.status(204).send();
 });
 

@@ -1,6 +1,16 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../lib/api';
 
+const extractApiErrorMessage = (error, fallback = 'Request failed') => {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.response?.data?.details ||
+    error?.message ||
+    fallback
+  );
+};
+
 // Async thunks
 export const checkApplicationStatus = createAsyncThunk(
   'jobApplications/checkStatus',
@@ -9,7 +19,7 @@ export const checkApplicationStatus = createAsyncThunk(
       const response = await api.get(`/job-applications/check/${jobId}`);
       return { jobId, ...response.data.data };
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || error.message);
+      return rejectWithValue(extractApiErrorMessage(error, 'Failed to check application status'));
     }
   },
   {
@@ -33,7 +43,7 @@ export const fetchProfileData = createAsyncThunk(
       const response = await api.get('/job-applications/profile-data');
       return response.data.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || error.message);
+      return rejectWithValue(extractApiErrorMessage(error, 'Failed to fetch profile data'));
     }
   }
 );
@@ -49,7 +59,7 @@ export const submitJobApplication = createAsyncThunk(
       });
       return response.data.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || error.message);
+      return rejectWithValue(extractApiErrorMessage(error, 'Failed to submit application'));
     }
   }
 );
@@ -61,7 +71,7 @@ export const fetchMyApplications = createAsyncThunk(
       const response = await api.get('/job-applications/my-applications', { params });
       return response.data.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || error.message);
+      return rejectWithValue(extractApiErrorMessage(error, 'Failed to fetch applications'));
     }
   }
 );
@@ -73,7 +83,7 @@ export const withdrawApplication = createAsyncThunk(
       const response = await api.patch(`/job-applications/${applicationId}/withdraw`);
       return response.data.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || error.message);
+      return rejectWithValue(extractApiErrorMessage(error, 'Failed to withdraw application'));
     }
   }
 );

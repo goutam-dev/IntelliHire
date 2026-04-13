@@ -208,8 +208,11 @@ const MyJobsPage = () => {
   };
 
   const confirmDeleteJob = async () => {
-    const token = await getToken();
-    dispatch(deleteJob({ jobId: deleteConfirm.jobId, token }));
+    try {
+      await dispatch(deleteJob(deleteConfirm.jobId)).unwrap();
+    } catch (error) {
+      console.error('Failed to delete job:', error);
+    }
     setDeleteConfirm({ open: false, jobId: null });
   };
 

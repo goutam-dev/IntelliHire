@@ -52,6 +52,8 @@ const ApplicationDetails = () => {
       'Under Review': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'Shortlisted': 'bg-purple-100 text-purple-800 border-purple-200',
       'Interview Scheduled': 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      'Job Closed': 'bg-amber-100 text-amber-800 border-amber-200',
+      'Job Deleted': 'bg-slate-200 text-slate-800 border-slate-300',
       'Rejected': 'bg-red-100 text-red-800 border-red-200',
       'Hired': 'bg-green-100 text-green-800 border-green-200',
       'Withdrawn': 'bg-gray-100 text-gray-800 border-gray-200'
@@ -65,6 +67,8 @@ const ApplicationDetails = () => {
       'Under Review': <Eye className="w-4 h-4" />,
       'Shortlisted': <CheckCircle className="w-4 h-4" />,
       'Interview Scheduled': <Calendar className="w-4 h-4" />,
+      'Job Closed': <AlertCircle className="w-4 h-4" />,
+      'Job Deleted': <AlertCircle className="w-4 h-4" />,
       'Rejected': <XCircle className="w-4 h-4" />,
       'Hired': <CheckCircle className="w-4 h-4" />,
       'Withdrawn': <XCircle className="w-4 h-4" />
@@ -167,7 +171,7 @@ const ApplicationDetails = () => {
             </div>
             
             <div className="flex items-center gap-3">
-              {applicationJobId && (
+              {applicationJobId && !application.jobId?.isDeleted && (
                 <button
                   onClick={() => navigate(`/candidate/jobs/${applicationJobId}`)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
@@ -237,6 +241,24 @@ const ApplicationDetails = () => {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+        {application.status === 'Job Closed' && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            This role has been closed by the employer. Hiring is paused for this job.
+          </div>
+        )}
+
+        {application.status === 'Job Deleted' && (
+          <div className="mb-6 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-800">
+            This role was deleted by the employer. This application remains visible for record-keeping.
+          </div>
+        )}
+
+        {application.status === 'Interview Scheduled' && application.jobId?.status === 'closed' && (
+          <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+            The job is closed for new applicants, but your scheduled interview is still active.
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">

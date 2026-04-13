@@ -30,6 +30,7 @@ const path = require('path');
 
 const InterviewSession = require('../models/InterviewSession');
 const JobApplication = require('../models/JobApplication');
+const notificationService = require('./notificationService');
 const logger = require('../utils/logger');
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -158,6 +159,12 @@ async function enrollSpeaker(applicationId, audioFilePath) {
                 },
             }
         );
+
+        try {
+            await notificationService.notifyInterviewScheduledWhenEnrollmentReady({ applicationId });
+        } catch (notifErr) {
+            logger.error(`[VoiceProctoring] Deferred interview notification failed for ${applicationId}: ${notifErr.message}`);
+        }
 
         logger.info(`[VoiceProctoring] Enrollment success: speakerId=${speaker_id}`);
     } catch (err) {

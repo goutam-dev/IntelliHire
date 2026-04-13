@@ -96,51 +96,77 @@ function RecDot() {
   );
 }
 
-function WaveformVisualiser({ analyser }) {
-  const canvasRef = useRef(null);
+function VoiceActivityBars({ analyser, isSpeaking, energyLevel }) {
+  const BAR_COUNT = 42;
+  const [bars, setBars] = useState(() => Array(BAR_COUNT).fill(0.1));
   const rafRef = useRef(null);
+  const dataRef = useRef(null);
 
   useEffect(() => {
-    if (!analyser || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
+    let mounted = true;
+
+    const flatten = () => {
+      setBars(prev => prev.map((_, i) => (i % 9 === 0 ? 0.12 : 0.08)));
+    };
+
+    if (!analyser) {
+      flatten();
+      return undefined;
+    }
+
+    const sampleCount = analyser.fftSize || 2048;
+    dataRef.current = new Uint8Array(sampleCount);
 
     const draw = () => {
+      if (!mounted) return;
       rafRef.current = requestAnimationFrame(draw);
-      analyser.getByteTimeDomainData(dataArray);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(99,202,183,0.85)';
-      ctx.beginPath();
-      const sliceWidth = canvas.width / bufferLength;
-      let x = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        const v = dataArray[i] / 128.0;
-        const y = (v * canvas.height) / 2;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        x += sliceWidth;
+
+      const data = dataRef.current;
+      analyser.getByteTimeDomainData(data);
+
+      const silent = !isSpeaking && energyLevel < 0.02;
+      const next = new Array(BAR_COUNT);
+      const stride = Math.max(1, Math.floor(data.length / BAR_COUNT));
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const start = i * stride;
+        const end = Math.min(data.length, start + stride);
+        let sum = 0;
+        for (let j = start; j < end; j++) {
+          sum += Math.abs((data[j] - 128) / 128);
+        }
+        const avg = sum / Math.max(1, end - start);
+        const boosted = Math.min(1, avg * 4.8 + energyLevel * 2.6);
+        next[i] = silent ? (i % 9 === 0 ? 0.12 : 0.08) : Math.max(0.1, boosted);
       }
-      ctx.lineTo(canvas.width, canvas.height / 2);
-      ctx.stroke();
+
+      setBars(prev => prev.map((v, i) => (v * 0.68) + (next[i] * 0.32)));
     };
+
     draw();
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [analyser]);
 
-  return <canvas ref={canvasRef} width={320} height={48} className="w-full h-12 block" />;
-}
+    return () => {
+      mounted = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [analyser, isSpeaking, energyLevel]);
 
-/** Energy level bar for VAD visualization */
-function EnergyBar({ level, isSpeaking }) {
-  const pct = Math.min(100, Math.round(level * 5000));
   return (
-    <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
-      <div
-        className={`h-full rounded-full transition-all duration-100 ${isSpeaking ? 'bg-emerald-400' : 'bg-slate-600'}`}
-        style={{ width: `${pct}%` }}
-      />
+    <div className="relative h-14 w-full rounded-2xl border border-emerald-400/20 bg-[#071a33]/75 overflow-hidden">
+      <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-emerald-300/20" />
+      <div className="relative z-10 h-full px-3 flex items-center gap-1">
+        {bars.map((value, idx) => (
+          <motion.span
+            key={idx}
+            className={`flex-1 max-w-[4px] rounded-full ${isSpeaking || energyLevel > 0.02 ? 'bg-emerald-300' : 'bg-emerald-200/60'}`}
+            animate={{
+              height: `${Math.round(6 + (value * 34))}px`,
+              opacity: isSpeaking || energyLevel > 0.02 ? 0.95 : 0.55,
+            }}
+            transition={{ duration: 0.09, ease: 'linear' }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1439,10 +1465,10 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                     exit={{ opacity: 0, y: -8 }}
                     className="w-full"
                   >
-                    <div className="w-full max-w-[900px] min-h-16 rounded-full border border-white/10 bg-gradient-to-b from-white/[0.09] to-white/[0.06] backdrop-blur-sm px-4 py-2 flex items-center justify-between gap-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <div className="flex items-center gap-3">
+                    <div className="w-full max-w-[900px] min-h-16 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.09] to-white/[0.06] backdrop-blur-sm px-3 py-3 lg:px-4 flex items-center justify-between gap-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <motion.div
-                          className="relative h-16 w-16 rounded-full bg-[#2d3a53] flex items-center justify-center"
+                          className="relative h-12 w-12 rounded-full bg-[#2d3a53] flex items-center justify-center flex-shrink-0"
                           animate={{ scale: listeningActive ? 1.08 : 1 }}
                           transition={{ duration: 0.25, ease: 'easeOut' }}
                         >
@@ -1456,11 +1482,13 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                             animate={{ scale: listeningActive ? 1.03 : 1 }}
                             transition={{ duration: 0.2 }}
                           />
-                          <Mic size={24} className="relative z-10 text-[#a9ccff]" />
+                          <Mic size={20} className="relative z-10 text-[#a9ccff]" />
                         </motion.div>
-                        <div>
-                          <p className="text-sm text-slate-100 font-medium">Listening</p>
-                          <p className="text-xs text-slate-400">{listeningActive ? 'Voice detected' : 'Waiting for voice'}</p>
+                        <div className="min-w-0 flex-1">
+                          <VoiceActivityBars analyser={vadAnalyser} isSpeaking={vadSpeaking} energyLevel={energyLevel} />
+                          <p className="mt-1 text-xs text-slate-400">
+                            {listeningActive ? 'Voice detected. Capturing your answer...' : 'Mic is active. Waiting for your voice...'}
+                          </p>
                         </div>
                       </div>
 

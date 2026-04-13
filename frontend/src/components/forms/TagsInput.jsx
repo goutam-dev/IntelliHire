@@ -19,10 +19,18 @@ const TagsInput = ({
     setInputValue(e.target.value);
   };
 
+  const parseTagsFromInput = (rawValue) => {
+    return rawValue
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  };
+
   const handleInputKeyDown = (e) => {
     if (e.key === 'Enter' && inputValue.trim()) {
       e.preventDefault();
-      const newTags = [...value, inputValue.trim()];
+      const tagsToAdd = parseTagsFromInput(inputValue);
+      const newTags = [...value, ...tagsToAdd];
       onChange({
         target: {
           name,

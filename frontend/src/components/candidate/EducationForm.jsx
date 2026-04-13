@@ -23,6 +23,7 @@ const EducationForm = ({ onClose, onSuccess, editData = null }) => {
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const todayIso = new Date().toISOString().split('T')[0];
 
   const degreeOptions = [
     'High School Diploma',
@@ -38,6 +39,8 @@ const EducationForm = ({ onClose, onSuccess, editData = null }) => {
 
   const validateForm = () => {
     const newErrors = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
     if (!formData.degree.trim()) {
       newErrors.degree = 'Degree is required';
@@ -53,15 +56,35 @@ const EducationForm = ({ onClose, onSuccess, editData = null }) => {
     
     if (!formData.startDate) {
       newErrors.startDate = 'Start date is required';
+    } else {
+      const startDate = new Date(formData.startDate);
+      startDate.setHours(0, 0, 0, 0);
+
+      if (Number.isNaN(startDate.getTime())) {
+        newErrors.startDate = 'Start date is invalid';
+      } else if (startDate > today) {
+        newErrors.startDate = 'Start date cannot be in the future';
+      }
     }
     
     if (!formData.currentlyEnrolled && !formData.endDate) {
       newErrors.endDate = 'End date is required if not currently enrolled';
     }
     
-    if (formData.startDate && formData.endDate && !formData.currentlyEnrolled) {
-      if (new Date(formData.startDate) >= new Date(formData.endDate)) {
-        newErrors.endDate = 'End date must be after start date';
+    if (formData.endDate && !formData.currentlyEnrolled) {
+      const endDate = new Date(formData.endDate);
+      endDate.setHours(0, 0, 0, 0);
+
+      if (Number.isNaN(endDate.getTime())) {
+        newErrors.endDate = 'End date is invalid';
+      } else if (endDate > today) {
+        newErrors.endDate = 'End date cannot be in the future';
+      } else if (formData.startDate) {
+        const startDate = new Date(formData.startDate);
+        startDate.setHours(0, 0, 0, 0);
+        if (!Number.isNaN(startDate.getTime()) && endDate <= startDate) {
+          newErrors.endDate = 'End date must be after start date';
+        }
       }
     }
     
@@ -268,6 +291,7 @@ const EducationForm = ({ onClose, onSuccess, editData = null }) => {
                 name="startDate"
                 value={formData.startDate}
                 onChange={handleInputChange}
+                max={todayIso}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                   errors.startDate ? 'border-red-300' : 'border-gray-300'
                 }`}
@@ -286,6 +310,7 @@ const EducationForm = ({ onClose, onSuccess, editData = null }) => {
                 name="endDate"
                 value={formData.endDate}
                 onChange={handleInputChange}
+                max={todayIso}
                 disabled={formData.currentlyEnrolled}
                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                   formData.currentlyEnrolled ? 'bg-gray-100 cursor-not-allowed' : ''
