@@ -6,7 +6,6 @@ import {
   Building2,
   MapPin,
   Clock,
-  DollarSign,
   Calendar,
   Users,
   Eye,
@@ -101,6 +100,9 @@ const JobDetails = () => {
       day: 'numeric'
     });
   };
+
+  const hasSalaryRange = Boolean(job?.salaryRange && (job.salaryRange.min || job.salaryRange.max));
+  const salarySymbol = hasSalaryRange ? getCurrencySymbol(job.salaryRange.currency || 'USD') : null;
 
   if (loading) {
     return (
@@ -356,7 +358,11 @@ const JobDetails = () => {
               
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <DollarSign className="w-4 h-4 text-slate-400" />
+                  {salarySymbol && (
+                    <span className="w-4 h-4 inline-flex items-center justify-center text-xs font-semibold text-slate-500">
+                      {salarySymbol}
+                    </span>
+                  )}
                   <div>
                     <p className="text-sm text-slate-500">Salary</p>
                     <p className="font-medium">{formatSalary(job.salaryRange)}</p>

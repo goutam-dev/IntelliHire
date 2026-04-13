@@ -34,6 +34,7 @@ import {
   clearSuccessMessage,
 } from "../../store/slices/jobApplicationsSlice";
 import { fetchJobById } from "../../store/slices/jobSlice";
+import { getCurrencySymbol } from "../../constants/jobConstants";
 
 // Import form components
 // ResumeUpload removed - using inline file picker for job applications
@@ -180,6 +181,33 @@ const SkillsEditingSection = ({ skills, onSkillsUpdate }) => {
   );
 };
 
+const formatHumanDate = (value) => {
+  if (!value) return "";
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    }
+
+    return trimmed;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  }
+
+  return String(value);
+};
+
 const JobApplication = () => {
   const { jobId } = useParams();
   const navigate = useNavigate();
@@ -304,6 +332,25 @@ const JobApplication = () => {
 
   // Get the current job data
   const currentJob = jobFromState || selectedJob;
+
+  const formatSalaryBadge = (salaryRange) => {
+    if (!salaryRange || (!salaryRange.min && !salaryRange.max)) return null;
+
+    const symbol = getCurrencySymbol(salaryRange.currency || "USD");
+    const formatAmount = (amount) => Number(amount).toLocaleString("en-US", {
+      maximumFractionDigits: 0,
+    });
+
+    if (salaryRange.min && salaryRange.max) {
+      return `${symbol}${formatAmount(salaryRange.min)} - ${symbol}${formatAmount(salaryRange.max)}`;
+    }
+
+    if (salaryRange.min) {
+      return `From ${symbol}${formatAmount(salaryRange.min)}`;
+    }
+
+    return `Up to ${symbol}${formatAmount(salaryRange.max)}`;
+  };
 
   // Debug: Log job data to check company field
   useEffect(() => {
@@ -922,8 +969,7 @@ const JobApplication = () => {
                 </div>
                 {currentJob.salaryRange && (
                   <div className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-medium">
-                    ${currentJob.salaryRange.min?.toLocaleString()} - $
-                    {currentJob.salaryRange.max?.toLocaleString()}
+                    {formatSalaryBadge(currentJob.salaryRange)}
                   </div>
                 )}
               </div>
@@ -1167,7 +1213,7 @@ const JobApplication = () => {
                           </label>
                           <input
                             type="text"
-                            value={exp.startDate ? (typeof exp.startDate === 'string' ? exp.startDate : new Date(exp.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })) : ''}
+                            value={formatHumanDate(exp.startDate)}
                             onChange={(e) => {
                               const updatedExp = [...applicationProfile.experience];
                               updatedExp[index] = { ...updatedExp[index], startDate: e.target.value };
@@ -1183,7 +1229,7 @@ const JobApplication = () => {
                           </label>
                           <input
                             type="text"
-                            value={exp.currentlyWorking ? 'Present' : (exp.endDate ? (typeof exp.endDate === 'string' ? exp.endDate : new Date(exp.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })) : '')}
+                            value={exp.currentlyWorking ? 'Present' : formatHumanDate(exp.endDate)}
                             onChange={(e) => {
                               const updatedExp = [...applicationProfile.experience];
                               if (e.target.value.toLowerCase() === 'present') {
@@ -1238,8 +1284,8 @@ const JobApplication = () => {
                             <p className="text-slate-600">{exp.companyName || exp.company || 'Company'}</p>
                           </div>
                           <span className="text-sm text-slate-500">
-                            {exp.startDate ? (typeof exp.startDate === 'string' ? exp.startDate : new Date(exp.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })) : 'Start Date'} -{" "}
-                            {exp.currentlyWorking || exp.isCurrentJob ? "Present" : (exp.endDate ? (typeof exp.endDate === 'string' ? exp.endDate : new Date(exp.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })) : 'End Date')}
+                            {formatHumanDate(exp.startDate) || 'Start date not specified'} -{" "}
+                            {exp.currentlyWorking || exp.isCurrentJob ? "Present" : (formatHumanDate(exp.endDate) || 'End date not specified')}
                           </span>
                         </div>
                         {exp.description && (
