@@ -7,6 +7,7 @@ import { toast } from 'react-toastify';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchEmployerProfile } from '../../store/slices/employerSlice';
 import applicationApi from '../../services/api/applicationApi';
+import jobApi from '../../services/api/jobApi';
 import { batchAnalyzeApplications, analyzeResume } from '../../services/api/resumeRankingApi';
 import FiltersBar from '../../components/FiltersBar';
 import ApplicationsTable from '../../components/ApplicationsTable';
@@ -16,17 +17,29 @@ import InterviewReportModal from '../../components/InterviewReportModal';
 import EmployerHeader from '../../components/layout/EmployerHeader';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 
-const ALLOWED_ACTIONS_BY_STATUS = {
-  'Applied': ['shortlist', 'reject'],
-  'Under Review': ['shortlist', 'reject'],
-  'Shortlisted': ['interview', 'reject'],
-  'Interview Scheduled': ['reject'],
-  'Interviewed': ['accept', 'reject'],
-  'Rejected': [],
-  'Hired': [],
-  'Withdrawn': [],
-  'Job Closed': [],
-  'Job Deleted': [],
+const getLifecycleActions = (application) => {
+  const status = application?.status;
+  const hasCompletedInterview = Boolean(application?.interviewCompletedAt || status === 'Interviewed');
+  const canReschedule =
+    status === 'Interview Scheduled' &&
+    !application?.interviewLocked &&
+    Boolean(application?.interviewWindowEnd) &&
+    new Date(application.interviewWindowEnd) > new Date();
+
+  if (status === 'Applied' || status === 'Under Review') return ['shortlist', 'reject'];
+  if (status === 'Shortlisted') {
+    return hasCompletedInterview ? ['accept', 'reject'] : ['interview', 'reject'];
+  }
+  if (status === 'Interview Scheduled') {
+    return canReschedule ? ['reschedule', 'reject'] : ['reject'];
+  }
+  if (status === 'Interviewed') return ['accept', 'reject', 'shortlist'];
+  return [];
+};
+
+const getLocalDateTimeInputValue = (date = new Date()) => {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
 };
 
 const StatCard = ({ title, value, icon: Icon, color, delay }) => (
@@ -57,13 +70,14 @@ const JobApplicationsPage = () => {
   const { user } = useUser();
 
   const [applications, setApplications] = useState([]);
+  const [jobContext, setJobContext] = useState({ title: '', department: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [resumeGrade, setResumeGrade] = useState('all');
-  const [sort, setSort] = useState('newest');
+  const [sort, setSort] = useState('ai_score');
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [candidateOpen, setCandidateOpen] = useState(false);
@@ -84,7 +98,8 @@ const JobApplicationsPage = () => {
   const [rejectDialog, setRejectDialog] = useState(false);
   const [rejectFeedback, setRejectFeedback] = useState('');
   const [interviewDialog, setInterviewDialog] = useState(false);
-  const [interviewData, setInterviewData] = useState({ date: '', instructions: '' });
+  const [interviewData, setInterviewData] = useState({ startDate: getLocalDateTimeInputValue(), endDate: '', instructions: '' });
+  const [interviewFormError, setInterviewFormError] = useState('');
 
   const hasSelection = selectedIds.length > 0;
 
@@ -95,19 +110,41 @@ const JobApplicationsPage = () => {
 
   const getEligibleApplicationsForAction = (type) => {
     return selectedApplications.filter((app) => {
-      const allowed = ALLOWED_ACTIONS_BY_STATUS[app.status] || [];
+      const allowed = getLifecycleActions(app);
+      if (type === 'interview') {
+        return allowed.includes('interview') || allowed.includes('reschedule');
+      }
       return allowed.includes(type);
     });
   };
 
   const bulkActionAvailability = useMemo(() => {
-    const shortlist = getEligibleApplicationsForAction('shortlist').length;
-    const reject = getEligibleApplicationsForAction('reject').length;
-    const interview = getEligibleApplicationsForAction('interview').length;
-    const accept = getEligibleApplicationsForAction('accept').length;
+    const totalSelected = selectedApplications.length;
+    if (!totalSelected) {
+      return { shortlist: false, reject: false, interview: false, accept: false };
+    }
+
+    const shortlist = getEligibleApplicationsForAction('shortlist').length === totalSelected;
+    const reject = getEligibleApplicationsForAction('reject').length === totalSelected;
+    const interview = getEligibleApplicationsForAction('interview').length === totalSelected;
+    const accept = getEligibleApplicationsForAction('accept').length === totalSelected;
 
     return { shortlist, reject, interview, accept };
   }, [selectedApplications]);
+
+  const bulkDisabledReason = useMemo(() => {
+    if (!hasSelection) return '';
+
+    const disabledActions = [];
+    if (!bulkActionAvailability.shortlist) disabledActions.push('Shortlist');
+    if (!bulkActionAvailability.reject) disabledActions.push('Reject');
+    if (!bulkActionAvailability.interview) disabledActions.push('Schedule/Reschedule');
+    if (!bulkActionAvailability.accept) disabledActions.push('Accept');
+
+    if (disabledActions.length === 0) return '';
+
+    return `Some actions are disabled for the selected candidates (${disabledActions.join(', ')}). Select candidates from the same lifecycle stage to enable those actions.`;
+  }, [hasSelection, bulkActionAvailability]);
 
   useEffect(() => {
     return () => {
@@ -122,6 +159,31 @@ const JobApplicationsPage = () => {
     };
     loadProfile();
   }, [dispatch, getToken]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadJobContext = async () => {
+      try {
+        const data = await jobApi.getJobById(jobId);
+        const job = data?.data || data;
+        if (!isMounted || !job) return;
+        setJobContext({
+          title: job.title || '',
+          department: job.department || '',
+        });
+      } catch (err) {
+        if (!isMounted) return;
+        setJobContext({ title: '', department: '' });
+      }
+    };
+
+    if (jobId) loadJobContext();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [jobId]);
 
   const fetchApplications = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -150,16 +212,43 @@ const JobApplicationsPage = () => {
 
   const refresh = () => fetchApplications();
 
+  const validateInterviewWindow = (payload) => {
+    const start = payload?.interviewWindowStart;
+    const end = payload?.interviewWindowEnd;
+
+    if (!start || !end) {
+      return 'Interview start and end date/time are required.';
+    }
+
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return 'Please provide valid interview date/time values.';
+    }
+
+    if (startDate < new Date()) {
+      return 'Interview start date/time cannot be in the past.';
+    }
+
+    if (endDate <= startDate) {
+      return 'Interview end date/time must be after start date/time.';
+    }
+
+    return '';
+  };
+
   const singleAction = async (id, type, payload = {}) => {
     try {
       const actionLabelMap = {
         shortlist: 'shortlisted',
         reject: 'rejected',
         accept: 'accepted',
-        interview: 'updated to interview',
+        interview: 'scheduled for interview',
+        reschedule: 'interview rescheduled',
       };
 
-      if (type === 'interview') {
+      if (type === 'interview' || type === 'reschedule') {
         await applicationApi.scheduleInterview(id, {
           interviewWindowStart: payload.interviewWindowStart,
           interviewWindowEnd: payload.interviewWindowEnd,
@@ -204,26 +293,24 @@ const JobApplicationsPage = () => {
   const bulkAction = async (type, payload = {}) => {
     try {
       const eligibleApplications = getEligibleApplicationsForAction(type);
-      const skippedCount = selectedIds.length - eligibleApplications.length;
 
-      if (eligibleApplications.length === 0) {
-        toast.info('No selected candidates are eligible for this action based on their current status.');
-        return;
+      if (eligibleApplications.length !== selectedIds.length) {
+        toast.info('Selected candidates are in different lifecycle stages. Please select candidates from the same eligible stage for this action.');
+        return false;
       }
 
       if (type === 'interview') {
-        if (!payload.interviewWindowEnd) {
-          toast.error('Interview deadline is required.');
-          return;
+        const validationError = validateInterviewWindow(payload);
+        if (validationError) {
+          setInterviewFormError(validationError);
+          return false;
         }
-
-        const today = new Date().toISOString().split('T')[0];
 
         const results = await Promise.all(
           eligibleApplications.map(async (app) => {
             try {
               await applicationApi.scheduleInterview(app._id, {
-                interviewWindowStart: today,
+                interviewWindowStart: payload.interviewWindowStart,
                 interviewWindowEnd: payload.interviewWindowEnd,
                 instructions: payload.instructions || ''
               });
@@ -236,13 +323,17 @@ const JobApplicationsPage = () => {
 
         const successCount = results.filter((r) => r.ok).length;
         const failedCount = results.length - successCount;
-        if (failedCount === 0 && skippedCount === 0) {
-          toast.success(`Interview scheduled for ${successCount} candidate(s).`);
+        if (failedCount === 0) {
+          toast.success(`Interview schedule updated for ${successCount} candidate(s).`);
         } else if (successCount > 0) {
-          toast.warn(`Interview action finished: ${successCount} updated, ${failedCount} failed, ${skippedCount} skipped.`);
+          toast.warn(`Interview action finished: ${successCount} updated, ${failedCount} failed.`);
         } else {
-          toast.error(`Interview action failed for all eligible candidates (${failedCount} failed, ${skippedCount} skipped).`);
+          toast.error(`Interview action failed for all selected candidates (${failedCount} failed).`);
         }
+
+        setSelectedIds([]);
+        await refresh();
+        return successCount > 0;
       } else {
         const statusMap = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired' };
         const targetStatus = statusMap[type];
@@ -266,20 +357,22 @@ const JobApplicationsPage = () => {
         const failedCount = results.length - successCount;
         const actionLabel = `${type.charAt(0).toUpperCase() + type.slice(1)}`;
 
-        if (failedCount === 0 && skippedCount === 0) {
+        if (failedCount === 0) {
           toast.success(`${actionLabel} completed for ${successCount} candidate(s).`);
         } else if (successCount > 0) {
-          toast.warn(`${actionLabel} finished: ${successCount} updated, ${failedCount} failed, ${skippedCount} skipped.`);
+          toast.warn(`${actionLabel} finished: ${successCount} updated, ${failedCount} failed.`);
         } else {
-          toast.error(`${actionLabel} failed for all eligible candidates (${failedCount} failed, ${skippedCount} skipped).`);
+          toast.error(`${actionLabel} failed for all selected candidates (${failedCount} failed).`);
         }
-      }
 
-      setSelectedIds([]);
-      await refresh();
+        setSelectedIds([]);
+        await refresh();
+        return successCount > 0;
+      }
     } catch (err) {
       console.error(err);
       toast.error(err.message || 'Bulk action failed');
+      return false;
     }
   };
 
@@ -453,29 +546,32 @@ const JobApplicationsPage = () => {
     >
       <button
         onClick={() => bulkAction('shortlist')}
-        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white px-3 py-2 text-sm hover:bg-blue-700 shadow-sm hover:shadow transition-all"
-        disabled={!hasSelection || bulkActionAvailability.shortlist === 0}
+        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white px-3 py-2 text-sm hover:bg-blue-700 shadow-sm hover:shadow transition-all disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
+        disabled={!hasSelection || !bulkActionAvailability.shortlist}
       >
         <CheckCircle2 className="h-4 w-4" /> Shortlist
       </button>
       <button
         onClick={() => setRejectDialog(true)}
-        className="inline-flex items-center gap-1 rounded-lg bg-rose-600 text-white px-3 py-2 text-sm hover:bg-rose-700 shadow-sm hover:shadow transition-all"
-        disabled={!hasSelection || bulkActionAvailability.reject === 0}
+        className="inline-flex items-center gap-1 rounded-lg bg-rose-600 text-white px-3 py-2 text-sm hover:bg-rose-700 shadow-sm hover:shadow transition-all disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
+        disabled={!hasSelection || !bulkActionAvailability.reject}
       >
         <XCircle className="h-4 w-4" /> Reject
       </button>
       <button
-        onClick={() => setInterviewDialog(true)}
-        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 text-white px-3 py-2 text-sm hover:bg-amber-700 shadow-sm hover:shadow transition-all"
-        disabled={!hasSelection || bulkActionAvailability.interview === 0}
+        onClick={() => {
+          setInterviewFormError('');
+          setInterviewDialog(true);
+        }}
+        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 text-white px-3 py-2 text-sm hover:bg-amber-700 shadow-sm hover:shadow transition-all disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
+        disabled={!hasSelection || !bulkActionAvailability.interview}
       >
-        <CalendarClock className="h-4 w-4" /> Interview
+        <CalendarClock className="h-4 w-4" /> Schedule/Reschedule
       </button>
       <button
         onClick={() => bulkAction('accept')}
-        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm hover:bg-emerald-700 shadow-sm hover:shadow transition-all"
-        disabled={!hasSelection || bulkActionAvailability.accept === 0}
+        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm hover:bg-emerald-700 shadow-sm hover:shadow transition-all disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
+        disabled={!hasSelection || !bulkActionAvailability.accept}
       >
         <Handshake className="h-4 w-4" /> Accept
       </button>
@@ -526,6 +622,11 @@ const JobApplicationsPage = () => {
             <div>
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Job Applications</h1>
               <p className="text-slate-600">Manage and track candidates for this position.</p>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 via-orange-50 to-white px-4 py-3 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Current Role Context</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{jobContext.title || `Job #${jobId}`}</p>
+              <p className="text-xs text-slate-600">{jobContext.department || 'Department not specified'}</p>
             </div>
           </div>
         </div>
@@ -596,6 +697,9 @@ const JobApplicationsPage = () => {
                 className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
               >
                 {bulkBar}
+                {bulkDisabledReason && (
+                  <p className="mt-2 text-xs text-slate-500">{bulkDisabledReason}</p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -757,28 +861,60 @@ const JobApplicationsPage = () => {
         <ConfirmDialog
           open={interviewDialog}
           title="Schedule Interviews"
-          message={`Schedule interviews for ${selectedIds.length} candidate(s).`}
+          message={`Schedule or reschedule interviews for ${selectedIds.length} candidate(s).`}
           confirmLabel="Schedule"
           cancelLabel="Cancel"
           variant="info"
-          onConfirm={() => {
-            bulkAction('interview', {
-              interviewWindowEnd: interviewData.date,
+          onConfirm={async () => {
+            const payload = {
+              interviewWindowStart: interviewData.startDate,
+              interviewWindowEnd: interviewData.endDate,
               instructions: interviewData.instructions,
-            });
-            setInterviewDialog(false);
-            setInterviewData({ date: '', instructions: '' });
+            };
+
+            const validationError = validateInterviewWindow(payload);
+            if (validationError) {
+              setInterviewFormError(validationError);
+              return;
+            }
+
+            const success = await bulkAction('interview', payload);
+            if (success) {
+              setInterviewDialog(false);
+              setInterviewFormError('');
+              setInterviewData({ startDate: getLocalDateTimeInputValue(), endDate: '', instructions: '' });
+            }
           }}
-          onCancel={() => { setInterviewDialog(false); setInterviewData({ date: '', instructions: '' }); }}
+          onCancel={() => {
+            setInterviewDialog(false);
+            setInterviewFormError('');
+            setInterviewData({ startDate: getLocalDateTimeInputValue(), endDate: '', instructions: '' });
+          }}
         >
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Interview Deadline</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Interview Start</label>
               <input
-                type="date"
-                value={interviewData.date}
-                onChange={(e) => setInterviewData(prev => ({ ...prev, date: e.target.value }))}
-                min={new Date().toISOString().split('T')[0]}
+                type="datetime-local"
+                value={interviewData.startDate}
+                onChange={(e) => {
+                  setInterviewFormError('');
+                  setInterviewData(prev => ({ ...prev, startDate: e.target.value }));
+                }}
+                min={getLocalDateTimeInputValue()}
+                className="w-full rounded-lg border border-slate-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Interview End</label>
+              <input
+                type="datetime-local"
+                value={interviewData.endDate}
+                onChange={(e) => {
+                  setInterviewFormError('');
+                  setInterviewData(prev => ({ ...prev, endDate: e.target.value }));
+                }}
+                min={interviewData.startDate || getLocalDateTimeInputValue()}
                 className="w-full rounded-lg border border-slate-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -786,12 +922,20 @@ const JobApplicationsPage = () => {
               <label className="block text-sm font-medium text-slate-700 mb-1">Instructions</label>
               <textarea
                 value={interviewData.instructions}
-                onChange={(e) => setInterviewData(prev => ({ ...prev, instructions: e.target.value }))}
+                onChange={(e) => {
+                  setInterviewFormError('');
+                  setInterviewData(prev => ({ ...prev, instructions: e.target.value }));
+                }}
                 placeholder="Interview instructions for the candidates..."
                 className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 rows={3}
               />
             </div>
+            {interviewFormError && (
+              <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {interviewFormError}
+              </p>
+            )}
           </div>
         </ConfirmDialog>
       </main>

@@ -13,13 +13,20 @@ const MenuItem = ({ icon: Icon, label, onClick }) => (
   </button>
 );
 
+const getLocalDateTimeInputValue = (date = new Date()) => {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+};
+
 const StatusActionsMenu = ({ application, onAction }) => {
   const [open, setOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [interviewStart, setInterviewStart] = useState(getLocalDateTimeInputValue());
   const [interviewDeadline, setInterviewDeadline] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [interviewError, setInterviewError] = useState('');
   const menuRef = React.useRef(null);
   const buttonRef = React.useRef(null);
   const dropdownRef = React.useRef(null);
@@ -28,20 +35,51 @@ const StatusActionsMenu = ({ application, onAction }) => {
   const status = application?.status;
   const isTerminal = ['Rejected', 'Hired', 'Withdrawn', 'Job Closed', 'Job Deleted'].includes(status);
 
-  const allowedActionsByStatus = {
-    'Applied': ['shortlist', 'reject'],
-    'Under Review': ['shortlist', 'reject'],
-    'Shortlisted': ['interview', 'reject'],
-    'Interview Scheduled': ['reject'],
-    'Interviewed': ['accept', 'reject'],
-    'Rejected': [],
-    'Hired': [],
-    'Withdrawn': [],
-    'Job Closed': [],
-    'Job Deleted': [],
+  const canReschedule = (() => {
+    if (status !== 'Interview Scheduled') return false;
+    if (application?.interviewLocked) return false;
+    if (!application?.interviewWindowEnd) return false;
+    return new Date(application.interviewWindowEnd) > new Date();
+  })();
+
+  const hasCompletedInterview = Boolean(application?.interviewCompletedAt || status === 'Interviewed');
+
+  const getAllowedActions = () => {
+    if (status === 'Applied' || status === 'Under Review') return ['shortlist', 'reject'];
+    if (status === 'Shortlisted') {
+      return hasCompletedInterview ? ['accept', 'reject'] : ['interview', 'reject'];
+    }
+    if (status === 'Interview Scheduled') {
+      return canReschedule ? ['reschedule', 'reject'] : ['reject'];
+    }
+    if (status === 'Interviewed') return ['accept', 'shortlist', 'reject'];
+    return [];
   };
 
-  const allowedActions = allowedActionsByStatus[status] || [];
+  const allowedActions = getAllowedActions();
+
+  const validateInterviewWindow = () => {
+    if (!interviewStart || !interviewDeadline) {
+      return 'Interview start and end date/time are required.';
+    }
+
+    const startDate = new Date(interviewStart);
+    const endDate = new Date(interviewDeadline);
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return 'Please provide valid interview date/time values.';
+    }
+
+    if (startDate < new Date()) {
+      return 'Interview start date/time cannot be in the past.';
+    }
+
+    if (endDate <= startDate) {
+      return 'Interview end date/time must be after start date/time.';
+    }
+
+    return '';
+  };
 
   React.useEffect(() => {
     const handleClickOutside = (event) => {
@@ -119,7 +157,10 @@ const StatusActionsMenu = ({ application, onAction }) => {
               <MenuItem icon={Handshake} label="Accept" onClick={() => { setOpen(false); onAction('accept'); }} />
             )}
             {allowedActions.includes('interview') && (
-              <MenuItem icon={CalendarClock} label="Interview" onClick={() => { setOpen(false); setInterviewOpen(true); }} />
+              <MenuItem icon={CalendarClock} label="Schedule Interview" onClick={() => { setOpen(false); setInterviewError(''); setInterviewOpen(true); }} />
+            )}
+            {allowedActions.includes('reschedule') && (
+              <MenuItem icon={CalendarClock} label="Reschedule Interview" onClick={() => { setOpen(false); setInterviewError(''); setInterviewOpen(true); }} />
             )}
             {allowedActions.includes('reject') && (
               <MenuItem icon={XCircle} label="Reject" onClick={() => { setOpen(false); setRejectOpen(true); }} />
@@ -168,19 +209,37 @@ const StatusActionsMenu = ({ application, onAction }) => {
       )}
 
       {/* Interview dialog */}
-      {interviewOpen && !isTerminal && allowedActions.includes('interview') && (
+      {interviewOpen && !isTerminal && (allowedActions.includes('interview') || allowedActions.includes('reschedule')) && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30">
           <div className="w-full max-w-md rounded-xl bg-white p-6 border border-slate-200 shadow-xl">
-            <h3 className="text-base font-semibold text-slate-900 mb-1">Schedule Interview</h3>
-            <p className="text-sm text-slate-500 mb-4">Set the deadline by which the candidate must complete the interview. The interview button will be active for the candidate until this date.</p>
+            <h3 className="text-base font-semibold text-slate-900 mb-1">
+              {allowedActions.includes('reschedule') ? 'Reschedule Interview' : 'Schedule Interview'}
+            </h3>
+            <p className="text-sm text-slate-500 mb-4">Set interview start and end. Start cannot be in the past and end must be after start.</p>
             <div className="mb-3">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Interview Deadline <span className="text-rose-500">*</span></label>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Interview Start <span className="text-rose-500">*</span></label>
               <input
-                type="date"
+                type="datetime-local"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                value={interviewStart}
+                onChange={(e) => {
+                  setInterviewError('');
+                  setInterviewStart(e.target.value);
+                }}
+                min={getLocalDateTimeInputValue()}
+              />
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-slate-700 mb-1">Interview End <span className="text-rose-500">*</span></label>
+              <input
+                type="datetime-local"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
                 value={interviewDeadline}
-                onChange={(e) => setInterviewDeadline(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => {
+                  setInterviewError('');
+                  setInterviewDeadline(e.target.value);
+                }}
+                min={interviewStart || getLocalDateTimeInputValue()}
               />
             </div>
             <div className="mb-1">
@@ -189,30 +248,51 @@ const StatusActionsMenu = ({ application, onAction }) => {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
                 rows={3}
                 value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
+                onChange={(e) => {
+                  setInterviewError('');
+                  setInstructions(e.target.value);
+                }}
                 placeholder="Add any notes or instructions for the candidate..."
               />
             </div>
+            {interviewError && (
+              <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {interviewError}
+              </p>
+            )}
             <div className="flex justify-end gap-2 mt-4">
               <button
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
-                onClick={() => { setInterviewOpen(false); setInterviewDeadline(''); setInstructions(''); }}
+                onClick={() => {
+                  setInterviewOpen(false);
+                  setInterviewError('');
+                  setInterviewStart(getLocalDateTimeInputValue());
+                  setInterviewDeadline('');
+                  setInstructions('');
+                }}
               >
                 Cancel
               </button>
               <button
                 className="rounded-lg bg-amber-600 text-white px-3 py-2 text-sm hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!interviewDeadline}
+                disabled={!interviewStart || !interviewDeadline}
                 onClick={() => {
-                  if (!interviewDeadline) return;
-                  const today = new Date().toISOString().split('T')[0];
-                  onAction('interview', { interviewWindowStart: today, interviewWindowEnd: interviewDeadline, instructions });
+                  const validationError = validateInterviewWindow();
+                  if (validationError) {
+                    setInterviewError(validationError);
+                    return;
+                  }
+
+                  const actionType = allowedActions.includes('reschedule') ? 'reschedule' : 'interview';
+                  onAction(actionType, { interviewWindowStart: interviewStart, interviewWindowEnd: interviewDeadline, instructions });
                   setInterviewOpen(false);
+                  setInterviewError('');
+                  setInterviewStart(getLocalDateTimeInputValue());
                   setInterviewDeadline('');
                   setInstructions('');
                 }}
               >
-                Schedule
+                {allowedActions.includes('reschedule') ? 'Reschedule' : 'Schedule'}
               </button>
             </div>
           </div>

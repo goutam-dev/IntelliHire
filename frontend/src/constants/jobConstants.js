@@ -21,6 +21,14 @@ export const EXPERIENCE_LEVELS = [
   { value: 'expert', label: 'Expert' },
 ];
 
+export const EXPERIENCE_LEVEL_DURATION_GUIDE = {
+  'no-experience': '0 years',
+  entry: '0-1 years',
+  mid: '2-4 years',
+  senior: '5-7 years',
+  expert: '8+ years',
+};
+
 export const EMPLOYMENT_TYPES = [
   { value: 'full-time', label: 'Full-time' },
   { value: 'part-time', label: 'Part-time' },

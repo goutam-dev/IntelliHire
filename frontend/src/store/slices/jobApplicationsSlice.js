@@ -38,9 +38,11 @@ export const checkApplicationStatus = createAsyncThunk(
 
 export const fetchProfileData = createAsyncThunk(
   'jobApplications/fetchProfileData',
-  async (_, { rejectWithValue }) => {
+  async (jobId, { rejectWithValue }) => {
     try {
-      const response = await api.get('/job-applications/profile-data');
+      const response = await api.get('/job-applications/profile-data', {
+        params: jobId ? { jobId } : undefined,
+      });
       return response.data.data;
     } catch (error) {
       return rejectWithValue(extractApiErrorMessage(error, 'Failed to fetch profile data'));

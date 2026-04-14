@@ -127,6 +127,11 @@ const jobApplicationSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  interviewNotificationStatus: {
+    type: String,
+    enum: ['Interview Scheduled', 'Interview Rescheduled'],
+    default: 'Interview Scheduled'
+  },
   interviewCompletionNotificationSentAt: {
     type: Date,
     default: null

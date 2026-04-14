@@ -21,6 +21,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import api from '../../lib/api';
+import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
 
 const ApplicationDetails = () => {
   const { applicationId } = useParams();
@@ -164,29 +165,42 @@ const ApplicationDetails = () => {
             </div>
           </div>
           
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className={`px-4 py-2 rounded-full text-sm font-medium border flex items-center gap-2 ${getStatusColor(application.status)}`}>
               {getStatusIcon(application.status)}
               {application.status}
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex w-full flex-col gap-3 md:w-auto md:items-end">
               {applicationJobId && !application.jobId?.isDeleted && (
                 <button
                   onClick={() => navigate(`/candidate/jobs/${applicationJobId}`)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 md:min-w-[190px]"
                 >
                   <ExternalLink className="w-4 h-4" />
                   View Job Posting
                 </button>
               )}
               {application.status === 'Interview Scheduled' && (() => {
+                const formatDateTime = (value) => value.toLocaleString(undefined, {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
                 const now = new Date();
+                const start = application.interviewWindowStart
+                  ? new Date(application.interviewWindowStart)
+                  : null;
                 const deadline = application.interviewWindowEnd
                   ? new Date(application.interviewWindowEnd)
                   : null;
-                if (deadline) deadline.setHours(23, 59, 59, 999);
-                const active = deadline ? now <= deadline : true;
+                const hasValidStart = start && !Number.isNaN(start.getTime());
+                const hasValidDeadline = deadline && !Number.isNaN(deadline.getTime());
+                const beforeStart = hasValidStart ? now < start : false;
+                const afterDeadline = hasValidDeadline ? now > deadline : false;
+                const active = hasValidStart && hasValidDeadline ? now >= start && now <= deadline : false;
                 const interviewLocked = Boolean(application.interviewLocked);
                 const voiceEnrollmentStatus = application.voiceEnrollment?.status;
                 const faceEnrollmentStatus = application.faceEnrollment?.status;
@@ -195,16 +209,30 @@ const ApplicationDetails = () => {
                 const ctaDisabled = interviewLocked || !active || !enrollmentsReady;
                 const ctaLabel = interviewLocked
                   ? 'Interview Submitted'
-                  : active
-                    ? 'Give Interview'
-                    : 'Deadline Passed';
+                  : beforeStart
+                    ? 'Starts Soon'
+                    : active
+                      ? 'Give Interview'
+                      : 'Window Closed';
                 return (
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
+                    {hasValidStart && hasValidDeadline && (
+                      <InterviewSlotCard
+                        start={formatDateTime(start)}
+                        end={formatDateTime(deadline)}
+                        className="md:w-[320px]"
+                      />
+                    )}
                     {interviewLocked && (
-                      <span className="text-xs text-slate-500">Your interview is under review.</span>
+                      <span className="text-xs text-slate-500 md:max-w-[320px] md:text-right">Your interview is under review.</span>
+                    )}
+                    {!interviewLocked && beforeStart && (
+                      <span className="text-xs text-slate-500 md:max-w-[320px] md:text-right">
+                        Starts at {formatDateTime(start)}.
+                      </span>
                     )}
                     {!enrollmentsReady && !interviewLocked && (
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-slate-500 md:max-w-[320px] md:text-right">
                         {enrollmentFailed
                           ? 'Interview setup failed. Please contact support or ask the employer to reschedule.'
                           : 'Interview setup in progress. Please wait...'}
@@ -222,7 +250,7 @@ const ApplicationDetails = () => {
                             },
                           })
                         }
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                        className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all md:min-w-[190px] ${
                           !ctaDisabled
                             ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md'
                             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -409,6 +437,17 @@ const ApplicationDetails = () => {
                     <div>
                       <p className="font-medium text-slate-900">Status Updated</p>
                       <p className="text-sm text-slate-500">{formatDate(application.lastUpdated)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {application.interviewWindowStart && application.interviewWindowEnd && (
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-indigo-600 rounded-full mt-2"></div>
+                    <div>
+                      <p className="font-medium text-slate-900">Interview Slot</p>
+                      <p className="text-sm text-slate-500">Opens: {formatDate(application.interviewWindowStart)}</p>
+                      <p className="text-sm text-slate-500">Closes: {formatDate(application.interviewWindowEnd)}</p>
                     </div>
                   </div>
                 )}

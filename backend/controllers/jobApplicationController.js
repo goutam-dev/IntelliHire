@@ -23,7 +23,8 @@ exports.checkApplicationStatus = asyncHandler(async (req, res) => {
  * Get candidate's profile data for application
  */
 exports.getProfileDataForApplication = asyncHandler(async (req, res) => {
-  const data = await applicationService.getProfileDataForApplication(req.user.id);
+  const { jobId } = req.query;
+  const data = await applicationService.getProfileDataForApplication(req.user.id, jobId);
   res.json({
     success: true,
     data
