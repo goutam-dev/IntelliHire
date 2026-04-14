@@ -10,13 +10,17 @@ const DELETE_IMMUTABLE_APPLICATION_STATUSES = ['Rejected', 'Hired', 'Withdrawn',
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const buildSearchRegex = (value = '') => {
+/**
+ * Build an array of regexes – one per keyword in the search query.
+ * Each keyword is matched independently so "mern developer" will find jobs
+ * that contain both "mern" AND "developer" in any order, in any field.
+ */
+const buildSearchRegexes = (value = '') => {
   const normalized = String(value).trim().replace(/\s+/g, ' ');
-  if (!normalized) return null;
+  if (!normalized) return [];
 
-  // Allow flexible whitespace so queries like "Systems L" still match naturally.
-  const pattern = escapeRegex(normalized).replace(/\s+/g, '\\s+');
-  return new RegExp(pattern, 'i');
+  const keywords = normalized.split(' ').filter(k => k.length > 0);
+  return keywords.map(k => new RegExp(escapeRegex(k), 'i'));
 };
 
 const resolveEmployerProfileFromClerkUser = async (clerkUserId) => {
@@ -158,7 +162,7 @@ const normalizeApplicationDeadline = (rawDeadline) => {
  * Get jobs by employer (with optional filters)
  */
 const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
-  const searchRegex = buildSearchRegex(queryFilters.search);
+  const searchRegexes = buildSearchRegexes(queryFilters.search);
   const { search: _ignoredSearch, ...filtersWithoutSearch } = queryFilters;
 
   // Get employer profile ID from authenticated user
@@ -203,17 +207,32 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
   const skip = (page - 1) * limit;
   const sortStage = getSortStage(queryFilters.sortBy, queryFilters.sortOrder);
 
-  const searchStage = searchRegex
+  // Build keyword-level search: each keyword must appear in at least one field,
+  // and ALL keywords must be present (AND logic across keywords, OR across fields).
+  // e.g. "mern developer" → job must contain "mern" somewhere AND "developer" somewhere.
+  const searchStage = searchRegexes.length > 0
     ? {
-        $match: {
-          $or: [
-            { title: { $regex: searchRegex } },
-            { department: { $regex: searchRegex } },
-            { description: { $regex: searchRegex } },
-            { requiredSkills: { $elemMatch: { $regex: searchRegex } } },
-            { company: { $regex: searchRegex } },
-          ],
-        },
+        $match: searchRegexes.length === 1
+          ? {
+              $or: [
+                { title: { $regex: searchRegexes[0] } },
+                { department: { $regex: searchRegexes[0] } },
+                { description: { $regex: searchRegexes[0] } },
+                { requiredSkills: { $elemMatch: { $regex: searchRegexes[0] } } },
+                { company: { $regex: searchRegexes[0] } },
+              ],
+            }
+          : {
+              $and: searchRegexes.map(regex => ({
+                $or: [
+                  { title: { $regex: regex } },
+                  { department: { $regex: regex } },
+                  { description: { $regex: regex } },
+                  { requiredSkills: { $elemMatch: { $regex: regex } } },
+                  { company: { $regex: regex } },
+                ],
+              })),
+            },
       }
     : null;
 
