@@ -32,5 +32,7 @@ router.patch('/applications/bulk/status', applicationController.bulkUpdateStatus
 router.patch('/applications/:id/status', applicationController.updateApplicationStatus);
 router.post('/applications/:id/interview', applicationController.scheduleInterview);
 router.get('/applications/:id/interview-report', applicationController.getInterviewReport);
+router.post('/applications/:id/approve-reinterview', applicationController.approveReInterview);
+router.post('/applications/:id/deny-reinterview', applicationController.denyReInterview);
 
 module.exports = router;

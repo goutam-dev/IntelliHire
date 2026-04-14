@@ -21,6 +21,9 @@ const NotificationSchema = new Schema(
         'status_updated',         // candidate: employer changed status
         'interview_scheduled',    // candidate: interview window set
         'interview_rescheduled',  // candidate: interview window changed
+        'reinterview_requested',  // employer: candidate requested re-interview
+        'reinterview_approved',   // candidate: employer approved re-interview
+        'reinterview_denied',     // candidate: employer denied re-interview
       ],
     },
     title: { type: String, required: true },

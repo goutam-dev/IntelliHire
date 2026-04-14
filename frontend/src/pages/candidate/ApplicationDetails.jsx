@@ -18,10 +18,13 @@ import {
   CheckCircle,
   XCircle,
   Eye,
-  RefreshCw
+  RefreshCw,
+  RotateCcw
 } from 'lucide-react';
 import api from '../../lib/api';
 import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
+import ReInterviewRequestDialog, { ReInterviewStatusBadge } from '../../components/candidate/ReInterviewRequestDialog';
+import { requestReInterview } from '../../services/api/applicationApi';
 
 const ApplicationDetails = () => {
   const { applicationId } = useParams();
@@ -29,6 +32,8 @@ const ApplicationDetails = () => {
   const [application, setApplication] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reInterviewDialogOpen, setReInterviewDialogOpen] = useState(false);
+  const [reInterviewLoading, setReInterviewLoading] = useState(false);
 
   useEffect(() => {
     fetchApplicationDetails();
@@ -90,6 +95,20 @@ const ApplicationDetails = () => {
   const applicationJobId = typeof application?.jobId === 'string'
     ? application.jobId
     : application?.jobId?._id;
+
+  const handleRequestReInterview = async (reason) => {
+    setReInterviewLoading(true);
+    try {
+      await requestReInterview(application.applicationId, { reason });
+      setReInterviewDialogOpen(false);
+      fetchApplicationDetails();
+    } catch (err) {
+      console.error('Failed to request re-interview:', err);
+      alert(err?.response?.data?.message || 'Failed to submit re-interview request.');
+    } finally {
+      setReInterviewLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -514,9 +533,51 @@ const ApplicationDetails = () => {
                 <p className="text-slate-700 whitespace-pre-wrap">{application.employerNotes}</p>
               </motion.div>
             )}
+
+            {/* Re-Interview Request Section */}
+            {application.status === 'Interviewed' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
+              >
+                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5" />
+                  Re-Interview
+                </h2>
+
+                {application.reInterviewRequest && application.reInterviewRequest.status !== 'none' ? (
+                  <ReInterviewStatusBadge reInterviewRequest={application.reInterviewRequest} />
+                ) : (
+                  <p className="text-sm text-slate-600 mb-4">
+                    If your interview was interrupted due to technical issues, you can request a re-interview.
+                  </p>
+                )}
+
+                {(!application.reInterviewRequest || application.reInterviewRequest.status === 'none' || application.reInterviewRequest.status === 'denied') && (
+                  <button
+                    onClick={() => setReInterviewDialogOpen(true)}
+                    className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-lg shadow-amber-500/25 transition-all"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Request Re-Interview
+                  </button>
+                )}
+              </motion.div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Re-Interview Request Dialog */}
+      <ReInterviewRequestDialog
+        open={reInterviewDialogOpen}
+        onClose={() => setReInterviewDialogOpen(false)}
+        onSubmit={handleRequestReInterview}
+        loading={reInterviewLoading}
+        application={application}
+      />
     </div>
   );
 };

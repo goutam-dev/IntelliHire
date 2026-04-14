@@ -188,6 +188,26 @@ exports.downloadResume = asyncHandler(async (req, res) => {
   fileStream.pipe(res);
 });
 
+/**
+ * Request re-interview (candidate action)
+ */
+exports.requestReInterview = asyncHandler(async (req, res) => {
+  const { applicationId } = req.params;
+  const { reason } = req.body;
+
+  const result = await applicationService.requestReInterview(
+    req.user.clerkUserId || req.user.id,
+    applicationId,
+    reason
+  );
+
+  res.json({
+    success: true,
+    message: 'Re-interview request submitted successfully.',
+    data: result,
+  });
+});
+
 // --- Employer Actions (Existing in applicationController.js? No, that was for listing) ---
 // We can keep employer actions in applicationController.js or move them here.
 // For now, let's keep them separate to minimize diffs, or if we want to consolidate...

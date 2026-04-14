@@ -136,6 +136,18 @@ const jobApplicationSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  // Re-interview request (candidate-initiated)
+  reInterviewRequest: {
+    status: {
+      type: String,
+      enum: ['none', 'pending', 'approved', 'denied'],
+      default: 'none'
+    },
+    reason: { type: String, default: '' },
+    requestedAt: { type: Date, default: null },
+    resolvedAt: { type: Date, default: null },
+    employerNote: { type: String, default: '' },
+  },
   // Employer actions
   employerNotes: String,
   reviewedAt: Date,

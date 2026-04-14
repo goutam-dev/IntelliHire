@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { FileDown, Mail, Phone, Sparkles, Award, Zap, Loader2 } from 'lucide-react';
+import { FileDown, Mail, Phone, Sparkles, Award, Zap, Loader2, RotateCcw } from 'lucide-react';
 import StatusActionsMenu from './StatusActionsMenu';
 
 const statusColors = {
@@ -211,6 +211,12 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                     )}
                     {app.status === 'Job Deleted' && (
                       <span className="text-[11px] text-slate-600">Role deleted, record kept for audit.</span>
+                    )}
+                    {app.reInterviewRequest?.status === 'pending' && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[11px] font-medium">
+                        <RotateCcw className="h-3 w-3" />
+                        Re-interview requested
+                      </span>
                     )}
                   </div>
                 </td>

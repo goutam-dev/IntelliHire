@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Sparkles, Loader2, Award } from 'lucide-react';
+import { X, Sparkles, Loader2, Award, RotateCcw, Check, XCircle as XCircleIcon, MessageSquare, Clock } from 'lucide-react';
 
 const Section = ({ title, children }) => (
   <div>
@@ -8,7 +8,7 @@ const Section = ({ title, children }) => (
   </div>
 );
 
-const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = new Set(), onViewInterviewReport }) => {
+const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = new Set(), onViewInterviewReport, onApproveReInterview, onDenyReInterview }) => {
   if (!open) return null;
   const candidate = application?.candidate;
   const user = candidate?.user;
@@ -144,6 +144,60 @@ const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = 
               )}
             </div>
           </Section>
+
+          {/* Re-Interview Request Banner */}
+          {application?.reInterviewRequest?.status === 'pending' && (
+            <div className="col-span-1 md:col-span-2">
+              <div className="rounded-xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-sm">
+                    <RotateCcw className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-amber-900">Re-Interview Requested</h4>
+                    <div className="flex items-center gap-1 text-xs text-amber-600">
+                      <Clock className="w-3 h-3" />
+                      {application.reInterviewRequest.requestedAt
+                        ? new Date(application.reInterviewRequest.requestedAt).toLocaleDateString()
+                        : 'Recently'}
+                    </div>
+                  </div>
+                </div>
+
+                {application.reInterviewRequest.reason && (
+                  <div className="flex items-start gap-2 bg-white/60 rounded-lg p-3 border border-amber-200">
+                    <MessageSquare className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-sm text-amber-800 italic leading-relaxed">
+                      "{application.reInterviewRequest.reason}"
+                    </p>
+                  </div>
+                )}
+
+                {(onApproveReInterview || onDenyReInterview) && (
+                  <div className="flex items-center gap-2 pt-1">
+                    {onApproveReInterview && (
+                      <button
+                        onClick={() => onApproveReInterview(application)}
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-lg shadow-emerald-500/20 transition-all"
+                      >
+                        <Check className="w-4 h-4" />
+                        Approve & Schedule
+                      </button>
+                    )}
+                    {onDenyReInterview && (
+                      <button
+                        onClick={() => onDenyReInterview(application)}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 transition-all"
+                      >
+                        <XCircleIcon className="w-4 h-4" />
+                        Deny
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <Section title="Notes">
             <p className="text-sm text-slate-700">{application?.employerNotes || application?.feedback || '—'}</p>
