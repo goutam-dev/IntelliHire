@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { FileDown, Mail, Phone, Sparkles, Award, Zap, Loader2, RotateCcw } from 'lucide-react';
+import { FileDown, Mail, Phone, Sparkles, Award, Zap, Loader2, RotateCcw, Eye } from 'lucide-react';
 import StatusActionsMenu from './StatusActionsMenu';
 
 const statusColors = {
@@ -76,7 +76,7 @@ const InterviewScoreBadge = ({ score, verdict }) => {
   );
 };
 
-const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds, onSingleAction, onCandidateClick, onAnalyze, analyzingIds = new Set() }) => {
+const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds, onSingleAction, onCandidateClick, onDetailsClick, onAnalyze, analyzingIds = new Set() }) => {
   const allSelected = useMemo(() => applications.length > 0 && selectedIds.length === applications.length, [applications, selectedIds]);
 
   const toggleAll = (e) => {
@@ -221,10 +221,19 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                   </div>
                 </td>
                 <td className="p-3 text-right align-top relative">
-                  <StatusActionsMenu
-                    application={app}
-                    onAction={(type, payload) => onSingleAction(app._id, type, payload)}
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => onDetailsClick && onDetailsClick(app)}
+                      className="inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-2 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors shadow-sm"
+                      title="View Application Details"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                    <StatusActionsMenu
+                      application={app}
+                      onAction={(type, payload) => onSingleAction(app._id, type, payload)}
+                    />
+                  </div>
                 </td>
               </tr>
             );

@@ -12,6 +12,7 @@ import { batchAnalyzeApplications, analyzeResume } from '../../services/api/resu
 import FiltersBar from '../../components/FiltersBar';
 import ApplicationsTable from '../../components/ApplicationsTable';
 import CandidateModal from '../../components/CandidateModal';
+import ApplicationDetailsModal from '../../components/ApplicationDetailsModal';
 import InterviewReportModal from '../../components/InterviewReportModal';
 import { ReInterviewApproveDialog, ReInterviewDenyDialog } from '../../components/employer/ReInterviewDialogs';
 
@@ -82,6 +83,7 @@ const JobApplicationsPage = () => {
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [candidateOpen, setCandidateOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState(null);
   
   // Interview report modal state
@@ -292,6 +294,7 @@ const JobApplicationsPage = () => {
   const handleViewReport = async (application) => {
     setLoadingReport(true);
     setCandidateOpen(false); // Close candidate modal first
+    setDetailsOpen(false); // Close details modal too
     try {
       const reportData = await applicationApi.getInterviewReport(application._id);
       setSelectedReportData({
@@ -303,7 +306,7 @@ const JobApplicationsPage = () => {
     } catch (err) {
       console.error('Failed to load report:', err);
       alert('Failed to load interview report. It may not be available yet.');
-      setCandidateOpen(true); // Re-open if failed
+      setDetailsOpen(true); // Re-open if failed
     } finally {
       setLoadingReport(false);
     }
@@ -745,6 +748,7 @@ const JobApplicationsPage = () => {
                 setSelectedIds={setSelectedIds}
                 onSingleAction={singleAction}
                 onCandidateClick={(app) => { setSelectedApplication(app); setCandidateOpen(true); }}
+                onDetailsClick={(app) => { setSelectedApplication(app); setDetailsOpen(true); }}
                 onAnalyze={handleAnalyzeSingle}
                 analyzingIds={analyzingIds}
               />
@@ -756,16 +760,22 @@ const JobApplicationsPage = () => {
           open={candidateOpen}
           onClose={() => setCandidateOpen(false)}
           application={selectedApplication}
+        />
+
+        <ApplicationDetailsModal
+          open={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+          application={selectedApplication}
           onAnalyze={handleAnalyzeSingle}
           analyzingIds={analyzingIds}
           onViewInterviewReport={handleViewReport}
           onApproveReInterview={(app) => {
-            setCandidateOpen(false);
+            setDetailsOpen(false);
             setReInterviewTargetApp(app);
             setReInterviewApproveOpen(true);
           }}
           onDenyReInterview={(app) => {
-            setCandidateOpen(false);
+            setDetailsOpen(false);
             setReInterviewTargetApp(app);
             setReInterviewDenyOpen(true);
           }}
