@@ -156,7 +156,7 @@ const APPLICATION_TRANSITIONS = {
   'Under Review': ['Shortlisted', 'Rejected'],
   Shortlisted: ['Interview Scheduled', 'Rejected', 'Hired'],
   'Interview Scheduled': ['Interviewed', 'Rejected'],
-  Interviewed: ['Hired', 'Rejected', 'Shortlisted'],
+  Interviewed: ['Hired', 'Rejected', 'Shortlisted', 'Interview Scheduled'],
   Rejected: [],
   Hired: [],
   Withdrawn: [],
@@ -1593,6 +1593,237 @@ const getInterviewReport = async (applicationId, userId) => {
   };
 };
 
+// ─── Re-Interview Request (Candidate-initiated) ────────────────────────────────
+
+/**
+ * Candidate requests a re-interview with a reason.
+ */
+const requestReInterview = async (candidateClerkId, applicationId, reason) => {
+  if (!reason || !reason.trim()) {
+    throw new ValidationError('A reason is required when requesting a re-interview.');
+  }
+
+  const user = await User.findOne({ clerkUserId: candidateClerkId });
+  if (!user) throw new ForbiddenError('User not found');
+
+  const application = await JobApplication.findOne({
+    applicationId,
+    candidateId: user._id,
+  }).populate({
+    path: 'jobId',
+    select: 'title employer',
+    populate: { path: 'employer', select: 'user companyName' },
+  });
+
+  if (!application) throw new NotFoundError('Application not found');
+
+  if (application.status !== 'Interviewed') {
+    throw new ValidationError('Re-interview can only be requested when the application is in Interviewed status.');
+  }
+
+  if (application.reInterviewRequest?.status === 'pending') {
+    throw new ValidationError('A re-interview request is already pending for this application.');
+  }
+
+  application.reInterviewRequest = {
+    status: 'pending',
+    reason: reason.trim(),
+    requestedAt: new Date(),
+    resolvedAt: null,
+    employerNote: '',
+  };
+
+  await application.save();
+
+  // Notify employer
+  const employerUserId = application.jobId?.employer?.user;
+  if (employerUserId) {
+    setImmediate(async () => {
+      try {
+        const candidateName = user.fullName || 'A candidate';
+        const jobTitle = application.jobId?.title || 'the job';
+        const jobId = application.jobId?._id;
+        await notificationService.createAndSend(employerUserId, {
+          type: 'reinterview_requested',
+          title: 'Re-Interview Requested',
+          message: `${candidateName} has requested a re-interview for "${jobTitle}". Reason: ${reason.trim()}`,
+          link: `${process.env.APP_URL || 'http://localhost:3000'}/employer/jobs/${jobId}/applications`,
+          email: null,
+        });
+      } catch (err) {
+        logger.error(`[requestReInterview] Employer notification failed: ${err.message}`);
+      }
+    });
+  }
+
+  return { success: true, reInterviewRequest: application.reInterviewRequest };
+};
+
+/**
+ * Employer approves a re-interview request.
+ * Resets the application to Interview Scheduled, resets enrollments,
+ * and triggers the enrollment pipeline.
+ */
+const approveReInterview = async (applicationId, interviewData, userId) => {
+  const { interviewWindowStart, interviewWindowEnd, instructions } = interviewData;
+
+  if (!mongoose.Types.ObjectId.isValid(applicationId)) {
+    throw new ValidationError('Invalid applicationId');
+  }
+
+  if (!interviewWindowStart || !interviewWindowEnd) {
+    throw new ValidationError('Interview start and end are required.');
+  }
+
+  const startDate = parseInterviewDateTime(interviewWindowStart, 'Interview start date/time');
+  const endDate = parseInterviewDateTime(interviewWindowEnd, 'Interview end date/time');
+
+  if (startDate < new Date()) {
+    throw new ValidationError('Interview start date/time cannot be in the past.');
+  }
+  if (endDate <= startDate) {
+    throw new ValidationError('Interview end date/time must be after start date/time.');
+  }
+
+  const application = await JobApplication.findById(applicationId).populate('jobId');
+  if (!application) throw new NotFoundError('Application not found');
+
+  // Verify employer ownership
+  const user = await User.findOne({ clerkUserId: userId });
+  if (!user) throw new ForbiddenError('User not found');
+  const employerProfile = await EmployerProfile.findOne({ user: user._id });
+  if (!employerProfile) throw new ForbiddenError('Employer profile not found');
+  if (!application.jobId || application.jobId.employer.toString() !== employerProfile._id.toString()) {
+    throw new ForbiddenError('You do not have permission to manage this application');
+  }
+
+  if (application.reInterviewRequest?.status !== 'pending') {
+    throw new ValidationError('No pending re-interview request found for this application.');
+  }
+
+  if (application.jobId.isDeleted || application.jobId.status !== 'active') {
+    throw new ValidationError('This job is not accepting interview scheduling.');
+  }
+
+  // Approve the request
+  application.reInterviewRequest.status = 'approved';
+  application.reInterviewRequest.resolvedAt = new Date();
+
+  // Reset to Interview Scheduled
+  application.status = 'Interview Scheduled';
+  application.interviewWindowStart = startDate;
+  application.interviewWindowEnd = endDate;
+  application.interviewNotificationSentAt = null;
+  application.interviewNotificationStatus = 'Interview Rescheduled';
+  application.employerNotes = `Re-interview approved. Window: ${startDate.toDateString()} – ${endDate.toDateString()}. ${instructions || ''}`.trim();
+
+  // Reset enrollments
+  application.voiceEnrollment.speakerId = null;
+  application.voiceEnrollment.embeddingPath = null;
+  application.voiceEnrollment.enrolledAt = null;
+  application.voiceEnrollment.status = 'pending';
+  application.voiceEnrollment.errorMessage = null;
+
+  application.faceEnrollment.candidateId = null;
+  application.faceEnrollment.registrationType = null;
+  application.faceEnrollment.canonicalEmbedding = [];
+  application.faceEnrollment.framesUsed = 0;
+  application.faceEnrollment.totalFrames = 0;
+  application.faceEnrollment.usableFrames = 0;
+  application.faceEnrollment.qualityScore = null;
+  application.faceEnrollment.embeddingConsistency = null;
+  application.faceEnrollment.qualityBreakdown = null;
+  application.faceEnrollment.referenceImagePath = null;
+  application.faceEnrollment.enrolledAt = null;
+  application.faceEnrollment.status = 'pending';
+  application.faceEnrollment.errorMessage = null;
+
+  await application.save();
+
+  // Notify candidate
+  setImmediate(async () => {
+    try {
+      await notificationService.notifyCandidateStatusUpdate({
+        candidateUserId: application.candidateId,
+        jobTitle: application.jobId?.title || 'the job',
+        newStatus: 'Interview Rescheduled',
+        applicationId: application.applicationId,
+        notifType: 'reinterview_approved',
+      });
+    } catch (err) {
+      logger.error(`[approveReInterview] Candidate notification failed: ${err.message}`);
+    }
+  });
+
+  // Kick off enrollment pipeline
+  setImmediate(() => {
+    processInterviewEnrollmentArtifacts(application._id).catch((err) => {
+      logger.error(`[approveReInterview] Enrollment pipeline failed for ${application._id}: ${err.message}`);
+    });
+  });
+
+  const populated = await application.populate([
+    { path: 'candidateId', select: 'fullName email phoneNumber' },
+    { path: 'jobId', select: 'title department' },
+  ]);
+
+  return populated;
+};
+
+/**
+ * Employer denies a re-interview request.
+ */
+const denyReInterview = async (applicationId, employerNote, userId) => {
+  if (!mongoose.Types.ObjectId.isValid(applicationId)) {
+    throw new ValidationError('Invalid applicationId');
+  }
+
+  const application = await JobApplication.findById(applicationId).populate('jobId');
+  if (!application) throw new NotFoundError('Application not found');
+
+  // Verify employer ownership
+  const user = await User.findOne({ clerkUserId: userId });
+  if (!user) throw new ForbiddenError('User not found');
+  const employerProfile = await EmployerProfile.findOne({ user: user._id });
+  if (!employerProfile) throw new ForbiddenError('Employer profile not found');
+  if (!application.jobId || application.jobId.employer.toString() !== employerProfile._id.toString()) {
+    throw new ForbiddenError('You do not have permission to manage this application');
+  }
+
+  if (application.reInterviewRequest?.status !== 'pending') {
+    throw new ValidationError('No pending re-interview request found for this application.');
+  }
+
+  application.reInterviewRequest.status = 'denied';
+  application.reInterviewRequest.resolvedAt = new Date();
+  application.reInterviewRequest.employerNote = (employerNote || '').trim();
+
+  await application.save();
+
+  // Notify candidate
+  setImmediate(async () => {
+    try {
+      const jobTitle = application.jobId?.title || 'the job';
+      await notificationService.createAndSend(application.candidateId, {
+        type: 'reinterview_denied',
+        title: 'Re-Interview Request Denied',
+        message: `Your re-interview request for "${jobTitle}" was not approved.${employerNote ? ` Note: ${employerNote.trim()}` : ''}`,
+        link: `${process.env.APP_URL || 'http://localhost:3000'}/candidate/applications/${application.applicationId}`,
+        email: null,
+      });
+    } catch (err) {
+      logger.error(`[denyReInterview] Candidate notification failed: ${err.message}`);
+    }
+  });
+
+  const populated = await application.populate([
+    { path: 'candidateId', select: 'fullName email phoneNumber' },
+    { path: 'jobId', select: 'title department' },
+  ]);
+
+  return populated;
+};
+
 module.exports = {
   getApplicationsByJob,
   updateApplicationStatus,
@@ -1604,5 +1835,8 @@ module.exports = {
   getCandidateApplications,
   getApplicationById,
   withdrawApplication,
-  getInterviewReport
+  getInterviewReport,
+  requestReInterview,
+  approveReInterview,
+  denyReInterview,
 };

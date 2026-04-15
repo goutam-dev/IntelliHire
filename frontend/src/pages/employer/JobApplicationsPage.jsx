@@ -12,7 +12,9 @@ import { batchAnalyzeApplications, analyzeResume } from '../../services/api/resu
 import FiltersBar from '../../components/FiltersBar';
 import ApplicationsTable from '../../components/ApplicationsTable';
 import CandidateModal from '../../components/CandidateModal';
+import ApplicationDetailsModal from '../../components/ApplicationDetailsModal';
 import InterviewReportModal from '../../components/InterviewReportModal';
+import { ReInterviewApproveDialog, ReInterviewDenyDialog } from '../../components/employer/ReInterviewDialogs';
 
 import EmployerHeader from '../../components/layout/EmployerHeader';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -81,6 +83,7 @@ const JobApplicationsPage = () => {
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [candidateOpen, setCandidateOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState(null);
   
   // Interview report modal state
@@ -100,6 +103,12 @@ const JobApplicationsPage = () => {
   const [interviewDialog, setInterviewDialog] = useState(false);
   const [interviewData, setInterviewData] = useState({ startDate: getLocalDateTimeInputValue(), endDate: '', instructions: '' });
   const [interviewFormError, setInterviewFormError] = useState('');
+
+  // Re-interview dialog states
+  const [reInterviewApproveOpen, setReInterviewApproveOpen] = useState(false);
+  const [reInterviewDenyOpen, setReInterviewDenyOpen] = useState(false);
+  const [reInterviewTargetApp, setReInterviewTargetApp] = useState(null);
+  const [reInterviewLoading, setReInterviewLoading] = useState(false);
 
   const hasSelection = selectedIds.length > 0;
 
@@ -246,6 +255,8 @@ const JobApplicationsPage = () => {
         accept: 'accepted',
         interview: 'scheduled for interview',
         reschedule: 'interview rescheduled',
+        'approve-reinterview': 're-interview approved',
+        'deny-reinterview': 're-interview request denied',
       };
 
       if (type === 'interview' || type === 'reschedule') {
@@ -253,6 +264,16 @@ const JobApplicationsPage = () => {
           interviewWindowStart: payload.interviewWindowStart,
           interviewWindowEnd: payload.interviewWindowEnd,
           instructions: payload.instructions
+        });
+      } else if (type === 'approve-reinterview') {
+        await applicationApi.approveReInterview(id, {
+          interviewWindowStart: payload.interviewWindowStart,
+          interviewWindowEnd: payload.interviewWindowEnd,
+          instructions: payload.instructions,
+        });
+      } else if (type === 'deny-reinterview') {
+        await applicationApi.denyReInterview(id, {
+          note: payload.note || '',
         });
       } else {
         const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired' };
@@ -273,6 +294,7 @@ const JobApplicationsPage = () => {
   const handleViewReport = async (application) => {
     setLoadingReport(true);
     setCandidateOpen(false); // Close candidate modal first
+    setDetailsOpen(false); // Close details modal too
     try {
       const reportData = await applicationApi.getInterviewReport(application._id);
       setSelectedReportData({
@@ -284,7 +306,7 @@ const JobApplicationsPage = () => {
     } catch (err) {
       console.error('Failed to load report:', err);
       alert('Failed to load interview report. It may not be available yet.');
-      setCandidateOpen(true); // Re-open if failed
+      setDetailsOpen(true); // Re-open if failed
     } finally {
       setLoadingReport(false);
     }
@@ -726,6 +748,7 @@ const JobApplicationsPage = () => {
                 setSelectedIds={setSelectedIds}
                 onSingleAction={singleAction}
                 onCandidateClick={(app) => { setSelectedApplication(app); setCandidateOpen(true); }}
+                onDetailsClick={(app) => { setSelectedApplication(app); setDetailsOpen(true); }}
                 onAnalyze={handleAnalyzeSingle}
                 analyzingIds={analyzingIds}
               />
@@ -737,9 +760,63 @@ const JobApplicationsPage = () => {
           open={candidateOpen}
           onClose={() => setCandidateOpen(false)}
           application={selectedApplication}
+        />
+
+        <ApplicationDetailsModal
+          open={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+          application={selectedApplication}
           onAnalyze={handleAnalyzeSingle}
           analyzingIds={analyzingIds}
           onViewInterviewReport={handleViewReport}
+          onApproveReInterview={(app) => {
+            setDetailsOpen(false);
+            setReInterviewTargetApp(app);
+            setReInterviewApproveOpen(true);
+          }}
+          onDenyReInterview={(app) => {
+            setDetailsOpen(false);
+            setReInterviewTargetApp(app);
+            setReInterviewDenyOpen(true);
+          }}
+        />
+
+        {/* Re-Interview Approve Dialog (from CandidateModal) */}
+        <ReInterviewApproveDialog
+          open={reInterviewApproveOpen}
+          onClose={() => { setReInterviewApproveOpen(false); setReInterviewTargetApp(null); }}
+          application={reInterviewTargetApp}
+          loading={reInterviewLoading}
+          onApprove={async (payload) => {
+            if (!reInterviewTargetApp) return;
+            setReInterviewLoading(true);
+            try {
+              await singleAction(reInterviewTargetApp._id, 'approve-reinterview', payload);
+              setReInterviewApproveOpen(false);
+              setReInterviewTargetApp(null);
+            } finally {
+              setReInterviewLoading(false);
+            }
+          }}
+        />
+
+        {/* Re-Interview Deny Dialog (from CandidateModal) */}
+        <ReInterviewDenyDialog
+          open={reInterviewDenyOpen}
+          onClose={() => { setReInterviewDenyOpen(false); setReInterviewTargetApp(null); }}
+          application={reInterviewTargetApp}
+          loading={reInterviewLoading}
+          onDeny={async (payload) => {
+            if (!reInterviewTargetApp) return;
+            setReInterviewLoading(true);
+            try {
+              await singleAction(reInterviewTargetApp._id, 'deny-reinterview', payload);
+              setReInterviewDenyOpen(false);
+              setReInterviewTargetApp(null);
+            } finally {
+              setReInterviewLoading(false);
+            }
+          }}
         />
 
         {/* Global Loading Overlay for Reports */}

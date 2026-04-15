@@ -1,14 +1,12 @@
 /**
  * interviewService.js
- * 
- * Backend service orchestrating the entire AI interview lifecycle.
+ * * Backend service orchestrating the entire AI interview lifecycle.
  * All LLM calls (Groq), Whisper STT, session management, and evaluation
  * happen here — the frontend is a thin presentation layer.
- * 
- * Architecture:
- *   Frontend  ──HTTP──▶  Controller  ──▶  Service  ──▶  Groq/Whisper APIs
- *                                           │
- *                                      InterviewSession (MongoDB)
+ * * Architecture:
+ * Frontend  ──HTTP──▶  Controller  ──▶  Service  ──▶  Groq/Whisper APIs
+ * │
+ * InterviewSession (MongoDB)
  */
 
 const axios = require('axios');
@@ -28,6 +26,7 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_WHISPER_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const MAX_REASK_ATTEMPTS = Number(process.env.INTERVIEW_MAX_REASK_ATTEMPTS || 2);
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  PERSONA & PROMPT ENGINEERING
@@ -295,6 +294,7 @@ async function createSession(applicationId, candidateId) {
     throw new AppError('Interview is not available for this application yet.', 403);
   }
 
+  // Time Window Enforcement added back here
   assertInterviewWindowOpen(application);
 
   const voiceReady = application.voiceEnrollment?.status === 'enrolled';
@@ -359,7 +359,7 @@ async function startSession(sessionId) {
   const session = await InterviewSession.findById(sessionId);
   if (!session) throw new Error('Session not found');
 
-  // Enforce strict window boundaries before starting a not-yet-started session.
+  // Enforce strict window boundaries before starting a not-yet-started session (added back here)
   if (session.status === 'created') {
     const application = await JobApplication.findOne(
       { applicationId: session.applicationId },
@@ -451,6 +451,8 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
   if (!turn) throw new Error(`Turn ${turnIndex} not found`);
 
   const isUnanswered = !answerText || answerText.startsWith('(no response');
+  const isNonScoringMetaTurn = isClarificationOrCorrection(answerText || '');
+  const shouldReask = isNonScoringMetaTurn && canIssueReaskForTurn(session, turnIndex);
 
   // Update turn with answer
   turn.answer = answerText || '(no response)';
@@ -465,6 +467,9 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
   if (isUnanswered) {
     session.interviewState.consecutiveSilent += 1;
     session.interviewState.totalUnanswered += 1;
+  } else if (isNonScoringMetaTurn) {
+    // Clarification/correction turns should not count as silence penalties.
+    session.interviewState.consecutiveSilent = 0;
   } else {
     session.interviewState.consecutiveSilent = 0;
   }
@@ -479,7 +484,9 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
   };
 
   const nextQuestionResult = await Promise.allSettled([
-    generateNextQuestion(session),
+    shouldReask
+      ? generateClarificationReaskQuestion(session, turn.question, answerText || '')
+      : generateNextQuestion(session),
   ]).then((results) => results[0]);
 
   // Process next question
@@ -502,15 +509,20 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
 
       // Add to conversation history and turns
       session.conversationHistory.push({ role: 'assistant', content: nextQuestion });
-      const newPhase = getPhaseForElapsed(session.totalDurationSec, session.config);
+      const newPhase = q.reask
+        ? 'follow_up'
+        : getPhaseForElapsed(session.totalDurationSec, session.config);
       session.turns.push({
         index: session.turns.length,
         phase: newPhase,
         question: nextQuestion,
         askedAt: new Date(),
       });
-      session.interviewState.questionCount += 1;
-      session.interviewState.currentPhase = newPhase;
+      // Re-asked clarification prompts should not advance progression counters.
+      if (!q.reask) {
+        session.interviewState.questionCount += 1;
+        session.interviewState.currentPhase = newPhase;
+      }
     }
   }
 
@@ -587,12 +599,7 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
 
   // ── Generate Final Evaluation via LLM with full transcript context ─────
   try {
-    const summaryPrompt = buildFinalSummaryPrompt(session);
-    const summaryText = await callGroqChat([
-      { role: 'system', content: summaryPrompt },
-    ], { maxTokens: 900, temperature: 0.2 });
-
-    const summary = normalizeFinalSummary(parseFinalSummary(summaryText), session.turns);
+    const summary = await generateFinalEvaluationWithCalibration(session);
     if (summary) {
       const perAnswer = Array.isArray(summary.perAnswerEvaluations)
         ? summary.perAnswerEvaluations
@@ -602,22 +609,29 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
         const byIndex = perAnswer.find((item) => Number(item?.turnIndex) === idx);
         const byOrder = perAnswer[idx];
         const source = byIndex || byOrder;
+        const nonScoringMetaTurn = isClarificationOrCorrection(turn.answer || '');
 
         if (source) {
           turn.evaluation = {
-            score: typeof source.score === 'number' ? source.score : null,
-            feedback: source.feedback || '',
+            score: nonScoringMetaTurn
+              ? null
+              : (typeof source.score === 'number' ? source.score : null),
+            feedback: nonScoringMetaTurn
+              ? 'Candidate requested clarification or corrected speech-to-text interpretation. This turn is excluded from scoring impact.'
+              : (source.feedback || ''),
             topics: Array.isArray(source.topics) ? source.topics : [],
             strengths: Array.isArray(source.strengths) ? source.strengths : [],
             weaknesses: Array.isArray(source.weaknesses) ? source.weaknesses : [],
           };
         } else if (turn.isUnanswered) {
           turn.evaluation = {
-            score: 0,
-            feedback: 'No response given.',
+            score: nonScoringMetaTurn ? null : 0,
+            feedback: nonScoringMetaTurn
+              ? 'Candidate requested clarification or corrected speech-to-text interpretation. This turn is excluded from scoring impact.'
+              : 'No response given.',
             topics: [],
             strengths: [],
-            weaknesses: ['No response'],
+            weaknesses: nonScoringMetaTurn ? [] : ['No response'],
           };
         }
       });
@@ -729,6 +743,43 @@ async function generateNextQuestion(session) {
   return { endInterview: false, question: normalizeQuestionOutput(question) };
 }
 
+async function generateClarificationReaskQuestion(session, previousQuestion, candidateReply) {
+  const requirements = Array.isArray(session.context?.requirements)
+    ? session.context.requirements.filter(Boolean)
+    : [];
+
+  const prompt =
+    `You are conducting a live interview for a ${session.jobTitle} role.\n\n` +
+    `The candidate just asked for clarification or corrected transcription. ` +
+    `Re-ask the SAME intent as the previous question, but make it clearer and simpler.\n\n` +
+    `Rules:\n` +
+    `- Keep the intent/topic identical to the previous question.\n` +
+    `- Use plain language and shorter wording (max 28 words).\n` +
+    `- Ask exactly ONE question.\n` +
+    `- Do not introduce a new topic.\n` +
+    `- Do not include preamble, apology, or explanation. Output only the question.\n\n` +
+    `Job requirements context: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
+    `Previous question: ${previousQuestion || 'Not available'}\n` +
+    `Candidate reply: ${candidateReply || 'Not available'}\n`;
+
+  try {
+    const text = await callGroqChat([
+      { role: 'system', content: prompt },
+    ], { maxTokens: 120, temperature: 0.2 });
+
+    const question = normalizeQuestionOutput(text);
+    if (question) return { endInterview: false, question, reask: true };
+  } catch (err) {
+    logger.warn(`[Interview] Clarification re-ask generation failed: ${err.message}`);
+  }
+
+  return {
+    endInterview: false,
+    reask: true,
+    question: normalizeQuestionOutput(previousQuestion) || 'Could you answer this in your own words with one concrete example?',
+  };
+}
+
 function normalizeQuestionOutput(rawText) {
   const text = (rawText || '').trim();
   if (!text) {
@@ -752,6 +803,66 @@ function normalizeQuestionOutput(rawText) {
   }
 
   return withoutPrefix;
+}
+
+function isClarificationRequest(text) {
+  const value = String(text || '').trim();
+  if (!value) return false;
+
+  const patterns = [
+    /\bi\s*(do not|don't)\s*understand\b/i,
+    /\b(can you|could you|would you)\s+(please\s+)?(repeat|rephrase|clarify|explain)\b/i,
+    /\b(i\s*(did not|didn't)\s*(get|catch)\s*(the\s*)?(question|that))\b/i,
+    /\b(question\s+is\s+not\s+clear|not\s+clear\s+to\s+me|confusing\s+question)\b/i,
+  ];
+
+  return patterns.some((pattern) => pattern.test(value));
+}
+
+function isCorrectionStatement(text) {
+  const value = String(text || '').trim();
+  if (!value) return false;
+
+  const patterns = [
+    /\b(i\s*(mean|meant))\b/i,
+    /\b(not\s+\w+)\b/i,
+    /\b(to\s+clarify|let\s+me\s+clarify|correction)\b/i,
+    /\b(stt|speech\s*to\s*text|transcription)\s*(is|was)?\s*(wrong|incorrect|mistaken|misheard)\b/i,
+    /\b(mern|mean|react|angular|node|mongo(db)?)\b.*\b(not|instead|actually)\b.*\b(mern|mean|react|angular|node|mongo(db)?)\b/i,
+  ];
+
+  return patterns.some((pattern) => pattern.test(value));
+}
+
+function isClarificationOrCorrection(text) {
+  return isClarificationRequest(text) || isCorrectionStatement(text);
+}
+
+function getReaskDepthForTurn(session, turnIndex) {
+  const turns = Array.isArray(session?.turns) ? session.turns : [];
+  if (!turns[turnIndex] || turns[turnIndex].phase !== 'follow_up') return 0;
+
+  let depth = 0;
+  for (let i = turnIndex; i >= 0; i -= 1) {
+    if (turns[i]?.phase !== 'follow_up') break;
+    depth += 1;
+  }
+
+  return depth;
+}
+
+function canIssueReaskForTurn(session, turnIndex) {
+  const maxAttempts = Number.isFinite(MAX_REASK_ATTEMPTS) && MAX_REASK_ATTEMPTS > 0
+    ? MAX_REASK_ATTEMPTS
+    : 2;
+
+  const currentDepth = getReaskDepthForTurn(session, turnIndex);
+
+  // Base question (non follow_up) can always have first re-ask.
+  if (currentDepth === 0) return true;
+
+  // follow_up depth 1 means first re-ask already asked, etc.
+  return currentDepth < maxAttempts;
 }
 
 function getPhaseForElapsed(elapsedSec, config) {
@@ -786,20 +897,52 @@ function assertInterviewWindowOpen(application) {
   }
 }
 
-function buildFinalSummaryPrompt(session) {
-  const turns = session.turns.map((t, i) => (
-    `TurnIndex: ${i}\n` +
-    `Phase: ${t.phase || 'main'}\n` +
-    `Question: ${t.question}\n` +
-    `Answer: ${t.answer || '(no response)'}\n` +
-    `Answered: ${t.isUnanswered ? 'NO' : 'YES'}`
-  )).join('\n\n');
+async function generateFinalEvaluationWithCalibration(session) {
+  const provisionalEvaluations = await generateBatchEvaluations(session);
+  const calibrationPrompt = buildFinalCalibrationPrompt(session, provisionalEvaluations);
 
-  const messageHistory = (session.conversationHistory || [])
-    .filter((m) => m?.role && m.role !== 'system')
-    .map((m, idx) => `${idx + 1}. ${m.role.toUpperCase()}: ${String(m.content || '').slice(0, 1000)}`)
-    .join('\n');
+  const primaryText = await callGroqChat([
+    { role: 'system', content: calibrationPrompt },
+  ], { maxTokens: 1000, temperature: 0.2 });
 
+  let parsed = parseFinalSummary(primaryText);
+  if (!parsed) {
+    const retryPrompt = `${calibrationPrompt}\n\nIMPORTANT: Return strictly valid JSON only. Do not include markdown, comments, or extra text.`;
+    const retryText = await callGroqChat([
+      { role: 'system', content: retryPrompt },
+    ], { maxTokens: 1000, temperature: 0.0 });
+    parsed = parseFinalSummary(retryText);
+  }
+
+  return normalizeFinalSummary(parsed, session.turns);
+}
+
+async function generateBatchEvaluations(session) {
+  const turns = Array.isArray(session.turns) ? session.turns : [];
+  const batchSize = 4;
+  const evaluations = [];
+
+  for (let start = 0; start < turns.length; start += batchSize) {
+    const batchTurns = turns.slice(start, start + batchSize);
+    const prompt = buildBatchEvaluationPrompt(session, batchTurns, start);
+
+    let parsed = null;
+    try {
+      const text = await callGroqChat([
+        { role: 'system', content: prompt },
+      ], { maxTokens: 650, temperature: 0.15 });
+      parsed = parseFinalSummary(text);
+    } catch (err) {
+      logger.warn(`[Interview] Batch evaluation failed for turns ${start}-${start + batchTurns.length - 1}: ${err.message}`);
+    }
+
+    evaluations.push(...normalizeBatchEvaluations(parsed, batchTurns, start));
+  }
+
+  return evaluations.sort((a, b) => a.turnIndex - b.turnIndex);
+}
+
+function buildBatchEvaluationPrompt(session, batchTurns, offset) {
   const requirements = Array.isArray(session.context?.requirements)
     ? session.context.requirements.filter(Boolean)
     : [];
@@ -807,42 +950,109 @@ function buildFinalSummaryPrompt(session) {
     ? session.context.skills.filter(Boolean)
     : [];
 
+  const turnsText = batchTurns.map((t, idx) => {
+    const turnIndex = offset + idx;
+    return (
+      `TurnIndex: ${turnIndex}\n` +
+      `Phase: ${t.phase || 'main'}\n` +
+      `Question: ${smartTruncate(t.question || '', 280)}\n` +
+      `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
+      `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isClarificationOrCorrection(t.answer || '') ? 'true' : 'false'}`
+    );
+  }).join('\n\n');
+
   return (
-    `You are a principal hiring evaluator conducting a final assessment for a ${session.jobTitle} interview.\n\n` +
-    `## Evaluation Goal\n` +
-    `Score each answer only AFTER reviewing the complete interview context. ` +
-    `Use later answers to calibrate earlier ambiguous answers (and vice versa), while still assigning a distinct score per turn.\n\n` +
-    `## Role Context\n` +
-    `Job Title: ${session.jobTitle}\n` +
-    `Key Requirements: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
+    `You are evaluating a subset of interview turns for a ${session.jobTitle} role.\n\n` +
+    `Job Requirements: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
     `Candidate Skills: ${skills.length ? skills.join(', ') : 'Not provided'}\n\n` +
-    `## Structured Interview Turns\n${turns}\n\n` +
-    `## Complete Conversation History\n${messageHistory || 'Not available'}\n\n` +
-    `## Scoring Rubric (0-10 per turn)\n` +
-    `- 9-10: exceptional depth, precise reasoning, clear ownership, strong trade-off analysis.\n` +
-    `- 7-8: solid and mostly complete, minor gaps but technically credible.\n` +
-    `- 5-6: partially correct, moderate gaps in detail, weak evidence.\n` +
-    `- 3-4: shallow or inconsistent understanding, major missing reasoning.\n` +
-    `- 0-2: incorrect, evasive, or no meaningful response.\n\n` +
-    `## Evaluation Rules\n` +
-    `- Evaluate ALL turns from TurnIndex 0 to TurnIndex ${Math.max(session.turns.length - 1, 0)}.\n` +
-    `- Return EXACTLY ${session.turns.length} objects in perAnswerEvaluations.\n` +
-    `- For unanswered turns, set score to 0 and explain briefly.\n` +
-    `- feedback must be 1-2 concise sentences and reference concrete evidence from the interview context.\n` +
-    `- topics, strengths, weaknesses should be specific and non-generic.\n` +
+    `Evaluate each listed turn and return JSON only.\n` +
+    `Rules:\n` +
+    `- If clarification_or_correction=true, set score to null and do not penalize.\n` +
+    `- If unanswered=true and not clarification/correction, set score to 0.\n` +
+    `- Otherwise score 0-10 based on technical correctness, depth, and specificity.\n` +
+    `- Keep feedback short and evidence-based.\n\n` +
+    `Turns:\n${turnsText}\n\n` +
+    `Return schema:\n` +
+    `{ "batchEvaluations": [{ "turnIndex": <number>, "score": <0-10|null>, "feedback": "<string>", "topics": ["..."], "strengths": ["..."], "weaknesses": ["..."] }] }`
+  );
+}
+
+function normalizeBatchEvaluations(parsed, batchTurns, offset) {
+  const raw = Array.isArray(parsed?.batchEvaluations)
+    ? parsed.batchEvaluations
+    : [];
+
+  return batchTurns.map((turn, idx) => {
+    const turnIndex = offset + idx;
+    const fromIndex = raw.find((item) => Number(item?.turnIndex) === turnIndex);
+    const fromOrder = raw[idx];
+    const source = fromIndex || fromOrder || {};
+    const metaTurn = isClarificationOrCorrection(turn.answer || '');
+    const unanswered = !!turn.isUnanswered;
+    const parsedScore = Number(source.score);
+
+    let score = null;
+    if (metaTurn) {
+      score = null;
+    } else if (unanswered) {
+      score = 0;
+    } else if (Number.isFinite(parsedScore)) {
+      score = Math.max(0, Math.min(10, parsedScore));
+    }
+
+    return {
+      turnIndex,
+      score,
+      feedback: metaTurn
+        ? 'Candidate requested clarification or corrected speech-to-text interpretation. This turn is excluded from scoring impact.'
+        : (typeof source.feedback === 'string' && source.feedback.trim()
+          ? source.feedback.trim()
+          : (unanswered ? 'No response given.' : '')),
+      topics: Array.isArray(source.topics) ? source.topics.filter(Boolean).slice(0, 5) : [],
+      strengths: Array.isArray(source.strengths) ? source.strengths.filter(Boolean).slice(0, 5) : [],
+      weaknesses: metaTurn ? [] : (Array.isArray(source.weaknesses) ? source.weaknesses.filter(Boolean).slice(0, 5) : []),
+    };
+  });
+}
+
+function buildFinalCalibrationPrompt(session, provisionalEvaluations) {
+  const requirements = Array.isArray(session.context?.requirements)
+    ? session.context.requirements.filter(Boolean)
+    : [];
+  const skills = Array.isArray(session.context?.skills)
+    ? session.context.skills.filter(Boolean)
+    : [];
+
+  const transcript = (session.turns || []).map((t, i) => (
+    `TurnIndex: ${i}\n` +
+    `Phase: ${t.phase || 'main'}\n` +
+    `Question: ${smartTruncate(t.question || '', 260)}\n` +
+    `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
+    `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isClarificationOrCorrection(t.answer || '') ? 'true' : 'false'}`
+  )).join('\n\n');
+
+  const provisional = (provisionalEvaluations || []).map((item) => (
+    `TurnIndex ${item.turnIndex}: score=${item.score == null ? 'null' : item.score}, feedback=${smartTruncate(item.feedback || '', 200)}`
+  )).join('\n');
+
+  return (
+    `You are a principal hiring evaluator conducting final calibration for a ${session.jobTitle} interview.\n\n` +
+    `Goal: Evaluate each turn using complete context of the whole interview transcript, then return final scores per turn.\n\n` +
+    `Role Context\n` +
+    `Job Requirements: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
+    `Candidate Skills: ${skills.length ? skills.join(', ') : 'Not provided'}\n\n` +
+    `Complete Interview Transcript (compact, full-turn coverage)\n${transcript}\n\n` +
+    `Provisional Batch Evaluations\n${provisional || 'Not available'}\n\n` +
+    `Rules\n` +
+    `- Evaluate ALL turns from TurnIndex 0 to TurnIndex ${Math.max((session.turns?.length || 1) - 1, 0)}.\n` +
+    `- Return EXACTLY ${session.turns?.length || 0} objects in perAnswerEvaluations.\n` +
+    `- If clarification_or_correction=true, set score to null and do not penalize aggregate scoring.\n` +
+    `- If unanswered=true and not clarification/correction, set score to 0.\n` +
+    `- feedback must be concise and evidence-based.\n` +
     `- Keep overall scores consistent with per-turn evidence.\n\n` +
-    `Respond ONLY with valid JSON (no markdown, no prose) in this schema:\n` +
+    `Respond ONLY with valid JSON in this schema:\n` +
     `{\n` +
-    `  "perAnswerEvaluations": [\n` +
-    `    {\n` +
-    `      "turnIndex": <number>,\n` +
-    `      "score": <0-10>,\n` +
-    `      "feedback": "<1-2 sentence rationale with evidence>",\n` +
-    `      "topics": ["<topic>"],\n` +
-    `      "strengths": ["<strength>"],\n` +
-    `      "weaknesses": ["<weakness>"]\n` +
-    `    }\n` +
-    `  ],\n` +
+    `  "perAnswerEvaluations": [{ "turnIndex": <number>, "score": <0-10|null>, "feedback": "<1-2 sentence rationale>", "topics": ["<topic>"], "strengths": ["<strength>"], "weaknesses": ["<weakness>"] }],\n` +
     `  "technicalScore": <1-10>,\n` +
     `  "communicationScore": <1-10>,\n` +
     `  "problemSolvingScore": <1-10>,\n` +
@@ -852,6 +1062,14 @@ function buildFinalSummaryPrompt(session) {
     `  "recommendations": ["..."]\n` +
     `}`
   );
+}
+
+function smartTruncate(text, maxLen = 300) {
+  const value = String(text || '').trim();
+  if (value.length <= maxLen) return value;
+  const head = Math.max(80, Math.floor(maxLen * 0.7));
+  const tail = Math.max(40, maxLen - head - 5);
+  return `${value.slice(0, head)} ... ${value.slice(-tail)}`;
 }
 
 function parseFinalSummary(text) {
@@ -879,20 +1097,27 @@ function normalizeFinalSummary(summary, turns = []) {
     const source = byIndex || byOrder || {};
 
     const isUnanswered = turns[idx]?.isUnanswered;
+    const nonScoringMetaTurn = isClarificationOrCorrection(turns[idx]?.answer || '');
     const parsedScore = Number(source.score);
-    const boundedScore = Number.isFinite(parsedScore)
-      ? Math.max(0, Math.min(10, parsedScore))
-      : (isUnanswered ? 0 : null);
+    const boundedScore = nonScoringMetaTurn
+      ? null
+      : (Number.isFinite(parsedScore)
+        ? Math.max(0, Math.min(10, parsedScore))
+        : (isUnanswered ? 0 : null));
 
     return {
       turnIndex: idx,
       score: boundedScore,
-      feedback: typeof source.feedback === 'string' && source.feedback.trim()
-        ? source.feedback.trim()
-        : (isUnanswered ? 'No response given.' : ''),
+      feedback: nonScoringMetaTurn
+        ? 'Candidate requested clarification or corrected speech-to-text interpretation. This turn is excluded from scoring impact.'
+        : (typeof source.feedback === 'string' && source.feedback.trim()
+          ? source.feedback.trim()
+          : (isUnanswered ? 'No response given.' : '')),
       topics: Array.isArray(source.topics) ? source.topics.filter(Boolean).slice(0, 5) : [],
       strengths: Array.isArray(source.strengths) ? source.strengths.filter(Boolean).slice(0, 5) : [],
-      weaknesses: Array.isArray(source.weaknesses) ? source.weaknesses.filter(Boolean).slice(0, 5) : [],
+      weaknesses: nonScoringMetaTurn
+        ? []
+        : (Array.isArray(source.weaknesses) ? source.weaknesses.filter(Boolean).slice(0, 5) : []),
     };
   });
 

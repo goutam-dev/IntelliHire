@@ -57,10 +57,46 @@ export const getInterviewReport = async (applicationId) => {
   return response.data?.data || response.data;
 };
 
+/**
+ * Request re-interview (candidate action)
+ */
+export const requestReInterview = async (applicationId, data) => {
+  const response = await api.post(
+    `/job-applications/${applicationId}/request-reinterview`,
+    data
+  );
+  return response.data;
+};
+
+/**
+ * Approve re-interview request (employer action)
+ */
+export const approveReInterview = async (applicationId, data) => {
+  const response = await api.post(
+    `/employer/applications/${applicationId}/approve-reinterview`,
+    data
+  );
+  return response.data;
+};
+
+/**
+ * Deny re-interview request (employer action)
+ */
+export const denyReInterview = async (applicationId, data) => {
+  const response = await api.post(
+    `/employer/applications/${applicationId}/deny-reinterview`,
+    data
+  );
+  return response.data;
+};
+
 export default {
   getApplicationsByJob,
   updateApplicationStatus,
   bulkUpdateApplicationStatus,
   scheduleInterview,
   getInterviewReport,
+  requestReInterview,
+  approveReInterview,
+  denyReInterview,
 };

@@ -1,14 +1,14 @@
 import React from 'react';
-import { X, Sparkles, Loader2, Award } from 'lucide-react';
+import { X, Mail, Phone, MapPin } from 'lucide-react';
 
 const Section = ({ title, children }) => (
   <div>
-    <h4 className="text-sm font-semibold text-slate-900 mb-2">{title}</h4>
-    <div className="space-y-2">{children}</div>
+    <h4 className="text-sm font-semibold text-slate-900 mb-3">{title}</h4>
+    <div className="space-y-3">{children}</div>
   </div>
 );
 
-const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = new Set(), onViewInterviewReport }) => {
+const CandidateModal = ({ open, onClose, application }) => {
   if (!open) return null;
   const candidate = application?.candidate;
   const user = candidate?.user;
@@ -22,137 +22,113 @@ const CandidateModal = ({ open, onClose, application, onAnalyze, analyzingIds = 
                      application?.resume?.originalName || 'View resume';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl rounded-xl bg-white border border-slate-200 shadow-xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200 shrink-0">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">{user?.fullName || 'Candidate'}</h3>
-            <p className="text-sm text-slate-600">{candidate?.professionalTitle}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl flex flex-col max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-start justify-between p-6 border-b border-slate-100 bg-slate-50/50 shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-14 rounded-full bg-blue-100 border-2 border-white shadow-sm flex items-center justify-center shrink-0">
+              <span className="text-xl font-bold text-blue-700">
+                {user?.fullName?.charAt(0) || 'C'}
+              </span>
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight">{user?.fullName || 'Candidate'}</h3>
+              <p className="text-sm font-medium text-slate-500 mt-0.5">{candidate?.professionalTitle || 'Professional'}</p>
+            </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-50">
-            <X className="h-5 w-5 text-slate-700" />
+          <button onClick={onClose} className="rounded-full p-2 hover:bg-slate-200/50 transition-colors">
+            <X className="h-5 w-5 text-slate-500 hover:text-slate-700" />
           </button>
         </div>
 
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto flex-1">
-          <Section title="Profile">
-            <p className="text-sm text-slate-700">Email: {user?.email}</p>
-            <p className="text-sm text-slate-700">Phone: {user?.phoneNumber || '—'}</p>
-            <p className="text-sm text-slate-700">Location: {candidate?.location || '—'}</p>
-            <p className="text-sm text-slate-700">Skills: {(candidate?.skills || []).join(', ') || '—'}</p>
-          </Section>
-
-          <Section title="Resume">
-            <a
-              href={resumeUrl}
-              target="_blank"
-              className="text-sm text-blue-700 hover:text-blue-900"
-            >
-              {resumeName}
-            </a>
-          </Section>
-
-          <Section title="Education">
-            {(candidate?.education || []).length === 0 && (
-              <p className="text-sm text-slate-700">No education listed.</p>
-            )}
-            {(candidate?.education || []).map((edu, idx) => (
-              <div key={idx} className="text-sm text-slate-700">
-                <p className="font-medium">{edu.degree} in {edu.fieldOfStudy}</p>
-                <p>{edu.institution}</p>
-              </div>
-            ))}
-          </Section>
-
-          <Section title="Experience">
-            {(candidate?.experience || []).length === 0 && (
-              <p className="text-sm text-slate-700">No experience listed.</p>
-            )}
-            {(candidate?.experience || []).map((exp, idx) => (
-              <div key={idx} className="text-sm text-slate-700">
-                <p className="font-medium">{exp.title} at {exp.companyName}</p>
-              </div>
-            ))}
-          </Section>
-
-          <Section title="History">
-            <div className="text-sm text-slate-700 space-y-2">
-              <p className="font-medium">Current Status: {application?.status}</p>
-              <p>Applied: {application?.createdAt ? new Date(application.createdAt).toLocaleString() : 'Date N/A'}</p>
-              {application?.reviewedAt && <p>Reviewed: {new Date(application.reviewedAt).toLocaleString()}</p>}
-              
-              {/* AI Score Display */}
-              {(application?.aiScore || application?.aiScore === 0) && (
-                <div className="pt-2 border-t border-slate-200">
-                  <div className="flex items-center gap-2">
-                    <Award className="h-4 w-4 text-violet-600" />
-                    <span className="font-semibold text-slate-900">AI Score:</span>
-                    <span className="text-lg font-bold text-violet-600">{application.aiScore}/100</span>
+        {/* Content */}
+        <div className="p-8 overflow-y-auto flex-1 bg-white">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            {/* Left Column */}
+            <div className="space-y-8">
+              <Section title="Contact Information">
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2.5 text-sm text-slate-700 font-medium">
+                    <Mail className="h-4 w-4 text-slate-400" />
+                    <a href={`mailto:${user?.email}`} className="hover:text-blue-600 transition-colors">
+                      {user?.email || 'No email provided'}
+                    </a>
                   </div>
-                  {application?.aiVerdict && (
-                    <p className="text-sm text-slate-600 mt-1">Verdict: {application.aiVerdict}</p>
-                  )}
-                </div>
-              )}
-              
-              {/* Interview Score Display */}
-              {(application?.interviewScore || application?.interviewScore === 0) && (
-                <div className="pt-2 border-t border-slate-200">
-                  <div className="flex items-center gap-2">
-                    <Award className="h-4 w-4 text-teal-600" />
-                    <span className="font-semibold text-slate-900">Interview Score:</span>
-                    <span className="text-lg font-bold text-teal-600">{application.interviewScore}/10</span>
+                  <div className="flex items-center gap-2.5 text-sm text-slate-700 font-medium">
+                    <Phone className="h-4 w-4 text-slate-400" />
+                    <span>{user?.phoneNumber || 'No phone provided'}</span>
                   </div>
-                  {application?.interviewVerdict && (
-                    <p className="text-sm text-slate-600 mt-1">Verdict: {application.interviewVerdict}</p>
-                  )}
+                  <div className="flex items-center gap-2.5 text-sm text-slate-700 font-medium">
+                    <MapPin className="h-4 w-4 text-slate-400" />
+                    <span>{candidate?.location || 'No location provided'}</span>
+                  </div>
                 </div>
-              )}
-              
-              {/* Analyze Button */}
-              {onAnalyze && (
-                <div className="pt-2 flex flex-col gap-2">
-                  <button
-                    onClick={() => onAnalyze(application._id)}
-                    disabled={analyzingIds.has(application._id)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-medium text-white hover:from-violet-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow w-full justify-center"
-                  >
-                    {analyzingIds.has(application._id) ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Analyzing Resume...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        Analyze Resume with AI
-                      </>
-                    )}
-                  </button>
-                  
-                  {/* View Interview Report Button */}
-                  {onViewInterviewReport && application?.status === 'Interviewed' && (
-                    <button
-                      onClick={() => onViewInterviewReport(application)}
-                      className="inline-flex items-center gap-2 rounded-lg border-2 border-teal-600 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 transition-all shadow-sm hover:shadow w-full justify-center"
-                    >
-                      <Award className="h-4 w-4" />
-                      View AI Interview Report
-                    </button>
-                  )}
-                </div>
-              )}
+              </Section>
+
+              <Section title="Skills">
+                {(candidate?.skills || []).length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {candidate.skills.map((skill, idx) => (
+                      <span key={idx} className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 italic">No skills listed.</p>
+                )}
+              </Section>
+
+              <Section title="Resume Document">
+                <a
+                  href={resumeUrl}
+                  target="_blank"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800 bg-blue-50/50 hover:bg-blue-50 px-4 py-2.5 rounded-xl border border-blue-100 transition-all w-full justify-center"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                  {resumeName}
+                </a>
+              </Section>
             </div>
-          </Section>
 
-          <Section title="Notes">
-            <p className="text-sm text-slate-700">{application?.employerNotes || application?.feedback || '—'}</p>
-          </Section>
+            {/* Right Column */}
+            <div className="space-y-8">
+              <Section title="Education">
+                {(candidate?.education || []).length === 0 ? (
+                  <p className="text-sm text-slate-500 italic bg-slate-50 p-3 rounded-lg border border-slate-100">No education listed.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {(candidate?.education || []).map((edu, idx) => (
+                      <div key={idx} className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                        <p className="text-sm font-bold text-slate-800">{edu.degree} in {edu.fieldOfStudy}</p>
+                        <p className="text-sm text-slate-500 mt-0.5 font-medium">{edu.institution}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Section>
+
+              <Section title="Experience">
+                {(candidate?.experience || []).length === 0 ? (
+                  <p className="text-sm text-slate-500 italic bg-slate-50 p-3 rounded-lg border border-slate-100">No experience listed.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {(candidate?.experience || []).map((exp, idx) => (
+                      <div key={idx} className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                        <p className="text-sm font-bold text-slate-800">{exp.title}</p>
+                        <p className="text-sm text-slate-500 mt-0.5 font-medium">{exp.companyName}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Section>
+            </div>
+            
+          </div>
         </div>
 
-        <div className="p-4 border-t border-slate-200 flex justify-end shrink-0">
-          <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50">Close</button>
-        </div>
       </div>
     </div>
   );

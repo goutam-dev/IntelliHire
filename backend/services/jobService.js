@@ -8,6 +8,21 @@ const { validateRequiredFields } = require('../utils/validators');
 
 const DELETE_IMMUTABLE_APPLICATION_STATUSES = ['Rejected', 'Hired', 'Withdrawn', 'Job Deleted'];
 
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Build an array of regexes – one per keyword in the search query.
+ * Each keyword is matched independently so "mern developer" will find jobs
+ * that contain both "mern" AND "developer" in any order, in any field.
+ */
+const buildSearchRegexes = (value = '') => {
+  const normalized = String(value).trim().replace(/\s+/g, ' ');
+  if (!normalized) return [];
+
+  const keywords = normalized.split(' ').filter(k => k.length > 0);
+  return keywords.map(k => new RegExp(escapeRegex(k), 'i'));
+};
+
 const resolveEmployerProfileFromClerkUser = async (clerkUserId) => {
   const user = await User.findOne({ clerkUserId });
   if (!user) {
@@ -45,7 +60,6 @@ const getOwnedJobOrThrow = async (jobId, clerkUserId) => {
  */
 const buildFilters = ({
   status,
-  search,
   employerId,
   location,
   department,
@@ -65,15 +79,6 @@ const buildFilters = ({
 
   if (employerId) {
     filters.employer = employerId;
-  }
-
-  if (search) {
-    filters.$or = [
-      { title: { $regex: search, $options: 'i' } },
-      { department: { $regex: search, $options: 'i' } },
-      { description: { $regex: search, $options: 'i' } },
-      { requiredSkills: { $elemMatch: { $regex: search, $options: 'i' } } },
-    ];
   }
 
   if (location) {
@@ -157,6 +162,9 @@ const normalizeApplicationDeadline = (rawDeadline) => {
  * Get jobs by employer (with optional filters)
  */
 const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
+  const searchRegexes = buildSearchRegexes(queryFilters.search);
+  const { search: _ignoredSearch, ...filtersWithoutSearch } = queryFilters;
+
   // Get employer profile ID from authenticated user
   const user = await User.findOne({ clerkUserId });
   let isEmployer = false;
@@ -170,7 +178,7 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
     }
   }
 
-  let filters = buildFilters(queryFilters);
+  let filters = buildFilters(filtersWithoutSearch);
   
   // If not an employer, only show active jobs (hide draft, archived, closed)
   if (!isEmployer) {
@@ -199,10 +207,64 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
   const skip = (page - 1) * limit;
   const sortStage = getSortStage(queryFilters.sortBy, queryFilters.sortOrder);
 
-  const totalJobs = await Job.countDocuments(filters);
+  // Build keyword-level search: each keyword must appear in at least one field,
+  // and ALL keywords must be present (AND logic across keywords, OR across fields).
+  // e.g. "mern developer" → job must contain "mern" somewhere AND "developer" somewhere.
+  const searchStage = searchRegexes.length > 0
+    ? {
+        $match: searchRegexes.length === 1
+          ? {
+              $or: [
+                { title: { $regex: searchRegexes[0] } },
+                { department: { $regex: searchRegexes[0] } },
+                { description: { $regex: searchRegexes[0] } },
+                { requiredSkills: { $elemMatch: { $regex: searchRegexes[0] } } },
+                { company: { $regex: searchRegexes[0] } },
+              ],
+            }
+          : {
+              $and: searchRegexes.map(regex => ({
+                $or: [
+                  { title: { $regex: regex } },
+                  { department: { $regex: regex } },
+                  { description: { $regex: regex } },
+                  { requiredSkills: { $elemMatch: { $regex: regex } } },
+                  { company: { $regex: regex } },
+                ],
+              })),
+            },
+      }
+    : null;
+
+  const basePipeline = [
+    { $match: filters },
+    {
+      $lookup: {
+        from: 'employerprofiles',
+        localField: 'employer',
+        foreignField: '_id',
+        as: 'employerProfile',
+      },
+    },
+    {
+      $addFields: {
+        company: { $arrayElemAt: ['$employerProfile.companyName', 0] },
+      },
+    },
+  ];
+
+  if (searchStage) {
+    basePipeline.push(searchStage);
+  }
+
+  const totalJobsResult = await Job.aggregate([
+    ...basePipeline,
+    { $count: 'count' },
+  ]);
+  const totalJobs = totalJobsResult[0]?.count || 0;
 
   const jobs = await Job.aggregate([
-    { $match: filters },
+    ...basePipeline,
     { $sort: sortStage },
     { $skip: skip },
     { $limit: limit },
@@ -218,19 +280,10 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
       },
     },
     {
-      $lookup: {
-        from: 'employerprofiles',
-        localField: 'employer',
-        foreignField: '_id',
-        as: 'employerProfile',
-      },
-    },
-    {
       $addFields: {
         applicationsCount: {
           $ifNull: [{ $arrayElemAt: ['$appCounts.count', 0] }, 0],
         },
-        company: { $arrayElemAt: ['$employerProfile.companyName', 0] },
       },
     },
     { $project: { appCounts: 0, employerProfile: 0 } },

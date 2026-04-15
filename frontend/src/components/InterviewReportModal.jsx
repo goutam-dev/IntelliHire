@@ -10,6 +10,12 @@ import {
   Shield,
   X,
   XCircle,
+  Clock,
+  MessageSquare,
+  Activity,
+  ChevronRight,
+  Eye,
+  Zap,
 } from 'lucide-react';
 
 const CHEATING_THRESHOLD = 10;
@@ -38,15 +44,11 @@ const getCandidateOrigins = () => {
     if (!origin || candidates.includes(origin)) return;
     candidates.push(origin);
   };
-
   pushUnique(toBackendOrigin());
   pushUnique(window.location.origin);
-
-  // Common local dev fallback when frontend runs on 5173 and backend on 4000.
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     pushUnique(`http://${window.location.hostname}:4000`);
   }
-
   return candidates;
 };
 
@@ -70,12 +72,55 @@ const toFriendlyDuration = (seconds) => {
   return `${mins} min`;
 };
 
-const scorePillClass = (score) => {
-  if (score == null) return 'text-slate-700 bg-slate-100 border-slate-200';
-  if (score >= 7) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-  if (score >= 5) return 'text-amber-700 bg-amber-50 border-amber-200';
-  return 'text-rose-700 bg-rose-50 border-rose-200';
+const getScoreColor = (score) => {
+  if (score == null) return { text: '#64748b', ring: '#cbd5e1', bg: '#f8fafc' }; // slate
+  if (score >= 7) return { text: '#059669', ring: '#10b981', bg: '#ecfdf5' }; // emerald
+  if (score >= 5) return { text: '#d97706', ring: '#f59e0b', bg: '#fffbeb' }; // amber
+  return { text: '#dc2626', ring: '#ef4444', bg: '#fef2f2' }; // rose
 };
+
+const ScoreRing = ({ score, size = 80, label }) => {
+  const colors = getScoreColor(score);
+  const radius = (size - 10) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = score != null ? (score / 10) * circumference : 0;
+
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="rotate-[-90deg] drop-shadow-md">
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#e2e8f0" strokeWidth="6" />
+          <circle
+            cx={size / 2} cy={size / 2} r={radius} fill="none"
+            stroke={colors.ring} strokeWidth="6"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference - progress}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset 1s ease' }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-xl font-black" style={{ color: colors.text }}>
+            {score ?? '—'}
+          </span>
+        </div>
+      </div>
+      {label && <span className="text-xs text-slate-500 font-semibold tracking-wide uppercase">{label}</span>}
+    </div>
+  );
+};
+
+const StatPill = ({ value, label, color = '#64748b', icon: Icon }) => (
+  <div className="flex flex-col gap-2 rounded-3xl bg-white p-5 ring-1 ring-slate-900/5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+    <div className="flex items-center gap-2.5">
+      <div className="p-2 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${color}15`, color }}>
+        {Icon && <Icon className="h-4 w-4" />}
+      </div>
+      <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{label}</span>
+    </div>
+    <span className="text-3xl font-black text-slate-800 ml-1">{value}</span>
+  </div>
+);
 
 function buildPrintableHtml({ report, candidateName }) {
   const scoring = report.scoring || {};
@@ -121,31 +166,6 @@ function buildPrintableHtml({ report, candidateName }) {
     )
     .join('');
 
-  const faceObservationRows = (fp.faceObservations || [])
-    .map(
-      (m, i) => `
-      <tr>
-        <td style="padding:8px;border:1px solid #e2e8f0;">${i + 1}</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(toClock(m.timestamp))}</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(m.status || 'uncertain')}</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(m.reason || 'quality_uncertain')}</td>
-      </tr>
-    `
-    )
-    .join('');
-
-  const objectRows = (fp.objectAlerts || [])
-    .map(
-      (m, i) => `
-      <tr>
-        <td style="padding:8px;border:1px solid #e2e8f0;">${i + 1}</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(toClock(m.timestamp))}</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;">${escapeHtml(Array.isArray(m.alertTypes) ? m.alertTypes.join(', ') : 'Object alert')}</td>
-      </tr>
-    `
-    )
-    .join('');
-
   const integrityRows = (integrity.events || [])
     .map(
       (row) => `
@@ -163,18 +183,19 @@ function buildPrintableHtml({ report, candidateName }) {
   <html>
     <head>
       <meta charset="utf-8" />
-      <title>AI Interview Report</title>
+      <title>AI Interview Report – ${escapeHtml(candidateName || 'Candidate')}</title>
       <style>
-        body { font-family: Segoe UI, Arial, sans-serif; color: #0f172a; margin: 24px; }
-        h1, h2 { margin: 0 0 10px 0; }
-        h2 { margin-top: 20px; font-size: 18px; }
-        p { margin: 4px 0; color: #334155; }
+        body { font-family: Segoe UI, Arial, sans-serif; color: #0f172a; margin: 32px; background: #ffffff; }
+        h1 { font-size: 24px; margin: 0 0 4px 0; }
+        h2 { font-size: 16px; margin: 24px 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; }
+        p { margin: 3px 0; color: #334155; font-size: 14px; }
         table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
-        th { background: #f8fafc; text-align: left; padding: 8px; border: 1px solid #e2e8f0; }
+        th { background: #f8fafc; text-align: left; padding: 8px; border: 1px solid #e2e8f0; font-weight: 600; }
       </style>
     </head>
     <body>
       <h1>AI Interview Report</h1>
+      <p style="color:#64748b;margin-bottom:16px;">Generated by IntelliHire</p>
       <p><strong>Candidate:</strong> ${escapeHtml(candidateName || 'Candidate')}</p>
       <p><strong>Position:</strong> ${escapeHtml(report.jobTitle || 'N/A')}</p>
       <p><strong>Date:</strong> ${completed ? escapeHtml(new Date(completed).toLocaleString()) : 'N/A'}</p>
@@ -185,7 +206,6 @@ function buildPrintableHtml({ report, candidateName }) {
       <h2>Proctoring Summary</h2>
       <p><strong>Voice mismatches:</strong> ${escapeHtml(vp.totalMismatches ?? 0)} / ${escapeHtml(vp.totalSegmentsAnalyzed ?? 0)} segments</p>
       <p><strong>Face alerts:</strong> ${escapeHtml(fp.totalFaceAlerts ?? (fp.faceAlerts || []).length)}</p>
-      <p><strong>Face uncertain observations:</strong> ${escapeHtml(fp.totalFaceObservations ?? (fp.faceObservations || []).length)}</p>
       <p><strong>Object alerts:</strong> ${escapeHtml(fp.totalObjectAlerts ?? (fp.objectAlerts || []).length)}</p>
       <p><strong>Integrity score:</strong> ${escapeHtml(integrity.totalScore ?? 0)} / ${escapeHtml(integrity.threshold ?? CHEATING_THRESHOLD)}</p>
 
@@ -201,29 +221,30 @@ function buildPrintableHtml({ report, candidateName }) {
         <tbody>${faceRows || '<tr><td colspan="3" style="padding:8px;border:1px solid #e2e8f0;">No face alerts recorded</td></tr>'}</tbody>
       </table>
 
-      <h2>Face Uncertain Observations</h2>
-      <table>
-        <thead><tr><th>#</th><th>Timestamp</th><th>Status</th><th>Reason</th></tr></thead>
-        <tbody>${faceObservationRows || '<tr><td colspan="4" style="padding:8px;border:1px solid #e2e8f0;">No uncertain face observations recorded</td></tr>'}</tbody>
-      </table>
-
-      <h2>Object Alert Details</h2>
-      <table>
-        <thead><tr><th>#</th><th>Timestamp</th><th>Type</th></tr></thead>
-        <tbody>${objectRows || '<tr><td colspan="3" style="padding:8px;border:1px solid #e2e8f0;">No object alerts recorded</td></tr>'}</tbody>
-      </table>
-
       <h2>Platform Integrity Events</h2>
       <table>
         <thead><tr><th>Event</th><th>Count</th><th>Penalty</th></tr></thead>
         <tbody>${integrityRows || '<tr><td colspan="3" style="padding:8px;border:1px solid #e2e8f0;">No integrity events recorded</td></tr>'}</tbody>
       </table>
 
-      <h2>Question and Answer Details</h2>
+      <h2>Question & Answer Breakdown</h2>
       ${qaRows || '<p>No question/answer history available.</p>'}
     </body>
   </html>`;
 }
+
+const TABS = [
+  { id: 'overview', label: 'Overview', icon: Activity },
+  { id: 'proctoring', label: 'Proctoring', icon: Shield },
+  { id: 'qa', label: 'Q&A', icon: MessageSquare },
+];
+
+const PROCTOR_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'voice', label: 'Voice' },
+  { id: 'face', label: 'Face' },
+  { id: 'object', label: 'Object' },
+];
 
 export default function InterviewReportModal({ isOpen, onClose, report, candidateName }) {
   const [activeTab, setActiveTab] = useState('overview');
@@ -250,41 +271,45 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
         type: 'voice',
         timestamp: item.timestamp,
         title: 'Voice mismatch detected',
-        description: `Raw score: ${typeof item.rawScore === 'number' ? item.rawScore.toFixed(3) : 'N/A'}`,
+        description: `Similarity score: ${typeof item.rawScore === 'number' ? item.rawScore.toFixed(3) : 'N/A'}`,
         mediaCandidates: resolveAssetCandidates(item.clipUrl || item.clipPath),
         mediaLabel: 'Play audio clip',
+        color: '#8b5cf6', // violet-500
       })),
       ...faceAlerts.map((item, idx) => ({
         id: `face-${idx}`,
         type: 'face',
         timestamp: item.timestamp,
         title: item.violationType || item.status || 'Face alert',
-        description: `Faces: ${item.numFaces ?? 'N/A'} | Similarity: ${item.similarity ?? 'N/A'}`,
+        description: `Faces detected: ${item.numFaces ?? 'N/A'} · Similarity: ${item.similarity ?? 'N/A'}`,
         mediaCandidates: resolveAssetCandidates(item.snapshotUrl || item.snapshotPath),
         mediaLabel: 'View snapshot',
         mediaKind: 'image',
+        color: '#ef4444', // red-500
       })),
       ...faceObservations.map((item, idx) => ({
         id: `face-observation-${idx}`,
         type: 'face',
         timestamp: item.timestamp,
         title: 'Face status: uncertain',
-        description: `Reason: ${item.reason || 'quality_uncertain'} | Liveness: ${item.livenessScore ?? 'N/A'}`,
+        description: `Reason: ${item.reason || 'quality_uncertain'} · Liveness: ${item.livenessScore ?? 'N/A'}`,
         mediaCandidates: resolveAssetCandidates(item.snapshotUrl || item.snapshotPath),
         mediaLabel: 'View snapshot',
         mediaKind: 'image',
+        color: '#f59e0b', // amber-500
       })),
       ...objectAlerts.map((item, idx) => ({
         id: `object-${idx}`,
         type: 'object',
         timestamp: item.timestamp,
-        title: 'Suspicious object/person activity',
+        title: 'Suspicious object detected',
         description: Array.isArray(item.alertTypes) && item.alertTypes.length > 0
           ? item.alertTypes.join(', ')
           : 'Object alert',
         mediaCandidates: resolveAssetCandidates(item.snapshotUrl || item.snapshotPath),
         mediaLabel: 'View snapshot',
         mediaKind: 'image',
+        color: '#f97316', // orange-500
       })),
     ];
 
@@ -295,17 +320,38 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
 
   if (!isOpen || !report) return null;
 
-  const verdict = scoring.overallVerdict || (avgScore >= 7 ? 'Strong Performance' : avgScore >= 5 ? 'Moderate Performance' : 'Needs Improvement');
+  const verdict =
+    scoring.overallVerdict ||
+    (avgScore >= 7 ? 'Strong Performance' : avgScore >= 5 ? 'Moderate Performance' : 'Needs Improvement');
 
   const integrityThreshold = integrity.threshold || CHEATING_THRESHOLD;
   const integrityTotal = integrity.totalScore || 0;
-  const integrityStatus = integrityTotal === 0
-    ? 'Clean'
-    : integrityTotal < integrityThreshold * 0.4
+  const integrityStatus =
+    integrityTotal === 0
+      ? 'Clean'
+      : integrityTotal < integrityThreshold * 0.4
       ? 'Minor flags'
       : integrityTotal < integrityThreshold
-        ? 'Moderate flags'
-        : 'High flags';
+      ? 'Moderate flags'
+      : 'High flags';
+
+  const integrityColor =
+    integrityTotal === 0
+      ? '#10b981'
+      : integrityTotal < integrityThreshold * 0.4
+      ? '#f59e0b'
+      : integrityTotal < integrityThreshold
+      ? '#f97316'
+      : '#ef4444';
+
+  const completedDate =
+    report.completedAt || report.startedAt
+      ? new Date(report.completedAt || report.startedAt).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : 'N/A';
 
   const handleDownloadPdf = () => {
     const reportHtml = buildPrintableHtml({ report, candidateName });
@@ -314,297 +360,403 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
       alert('Popup blocked. Please allow popups to download the PDF report.');
       return;
     }
-
     printWindow.document.write(reportHtml);
     printWindow.document.close();
     printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 300);
+    setTimeout(() => printWindow.print(), 300);
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/20 backdrop-blur-sm">
         <motion.div
-          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          initial={{ opacity: 0, y: 30, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 14, scale: 0.98 }}
-          className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          exit={{ opacity: 0, y: 20, scale: 0.98 }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }} // elegant ease out
+          className="w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden bg-white/95 backdrop-blur-3xl rounded-[28px] ring-1 ring-slate-900/5 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.15)]"
         >
-          <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-blue-50 to-cyan-50 px-6 py-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-slate-800">
-                  <Award className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-lg font-bold">AI Interview Report</h2>
+          {/* ── Header ── */}
+          <div className="flex-shrink-0 px-8 pt-8 pb-4">
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-500/20 shadow-sm">
+                  <Zap className="h-6 w-6" />
                 </div>
-                <p className="text-sm text-slate-600">
-                  {candidateName || 'Candidate'} • {report.jobTitle || 'Position'} • {report.completedAt || report.startedAt ? new Date(report.completedAt || report.startedAt).toLocaleString() : 'N/A'}
-                </p>
+                <div>
+                  <h2 className="text-xl font-black text-slate-800 tracking-tight leading-none">AI Interview Report</h2>
+                  <p className="text-sm mt-1.5 text-slate-500 font-medium">
+                    {candidateName || 'Candidate'} <span className="opacity-50 mx-1">•</span> {report.jobTitle || 'Position'} <span className="opacity-50 mx-1">•</span> {completedDate}
+                  </p>
+                </div>
               </div>
+
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleDownloadPdf}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold bg-white ring-1 ring-slate-900/5 shadow-sm text-slate-700 hover:text-indigo-600 hover:ring-indigo-200 transition-all active:scale-95"
                 >
-                  <Download className="h-4 w-4" /> Download PDF
+                  <Download className="h-4 w-4" />
+                  PDF
                 </button>
                 <button
                   onClick={onClose}
-                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                  className="rounded-xl p-2.5 bg-white ring-1 ring-slate-900/5 shadow-sm text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                { id: 'overview', label: 'Overview' },
-                { id: 'proctoring', label: 'Proctoring Details' },
-                { id: 'qa', label: 'Q&A Breakdown' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                    activeTab === tab.id
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-white text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            {/* Segmented Control Tabs */}
+            <div className="flex p-1 rounded-2xl bg-slate-100/80 w-fit">
+              {TABS.map((tab) => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-bold transition-all duration-300 ${
+                      active
+                        ? 'bg-white text-indigo-600 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)] ring-1 ring-slate-900/5'
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            {activeTab === 'overview' && (
-              <div className="space-y-5">
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className={`rounded-xl border p-4 ${scorePillClass(avgScore)}`}>
-                    <p className="text-xs font-semibold uppercase tracking-wider">Average Score</p>
-                    <p className="mt-2 text-2xl font-bold">{avgScore ?? 'N/A'} / 10</p>
-                    <p className="mt-1 text-sm">{verdict}</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Interview Duration</p>
-                    <p className="mt-2 text-2xl font-bold text-slate-800">{toFriendlyDuration(report.totalDurationSec)}</p>
-                    <p className="mt-1 text-sm text-slate-500">{turns.length} total questions</p>
-                  </div>
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-rose-700">Voice Mismatches</p>
-                    <p className="mt-2 text-2xl font-bold text-rose-700">{voice.totalMismatches ?? 0}</p>
-                    <p className="mt-1 text-sm text-rose-700">From {voice.totalSegmentsAnalyzed ?? 0} analyzed segments</p>
-                  </div>
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Visual Alerts</p>
-                    <p className="mt-2 text-2xl font-bold text-amber-700">{(face.totalFaceAlerts ?? faceAlerts.length) + (face.totalObjectAlerts ?? objectAlerts.length)}</p>
-                    <p className="mt-1 text-sm text-amber-700">Face: {face.totalFaceAlerts ?? faceAlerts.length}, Object: {face.totalObjectAlerts ?? objectAlerts.length}, Uncertain: {face.totalFaceObservations ?? faceObservations.length}</p>
-                  </div>
-                </div>
+          {/* ── Scrollable Body ── */}
+          <div className="flex-1 overflow-y-auto px-8 pb-8 pt-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-600">Score Breakdown</h3>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between"><span className="text-slate-500">Technical</span><span className="font-semibold text-slate-800">{scoring.technicalScore ?? 'N/A'}</span></div>
-                      <div className="flex items-center justify-between"><span className="text-slate-500">Communication</span><span className="font-semibold text-slate-800">{scoring.communicationScore ?? 'N/A'}</span></div>
-                      <div className="flex items-center justify-between"><span className="text-slate-500">Problem Solving</span><span className="font-semibold text-slate-800">{scoring.problemSolvingScore ?? 'N/A'}</span></div>
+            {/* ══ OVERVIEW TAB ══ */}
+            <AnimatePresence mode="wait">
+              {activeTab === 'overview' && (
+                <motion.div
+                  key="overview"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-6"
+                >
+                  {/* Score Hero */}
+                  <div className="rounded-[28px] p-8 flex flex-col sm:flex-row items-center gap-8 relative overflow-hidden bg-gradient-to-br from-indigo-50/50 via-white to-emerald-50/50 ring-1 ring-slate-900/5 shadow-sm">
+                    {/* Decorative blurred blob */}
+                    <div className="absolute -right-20 -top-20 w-64 h-64 bg-indigo-300/20 rounded-full blur-3xl pointer-events-none" />
+                    <ScoreRing score={avgScore} size={110} />
+                    <div className="flex-1 text-center sm:text-left z-10">
+                      <p className="text-3xl font-black text-slate-800 tracking-tight">{verdict}</p>
+                      <p className="text-base mt-1.5 text-slate-500 font-medium font-serif italic">
+                        {turns.length} questions matched · {toFriendlyDuration(report.totalDurationSec)} analysis
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-6 z-10 bg-white/60 backdrop-blur-md p-4 rounded-3xl ring-1 ring-slate-900/5 shadow-sm">
+                      <ScoreRing score={scoring.technicalScore} size={64} label="Technical" />
+                      <ScoreRing score={scoring.communicationScore} size={64} label="Comms" />
+                      <ScoreRing score={scoring.problemSolvingScore} size={64} label="Logic" />
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-600">
-                      <Shield className="h-4 w-4 text-blue-600" /> Platform Integrity
-                    </h3>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between"><span className="text-slate-500">Verdict</span><span className="font-semibold text-slate-800">{integrity.verdict || integrityStatus}</span></div>
-                      <div className="flex items-center justify-between"><span className="text-slate-500">Penalty Score</span><span className="font-semibold text-slate-800">{integrityTotal} / {integrityThreshold}</span></div>
-                      <div className="flex items-center justify-between"><span className="text-slate-500">Termination Reason</span><span className="max-w-[65%] truncate text-right font-semibold text-slate-800">{integrity.terminationReason || 'N/A'}</span></div>
-                    </div>
+                  {/* Stat Pills Grid */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <StatPill icon={Clock} label="Duration" value={toFriendlyDuration(report.totalDurationSec)} color="#6366f1" />
+                    <StatPill icon={Mic2} label="Voice Flags" value={voice.totalMismatches ?? 0} color={voice.totalMismatches > 0 ? '#ef4444' : '#10b981'} />
+                    <StatPill icon={Camera} label="Visual Alerts" value={(face.totalFaceAlerts ?? faceAlerts.length) + (face.totalObjectAlerts ?? objectAlerts.length)} color={((face.totalFaceAlerts ?? faceAlerts.length) + (face.totalObjectAlerts ?? objectAlerts.length)) > 0 ? '#f59e0b' : '#10b981'} />
+                    <StatPill icon={Shield} label="Integrity" value={integrityStatus} color={integrityColor} />
                   </div>
-                </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-emerald-700">
-                      <CheckCircle className="h-4 w-4" /> Strengths
-                    </h3>
-                    {(scoring.strengths || []).length > 0 ? (
-                      <ul className="space-y-1 text-sm text-emerald-800">
-                        {(scoring.strengths || []).map((item, index) => <li key={`${item}-${index}`}>• {item}</li>)}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-emerald-700">No strengths recorded.</p>
-                    )}
-                  </div>
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-rose-700">
-                      <AlertTriangle className="h-4 w-4" /> Improvement Areas
-                    </h3>
-                    {(scoring.weaknesses || []).length > 0 ? (
-                      <ul className="space-y-1 text-sm text-rose-800">
-                        {(scoring.weaknesses || []).map((item, index) => <li key={`${item}-${index}`}>• {item}</li>)}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-rose-700">No weaknesses recorded.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'proctoring' && (
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-600">
-                      <Mic2 className="h-4 w-4 text-blue-600" /> Voice Proctoring
-                    </h3>
-                    <p className="text-sm text-slate-700">Enrollment: <span className="font-semibold">{voice.enrollmentStatus || 'not_enrolled'}</span></p>
-                    <p className="text-sm text-slate-700">Mismatches: <span className="font-semibold">{voice.totalMismatches ?? 0}</span> / {voice.totalSegmentsAnalyzed ?? 0}</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-600">
-                      <Camera className="h-4 w-4 text-blue-600" /> Face and Object Proctoring
-                    </h3>
-                    <p className="text-sm text-slate-700">Enrollment: <span className="font-semibold">{face.enrollmentStatus || 'not_enrolled'}</span></p>
-                    <p className="text-sm text-slate-700">Face alerts: <span className="font-semibold">{face.totalFaceAlerts ?? faceAlerts.length}</span></p>
-                    <p className="text-sm text-slate-700">Face uncertain: <span className="font-semibold">{face.totalFaceObservations ?? faceObservations.length}</span></p>
-                    <p className="text-sm text-slate-700">Object alerts: <span className="font-semibold">{face.totalObjectAlerts ?? objectAlerts.length}</span></p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { id: 'all', label: 'All Alerts' },
-                    { id: 'voice', label: 'Voice' },
-                    { id: 'face', label: 'Face' },
-                    { id: 'object', label: 'Object' },
-                  ].map((filter) => (
-                    <button
-                      key={filter.id}
-                      onClick={() => setProctorFilter(filter.id)}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                        proctorFilter === filter.id
-                          ? 'bg-slate-900 text-white'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-600">Alert Timeline</h3>
-                  {timelineEvents.length === 0 && (
-                    <p className="flex items-center gap-2 text-sm text-slate-500">
-                      <XCircle className="h-4 w-4" /> No alerts for this filter.
-                    </p>
-                  )}
-                  {timelineEvents.map((event) => (
-                    <div key={event.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-semibold text-slate-800">{event.title}</p>
-                        <span className="rounded-md bg-white px-2 py-1 text-xs font-mono text-slate-600">t={toClock(event.timestamp)}</span>
+                  {/* Details Cards */}
+                  <div className="grid lg:grid-cols-3 gap-4">
+                    <div className="bg-white rounded-[24px] p-6 ring-1 ring-slate-900/5 shadow-sm lg:col-span-1">
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <CheckCircle className="h-5 w-5 text-emerald-500" />
+                        <h3 className="text-sm font-bold uppercase tracking-widest text-emerald-600">Key Strengths</h3>
                       </div>
-                      <p className="mt-1 text-sm text-slate-600">{event.description}</p>
-                      {event.mediaCandidates?.length > 0 && event.mediaKind === 'image' && (
-                        <button
-                          type="button"
-                          onClick={() => setSnapshotPreview({
-                            candidates: event.mediaCandidates,
-                            index: 0,
-                            failed: false,
-                            title: event.title,
-                            time: toClock(event.timestamp),
-                          })}
-                          className="mt-2 inline-flex text-sm font-semibold text-blue-600 hover:text-blue-700"
-                        >
-                          {event.mediaLabel}
-                        </button>
-                      )}
-                      {event.mediaCandidates?.length > 0 && event.mediaKind !== 'image' && (
-                        <a
-                          href={event.mediaCandidates[0]}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-2 inline-flex text-sm font-semibold text-blue-600 hover:text-blue-700"
-                        >
-                          {event.mediaLabel}
-                        </a>
+                      {(scoring.strengths || []).length > 0 ? (
+                        <ul className="space-y-3">
+                          {(scoring.strengths || []).map((item, index) => (
+                            <li key={`${item}-${index}`} className="flex items-start gap-2.5 text-sm md:text-base font-medium text-slate-600">
+                              <span className="text-emerald-500 mt-0.5 text-lg leading-none">•</span>
+                              <span className="leading-snug">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">No strengths recorded.</p>
                       )}
                     </div>
-                  ))}
-                </div>
 
-                {(integrity.events || []).length > 0 && (
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-600">Platform Integrity Events</h3>
-                    <div className="space-y-2">
-                      {(integrity.events || []).map((row, index) => (
-                        <div key={`${row.eventType || 'event'}-${index}`} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
-                          <span className="text-slate-700">{row.label || row.eventType || 'Event'}</span>
-                          <span className="font-mono text-slate-700">count {row.count ?? 0} | penalty {row.totalPoints ?? 0}</span>
+                    <div className="bg-white rounded-[24px] p-6 ring-1 ring-slate-900/5 shadow-sm lg:col-span-1">
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <AlertTriangle className="h-5 w-5 text-rose-500" />
+                        <h3 className="text-sm font-bold uppercase tracking-widest text-rose-600">Improvement Areas</h3>
+                      </div>
+                      {(scoring.weaknesses || []).length > 0 ? (
+                        <ul className="space-y-3">
+                          {(scoring.weaknesses || []).map((item, index) => (
+                            <li key={`${item}-${index}`} className="flex items-start gap-2.5 text-sm md:text-base font-medium text-slate-600">
+                              <span className="text-rose-400 mt-0.5 text-lg leading-none">•</span>
+                              <span className="leading-snug">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">No weaknesses recorded.</p>
+                      )}
+                    </div>
+
+                    <div className="bg-white rounded-[24px] p-6 ring-1 ring-slate-900/5 shadow-sm lg:col-span-1 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2.5 mb-4">
+                          <Shield className="h-5 w-5 text-indigo-500" />
+                          <h3 className="text-sm font-bold uppercase tracking-widest text-indigo-600">Platform Integrity</h3>
                         </div>
-                      ))}
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1">Verdict</p>
+                            <p className="text-lg font-black" style={{ color: integrityColor }}>{integrity.verdict || integrityStatus}</p>
+                          </div>
+                          <div className="w-full h-px bg-slate-100" />
+                          <div>
+                            <p className="text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1">Penalty Score</p>
+                            <p className="text-lg font-black text-slate-800">{integrityTotal} <span className="text-slate-400 text-sm font-medium">/ {integrityThreshold} limit</span></p>
+                          </div>
+                        </div>
+                      </div>
+                      {integrity.terminationReason && (
+                        <div className="mt-4 p-3 bg-slate-50 rounded-xl ring-1 ring-slate-900/5">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Termination</p>
+                          <p className="text-sm font-medium text-slate-700 truncate">{integrity.terminationReason}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
-              </div>
-            )}
+                </motion.div>
+              )}
 
-            {activeTab === 'qa' && (
-              <div className="space-y-3">
-                {turns.length === 0 && <p className="text-sm text-slate-500">No interview turns available.</p>}
-                {turns.map((turn, index) => (
-                  <div key={`${turn.index ?? index}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="font-semibold text-slate-800">Question {index + 1}</p>
-                      <span className={`rounded-md border px-2 py-1 text-xs font-bold ${scorePillClass(turn.evaluation?.score)}`}>
-                        Score {turn.evaluation?.score ?? 'N/A'} / 10
-                      </span>
+              {/* ══ PROCTORING TAB ══ */}
+              {activeTab === 'proctoring' && (
+                <motion.div
+                  key="proctoring"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-6"
+                >
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-white rounded-[24px] p-6 ring-1 ring-slate-900/5 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-violet-50 text-violet-600 rounded-xl"><Mic2 className="h-5 w-5" /></div>
+                        <span className="text-sm font-bold uppercase tracking-widest text-slate-700">Voice Proctoring</span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center py-2 border-b border-slate-50">
+                          <span className="text-sm font-semibold tracking-wide text-slate-500">Enrollment</span>
+                          <span className="font-bold text-slate-800 bg-slate-100 px-3 py-1 rounded-lg text-xs tracking-wide">{voice.enrollmentStatus || 'not_enrolled'}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2">
+                          <span className="text-sm font-semibold tracking-wide text-slate-500">Mismatches</span>
+                          <span className="font-bold" style={{ color: (voice.totalMismatches ?? 0) > 0 ? '#ef4444' : '#10b981' }}>
+                            {voice.totalMismatches ?? 0} / {voice.totalSegmentsAnalyzed ?? 0}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="mt-2 text-sm font-medium text-slate-700">{turn.question || 'No question text.'}</p>
-                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Candidate Answer</p>
-                      <p className="mt-1 text-sm text-slate-700">{turn.answer || 'No response captured.'}</p>
-                    </div>
-                    <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">AI Evaluation</p>
-                      <p className="mt-1 text-sm text-slate-700">{turn.evaluation?.feedback || 'No AI feedback recorded.'}</p>
+
+                    <div className="bg-white rounded-[24px] p-6 ring-1 ring-slate-900/5 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-sky-50 text-sky-600 rounded-xl"><Camera className="h-5 w-5" /></div>
+                        <span className="text-sm font-bold uppercase tracking-widest text-slate-700">Visual Proctoring</span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center py-2 border-b border-slate-50">
+                          <span className="text-sm font-semibold tracking-wide text-slate-500">Face Alerts</span>
+                          <span className="font-black text-lg" style={{ color: (face.totalFaceAlerts ?? faceAlerts.length) > 0 ? '#ef4444' : '#10b981' }}>
+                            {face.totalFaceAlerts ?? faceAlerts.length}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center py-2">
+                          <span className="text-sm font-semibold tracking-wide text-slate-500">Object Alerts</span>
+                          <span className="font-black text-lg" style={{ color: (face.totalObjectAlerts ?? objectAlerts.length) > 0 ? '#f97316' : '#10b981' }}>
+                            {face.totalObjectAlerts ?? objectAlerts.length}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+
+                  <div className="bg-white rounded-[24px] p-6 ring-1 ring-slate-900/5 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                      <h3 className="text-sm font-bold uppercase tracking-widest text-slate-700">Alert Timeline</h3>
+                      <div className="flex gap-2">
+                        {PROCTOR_FILTERS.map((f) => (
+                          <button
+                            key={f.id}
+                            onClick={() => setProctorFilter(f.id)}
+                            className={`rounded-xl px-4 py-1.5 text-xs font-bold transition-all ${
+                              proctorFilter === f.id
+                                ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200'
+                                : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                            }`}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {timelineEvents.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <CheckCircle className="h-8 w-8 text-emerald-400 mb-2" />
+                        <p className="text-sm font-semibold text-slate-500">No alerts found for this filter</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {timelineEvents.map((event) => (
+                          <div
+                            key={event.id}
+                            className="flex items-start gap-4 p-4 rounded-2xl bg-white ring-1 ring-slate-900/5 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] hover:shadow-md transition-all"
+                          >
+                            <div className="w-1.5 self-stretch rounded-full" style={{ backgroundColor: event.color }} />
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-base font-bold text-slate-800">{event.title}</p>
+                                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold font-mono">
+                                  {toClock(event.timestamp)}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-500 font-medium">{event.description}</p>
+                              {event.mediaCandidates?.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (event.mediaKind === 'image') {
+                                      setSnapshotPreview({ candidates: event.mediaCandidates, index: 0, failed: false, title: event.title, time: toClock(event.timestamp) });
+                                    } else {
+                                      window.open(event.mediaCandidates[0], '_blank');
+                                    }
+                                  }}
+                                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 text-xs text-indigo-600 font-bold transition-colors"
+                                >
+                                  {event.mediaKind === 'image' ? <Eye className="h-3.5 w-3.5" /> : <Mic2 className="h-3.5 w-3.5" />}
+                                  {event.mediaLabel}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* ══ Q&A TAB ══ */}
+              {activeTab === 'qa' && (
+                <motion.div
+                  key="qa"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-6"
+                >
+                  {turns.length === 0 ? (
+                    <div className="py-12 text-center bg-slate-50 rounded-[24px] border border-dashed border-slate-200">
+                      <p className="text-sm font-semibold text-slate-500">No interview turns available.</p>
+                    </div>
+                  ) : (
+                    turns.map((turn, index) => {
+                      const sc = turn.evaluation?.score;
+                      const colors = getScoreColor(sc);
+                      return (
+                        <div key={`${turn.index ?? index}-${index}`} className="bg-white rounded-[24px] p-6 sm:p-8 ring-1 ring-slate-900/5 shadow-sm">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 font-black text-sm ring-1 ring-indigo-500/20">
+                                {index + 1}
+                              </span>
+                              <p className="text-base font-bold text-slate-800 uppercase tracking-widest text-[13px]">Question</p>
+                            </div>
+                            <div
+                              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-sm font-black ring-1"
+                              style={{ backgroundColor: colors.bg, color: colors.text, borderColor: `${colors.ring}40` }}
+                            >
+                              <span>{sc ?? 'N/A'}</span>
+                              <span className="opacity-50 font-medium">/ 10</span>
+                            </div>
+                          </div>
+
+                          <p className="text-lg md:text-xl font-bold text-slate-800 mb-6 leading-relaxed">
+                            {turn.question || 'No question text.'}
+                          </p>
+
+                          <div className="space-y-3">
+                            <div className="rounded-2xl p-5 bg-slate-50 ring-1 ring-slate-900/5">
+                              <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Candidate Answer</p>
+                              <p className="text-[15px] leading-relaxed text-slate-700 font-medium">
+                                {turn.answer || <span className="italic opacity-50">No response captured.</span>}
+                              </p>
+                            </div>
+
+                            <div className="rounded-2xl p-5 bg-indigo-50/50 ring-1 ring-indigo-500/10 relative overflow-hidden">
+                              <div className="absolute top-0 left-0 w-1 h-full bg-indigo-400 rounded-l-2xl"/>
+                              <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">AI Feedback</p>
+                              <p className="text-[15px] leading-relaxed text-slate-700 font-medium">
+                                {turn.evaluation?.feedback || 'No AI feedback recorded.'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+        </motion.div>
 
+        {/* ── Snapshot Lightbox ── */}
+        <AnimatePresence>
           {snapshotPreview && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/80 p-4">
-              <div className="relative max-h-full w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
-                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-8 bg-slate-900/40 backdrop-blur-md"
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 10 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 10 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="w-full max-w-4xl bg-white rounded-[28px] overflow-hidden shadow-2xl ring-1 ring-slate-900/10 flex flex-col max-h-[90vh]"
+              >
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">{snapshotPreview.title}</p>
-                    <p className="text-xs text-slate-500">t={snapshotPreview.time}</p>
+                    <h3 className="text-base font-bold text-slate-800">{snapshotPreview.title}</h3>
+                    <p className="text-sm font-medium text-slate-500 mt-0.5">Recorded at <span className="font-mono">{snapshotPreview.time}</span></p>
                   </div>
                   <button
-                    type="button"
                     onClick={() => setSnapshotPreview(null)}
-                    className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                    className="p-2.5 rounded-full bg-slate-50 text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
-                <div className="max-h-[70vh] overflow-auto bg-slate-100 p-3">
+                <div className="flex-1 overflow-auto bg-slate-50 p-6 flex items-center justify-center">
                   {!snapshotPreview.failed ? (
                     <img
                       src={snapshotPreview.candidates[snapshotPreview.index]}
-                      alt="Proctoring snapshot"
+                      alt="Proctoring evidence"
                       onError={() => {
                         if (snapshotPreview.index < snapshotPreview.candidates.length - 1) {
                           setSnapshotPreview((prev) => ({ ...prev, index: prev.index + 1 }));
@@ -612,18 +764,19 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
                           setSnapshotPreview((prev) => ({ ...prev, failed: true }));
                         }
                       }}
-                      className="mx-auto max-h-[66vh] w-auto rounded-lg object-contain"
+                      className="max-h-full w-auto rounded-2xl shadow-sm ring-1 ring-slate-900/5 object-contain"
                     />
                   ) : (
-                    <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                      Failed to load snapshot image from available URLs.
+                    <div className="flex flex-col items-center justify-center gap-3 p-8 bg-rose-50 text-rose-500 rounded-2xl ring-1 ring-rose-500/20">
+                      <AlertTriangle className="h-8 w-8 text-rose-400" />
+                      <p className="text-sm font-bold">Failed to load snapshot image</p>
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
           )}
-        </motion.div>
+        </AnimatePresence>
       </div>
     </AnimatePresence>
   );

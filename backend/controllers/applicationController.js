@@ -81,3 +81,35 @@ exports.getInterviewReport = asyncHandler(async (req, res) => {
 
   res.json({ success: true, data: report });
 });
+
+/**
+ * Approve a re-interview request (employer action)
+ */
+exports.approveReInterview = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const interviewData = req.body;
+
+  const application = await applicationService.approveReInterview(
+    id,
+    interviewData,
+    req.auth.userId
+  );
+
+  res.json({ success: true, data: application });
+});
+
+/**
+ * Deny a re-interview request (employer action)
+ */
+exports.denyReInterview = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { note } = req.body;
+
+  const application = await applicationService.denyReInterview(
+    id,
+    note || '',
+    req.auth.userId
+  );
+
+  res.json({ success: true, data: application });
+});

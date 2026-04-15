@@ -19,5 +19,6 @@ router.get('/my-applications', auth, jobApplicationController.getMyApplications)
 router.get('/download-resume', auth, jobApplicationController.downloadResume);
 router.get('/:applicationId', auth, jobApplicationController.getApplicationById);
 router.patch('/:applicationId/withdraw', auth, jobApplicationController.withdrawApplication);
+router.post('/:applicationId/request-reinterview', auth, jobApplicationController.requestReInterview);
 
 module.exports = router;

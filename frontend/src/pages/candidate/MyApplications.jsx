@@ -16,7 +16,8 @@ import {
   Search,
   FileText,
   ExternalLink,
-  Video
+  Video,
+  RotateCcw
 } from 'lucide-react';
 
 import {
@@ -26,6 +27,8 @@ import {
   clearSuccessMessage
 } from '../../store/slices/jobApplicationsSlice';
 import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
+import ReInterviewRequestDialog, { ReInterviewStatusBadge } from '../../components/candidate/ReInterviewRequestDialog';
+import { requestReInterview } from '../../services/api/applicationApi';
 
 const MyApplications = () => {
   const dispatch = useDispatch();
@@ -48,6 +51,8 @@ const MyApplications = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [highlightedApplication, setHighlightedApplication] = useState(null);
   const [withdrawingAppId, setWithdrawingAppId] = useState(null);
+  const [reInterviewDialogApp, setReInterviewDialogApp] = useState(null);
+  const [reInterviewLoading, setReInterviewLoading] = useState(false);
 
   // Status options for filter - simplified to only important ones
   const statusOptions = [
@@ -102,6 +107,22 @@ const MyApplications = () => {
       setWithdrawingAppId(null);
     } catch (error) {
       console.error('Failed to withdraw application:', error);
+    }
+  };
+
+  const handleRequestReInterview = async (reason) => {
+    if (!reInterviewDialogApp) return;
+    setReInterviewLoading(true);
+    try {
+      await requestReInterview(reInterviewDialogApp.applicationId, { reason });
+      setReInterviewDialogApp(null);
+      // Refresh to show updated status
+      dispatch(fetchMyApplications({ page: currentPage, limit: 10, status: filters.status }));
+    } catch (error) {
+      console.error('Failed to request re-interview:', error);
+      alert(error?.response?.data?.message || 'Failed to submit re-interview request.');
+    } finally {
+      setReInterviewLoading(false);
     }
   };
 
@@ -349,6 +370,13 @@ const MyApplications = () => {
                             <p className="text-sm font-medium">The job is closed for new applicants, but your scheduled interview remains valid.</p>
                           </div>
                         )}
+
+                        {/* Re-interview request status badge */}
+                        {application.status === 'Interviewed' && application.reInterviewRequest && application.reInterviewRequest.status !== 'none' && (
+                          <div className="mt-3">
+                            <ReInterviewStatusBadge reInterviewRequest={application.reInterviewRequest} />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -407,6 +435,16 @@ const MyApplications = () => {
                         </div>
                       )}
                       </div>
+
+                      {application.status === 'Interviewed' && (!application.reInterviewRequest || application.reInterviewRequest.status === 'none' || application.reInterviewRequest.status === 'denied') && (
+                        <button
+                          onClick={() => setReInterviewDialogApp(application)}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 hover:border-amber-300 transition-all shadow-sm"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Request Re-Interview
+                        </button>
+                      )}
 
                       {application.status === 'Interview Scheduled' && (() => {
                         const active = isInterviewWindowActive(application);
@@ -554,6 +592,15 @@ const MyApplications = () => {
           </div>
         )}
       </div>
+
+      {/* Re-Interview Request Dialog */}
+      <ReInterviewRequestDialog
+        open={Boolean(reInterviewDialogApp)}
+        onClose={() => setReInterviewDialogApp(null)}
+        onSubmit={handleRequestReInterview}
+        loading={reInterviewLoading}
+        application={reInterviewDialogApp}
+      />
     </div>
   );
 };
