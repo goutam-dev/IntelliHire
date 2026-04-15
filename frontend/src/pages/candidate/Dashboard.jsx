@@ -8,7 +8,7 @@ import ApplicationStats from "../../components/candidate/dashboard/ApplicationSt
 import RecentApplications from "../../components/candidate/dashboard/RecentApplications";
 import QuickActions from "../../components/candidate/dashboard/QuickActions";
 import WelcomeSection from "../../components/candidate/dashboard/WelcomeSection";
-import TrustSection from "../../components/candidate/dashboard/TrustSection";
+import ExploreOpportunities from "../../components/candidate/dashboard/ExploreOpportunities";
 
 import ResumeUpload from "../../components/candidate/ResumeUpload";
 import EducationForm from "../../components/candidate/EducationForm";
@@ -121,43 +121,54 @@ const CandidateDashboard = () => {
   const profileCompletion = profile?.profileCompletion?.percentage || 0;
 
   return (
-    <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+    <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 bg-zinc-50/30 min-h-screen">
       <motion.div
         initial="hidden"
         animate="visible"
         variants={staggerChildren}
-        className="space-y-6"
+        className="space-y-8"
       >
-          {/* Welcome Section */}
+          {/* Top Header */}
           <WelcomeSection />
 
-          {/* Profile Completion & Stats Grid */}
-          <motion.div
-            variants={fadeUp}
-            className="grid grid-cols-1 lg:grid-cols-3 gap-4"
-          >
-            <div className="lg:col-span-2">
-              <ProfileSection onModalOpen={handleModalOpen} />
-            </div>
-
-            {/* Application Statistics & Quick Actions */}
-            <div className="space-y-4">
-              <ApplicationStats />
-              <QuickActions onModalOpen={handleModalOpen} />
-            </div>
+          {/* Key Metrics - Spans full width */}
+          <motion.div variants={fadeUp}>
+            <ApplicationStats />
           </motion.div>
 
+          {/* Main Dashboard Grid */}
+          <motion.div
+            variants={fadeUp}
+            className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch"
+          >
+            {/* Left Column - Applications List & Call to Action */}
+            <div className="lg:col-span-7 flex flex-col gap-6">
+              <div className="flex-1">
+                <RecentApplications />
+              </div>
+              <div className="shrink-0 h-[140px]">
+                <ExploreOpportunities />
+              </div>
+            </div>
 
-
-          {/* Recent Applications - No longer using showAllApplications from uiSlice */}
-          <RecentApplications />
-
-          {/* Trust Section */}
-          <TrustSection />
+            {/* Right Column - Wider Profile & Quick Links */}
+            <div className="lg:col-span-5 flex flex-col gap-6">
+              <div className="shrink-0">
+                <ProfileSection onModalOpen={handleModalOpen} />
+              </div>
+              
+              <div className="bg-white rounded-2xl border border-zinc-200 p-6 shadow-sm flex-1 flex flex-col">
+                <h3 className="text-base font-semibold text-zinc-900 tracking-tight mb-4">Quick Links</h3>
+                <div className="flex-1">
+                  <QuickActions onModalOpen={handleModalOpen} />
+                </div>
+              </div>
+            </div>
+          </motion.div>
       </motion.div>
 
       {/* Modals - Rendered at Dashboard level for proper positioning */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showResumeUpload && (
           <ResumeUpload
             onClose={() => handleModalClose("resume")}
@@ -166,7 +177,7 @@ const CandidateDashboard = () => {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showEducationForm && (
           <EducationForm
             onClose={() => handleModalClose("education")}
@@ -175,7 +186,7 @@ const CandidateDashboard = () => {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showExperienceForm && (
           <ExperienceForm
             onClose={() => handleModalClose("experience")}

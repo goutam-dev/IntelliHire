@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ShieldCheck, CheckCircle2, Lock, Scale, Zap, Fingerprint, BrainCircuit } from 'lucide-react';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 32 },
@@ -917,67 +918,98 @@ const CandidatesSection = () => {
 
 const TrustSection = () => {
   const benefits = [
-    "Fair, consistent candidate evaluation using standardized criteria",
-    "Secure, authenticated remote interviews with integrity monitoring",
-    "Faster, data-informed hiring decisions backed by transparent scoring",
-    "Better candidate experience with clear feedback and reduced bias",
-    "Designed for scalable remote recruitment across teams and locations",
+    { text: "Fair, consistent evaluation", icon: Scale },
+    { text: "Secure remote interviews", icon: Lock },
+    { text: "Data-informed decisions", icon: Zap },
+    { text: "Reduced human bias", icon: BrainCircuit },
+    { text: "Scalable recruitment", icon: Fingerprint }
   ];
 
-  return (
-    <section
-      className="bg-slate-900 text-white scroll-mt-24"
-      aria-labelledby="trust"
-    >
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
-        <div className="flex flex-col gap-12 lg:flex-row lg:items-start">
-          <motion.div
-            className="space-y-6 sm:space-y-8 lg:w-1/2"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            variants={fadeUp}
-          >
-            <h2 id="trust" className="text-3xl font-semibold sm:text-4xl">
-              Why IntelliHire earns trust
-            </h2>
+  const features = ["Enterprise-grade security", "Verified integrity", "Tamper-evident logs"];
 
-            <div className="flex flex-wrap gap-3 text-xs">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/30 px-3 py-1 font-medium text-slate-100">
-                <ShieldIcon className="h-4 w-4" />
-                Secure sessions
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/30 px-3 py-1 font-medium text-slate-100">
-                <CheckIcon className="h-4 w-4" />
-                Bias review signals
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/30 px-3 py-1 font-medium text-slate-100">
-                <DocumentIcon className="h-4 w-4" />
-                Evidence logs
-              </span>
-            </div>
-          </motion.div>
-              <motion.ul
-                className="lg:w-1/2 grid gap-4 sm:gap-5 lg:gap-6"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            variants={staggerChildren}
-          >
-            {benefits.map((benefit) => (
-              <motion.li
-                key={benefit}
-                className="flex items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-4 py-4 text-sm text-slate-100 sm:px-5"
+  return (
+    <section className="bg-slate-900 text-white py-20 sm:py-24 scroll-mt-24" aria-labelledby="trust">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <motion.div 
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={fadeUp}
+          className="relative overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900 p-8 shadow-2xl shadow-slate-900/50 md:p-12 lg:p-16"
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-800/50 via-slate-900 to-blue-900/30 pointer-events-none" />
+          <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-500/10 rounded-full blur-[80px] pointer-events-none" />
+          <div className="absolute top-0 right-0 p-8 opacity-[0.05] text-white pointer-events-none">
+            <ShieldCheck size={240} />
+          </div>
+
+          <div className="relative z-10 flex flex-col xl:flex-row xl:items-center gap-12 lg:gap-16">
+            <div className="xl:w-1/2 space-y-8">
+              <div className="space-y-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 uppercase tracking-widest shadow-sm backdrop-blur-sm">
+                  <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                  Verified & Secure
+                </div>
+                <motion.h2 
+                  className="text-3xl lg:text-4xl font-bold tracking-tight text-white"
+                  variants={fadeUp}
+                >
+                  Why IntelliHire earns highest trust
+                </motion.h2>
+              </div>
+              
+              <motion.p 
+                className="text-base lg:text-lg leading-relaxed text-slate-300"
                 variants={fadeUp}
               >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white">
-                  <CheckIcon className="h-4 w-4" />
-                </span>
-                <span>{benefit}</span>
-              </motion.li>
-            ))}
-          </motion.ul>
-        </div>
+                Developed on foundations of rigorous academic research into structured evaluation systems. 
+                IntelliHire pairs military-grade verification with frictionless UX for modern hiring teams.
+              </motion.p>
+              
+              <motion.div 
+                className="flex flex-wrap gap-3 pt-2"
+                variants={staggerChildren}
+              >
+                {features.map((item, index) => (
+                  <motion.span
+                    key={item}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-slate-200 shadow-sm backdrop-blur-sm"
+                    variants={fadeUp}
+                  >
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    {item}
+                  </motion.span>
+                ))}
+              </motion.div>
+            </div>
+
+            <motion.div 
+              className="xl:w-1/2 grid gap-4 lg:gap-5"
+              variants={staggerChildren}
+            >
+              {benefits.map((benefit, index) => {
+                const Icon = benefit.icon;
+                return (
+                  <motion.div 
+                    key={benefit.text}
+                    className="group flex items-center gap-5 rounded-2xl border border-transparent p-3 transition-colors hover:bg-white/5 hover:border-white/10"
+                    variants={fadeUp}
+                    whileHover={{ x: 4 }}
+                  >
+                    <motion.div 
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 text-slate-300 transition-colors group-hover:bg-white/20 group-hover:text-white border border-white/5"
+                    >
+                      <Icon className="h-6 w-6" />
+                    </motion.div>
+                    <span className="text-base font-semibold text-slate-300 group-hover:text-white transition-colors">
+                      {benefit.text}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          </div>
+        </motion.div>
       </div>
     </section>
   );

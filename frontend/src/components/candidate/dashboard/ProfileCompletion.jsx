@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchProfileCompletion } from '../../../store/slices/profileCompletionSlice';
+import { ShieldAlert, CheckCircle2, ChevronRight } from 'lucide-react';
 
 const ProfileCompletion = ({ onModalOpen }) => {
   const dispatch = useDispatch();
@@ -15,7 +16,6 @@ const ProfileCompletion = ({ onModalOpen }) => {
     dispatch(fetchProfileCompletion());
   }, [dispatch]);
 
-  // Refresh completion when profile changes
   useEffect(() => {
     if (profile) {
       dispatch(fetchProfileCompletion());
@@ -30,101 +30,91 @@ const ProfileCompletion = ({ onModalOpen }) => {
 
   if (loading) {
     return (
-      <motion.div 
-        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-        whileHover={{ y: -2 }}
-        transition={{ duration: 0.3 }}
-      >
-        <div className="animate-pulse">
-          <div className="h-5 bg-slate-200 rounded w-1/2 mb-3"></div>
-          <div className="h-2 bg-slate-200 rounded mb-4"></div>
-          <div className="space-y-2">
-            <div className="h-12 bg-slate-200 rounded-xl"></div>
-            <div className="h-12 bg-slate-200 rounded-xl"></div>
-          </div>
+      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="animate-pulse flex flex-col gap-4">
+          <div className="h-5 bg-zinc-200 rounded w-1/2"></div>
+          <div className="h-2 bg-zinc-200 rounded w-full"></div>
+          <div className="h-12 bg-zinc-100 rounded-xl"></div>
+          <div className="h-12 bg-zinc-100 rounded-xl"></div>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   return (
     <motion.div 
-      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-      whileHover={{ y: -2 }}
-      transition={{ duration: 0.3 }}
+      className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-6 shadow-md"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
     >
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold text-slate-900">Profile Completion</h2>
+      <div className="absolute top-0 right-0 w-64 h-64 bg-zinc-200/40 rounded-full blur-[50px] pointer-events-none" />
+      
+      <div className="relative z-10 flex items-center justify-between mb-4">
+        <h2 className="text-base font-semibold text-zinc-900 tracking-tight">Complete Your Profile</h2>
         <motion.span 
-          className="text-sm font-medium text-slate-600"
+          className="text-xs font-bold text-zinc-800 bg-zinc-100 border border-zinc-200/80 py-1.5 px-3 rounded-full shadow-sm"
           key={completion.percentage}
-          initial={{ scale: 1.2 }}
+          initial={{ scale: 1.1 }}
           animate={{ scale: 1 }}
         >
           {completion.percentage}%
         </motion.span>
       </div>
       
-      {/* Progress Bar */}
-      <div className="w-full bg-slate-200 rounded-full h-2 mb-4 overflow-hidden">
+      <div className="relative z-10 w-full bg-zinc-100/80 rounded-full h-1.5 mb-6 overflow-hidden border border-zinc-200/50">
         <motion.div 
-          className="bg-gradient-to-r from-emerald-500 to-green-500 h-2 rounded-full"
+          className="bg-gradient-to-r from-zinc-600 to-zinc-900 h-1.5 rounded-full"
           initial={{ width: 0 }}
           animate={{ width: `${completion.percentage}%` }}
-          transition={{ duration: 1, ease: "easeOut", delay: 0.5 }}
+          transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
         />
       </div>
 
       {!isComplete ? (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-600">
-            {completion.percentage === 20 
-              ? "Complete these sections to boost your profile:"
-              : `You're ${completion.percentage}% there! Complete these sections:`}
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-500">
+            A complete profile stands out to top employers. Finish these steps:
           </p>
-          <div className="grid gap-2">
+          <div className="grid gap-3">
             {incompleteSections.map((section, index) => (
-              <motion.div 
+              <motion.button 
                 key={section.key}
-                className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/70"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                onClick={() => handleActionClick(section.key)}
+                className="w-full group flex items-start gap-3 p-3 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-all text-left"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.1 }}
-                whileHover={{ scale: 1.02 }}
               >
-                <div>
-                  <h3 className="font-medium text-slate-900 text-sm">{section.title}</h3>
-                  <p className="text-xs text-slate-600">{section.description}</p>
+                <div className="mt-0.5 text-zinc-400 group-hover:text-zinc-600">
+                  <ShieldAlert className="w-4 h-4" />
                 </div>
-                <motion.button
-                  onClick={() => handleActionClick(section.key)}
-                  className="inline-flex items-center justify-center rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 transition-colors"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  Complete →
-                </motion.button>
-              </motion.div>
+                <div className="flex-1">
+                  <h3 className="font-medium text-zinc-900 text-sm">{section.title}</h3>
+                  <p className="text-xs text-zinc-500 mt-0.5 line-clamp-1">{section.description}</p>
+                </div>
+                <div className="mt-1 text-zinc-300 group-hover:text-zinc-900 transition-colors">
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </motion.button>
             ))}
           </div>
         </div>
       ) : (
         <motion.div 
-          className="text-center py-3"
-          initial={{ scale: 0.8 }}
-          animate={{ scale: 1 }}
+          className="flex flex-col items-center justify-center py-6 text-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
         >
-          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-800">
-            <motion.span 
-              className="h-1.5 w-1.5 rounded-full bg-emerald-500"
-              animate={{ scale: [1, 1.5, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-            🎉 Profile Complete!
+          <div className="h-12 w-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
+            <CheckCircle2 className="w-6 h-6 text-zinc-900" />
           </div>
+          <h3 className="text-sm font-semibold text-zinc-900 mb-1">You're All Set</h3>
+          <p className="text-sm text-zinc-500">
+            Your profile looks great and is ready for recruiters.
+          </p>
         </motion.div>
       )}
-
     </motion.div>
   );
 };

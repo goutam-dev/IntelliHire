@@ -110,12 +110,12 @@ const NotificationBell = () => {
         id="notification-bell-btn"
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="relative flex items-center justify-center h-9 w-9 rounded-xl border border-[#DBE2EF] bg-[#F9F7F7] text-[#112D4E] transition-colors hover:bg-[#DBE2EF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3F72AF]/40"
+        className="relative flex items-center justify-center h-10 w-10 text-zinc-600 hover:text-zinc-900 border border-transparent hover:border-zinc-200 hover:bg-zinc-50 rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10"
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-[22px] w-[22px]" />
 
         {/* Unread badge */}
         <AnimatePresence>
@@ -126,7 +126,7 @@ const NotificationBell = () => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-              className="absolute -top-1 -right-1 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[#DC2626] text-[#F9F7F7] text-[10px] font-semibold leading-none"
+              className="absolute top-1.5 right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold shadow-sm shadow-red-500/20 leading-none border-2 border-white"
             >
               {unreadCount > 99 ? '99+' : unreadCount}
             </Motion.span>
@@ -139,111 +139,117 @@ const NotificationBell = () => {
         {open && (
           <Motion.div
             id="notification-dropdown"
-            initial={{ opacity: 0, y: -8, scale: 0.96 }}
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.96 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="absolute right-0 mt-2 w-80 sm:w-96 origin-top-right rounded-2xl border border-[#DBE2EF] bg-[#F9F7F7] shadow-lg z-50 overflow-hidden"
+            className="absolute right-0 mt-3 w-[360px] sm:w-[400px] origin-top-right rounded-2xl border border-zinc-200 bg-white shadow-xl shadow-zinc-200/50 z-50 overflow-hidden flex flex-col"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#DBE2EF]">
-              <div className="flex items-center gap-2">
-                <Bell className="h-4 w-4 text-[#112D4E]" />
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 bg-white">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-100 text-zinc-700">
+                  <Bell className="h-4 w-4" />
+                </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#112D4E]">Notifications</p>
-                  <p className="text-[11px] text-[#112D4E]/60">
-                    {unreadCount > 0 ? `${unreadCount} unread updates` : 'All caught up'}
+                  <h3 className="text-[15px] font-bold text-zinc-900 tracking-tight">Notifications</h3>
+                  <p className="text-xs font-medium text-zinc-500 mt-0.5">
+                    {unreadCount > 0 ? `You have ${unreadCount} unread` : 'You are all caught up'}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 {unreadCount > 0 && (
                   <button
                     type="button"
                     onClick={handleMarkAll}
-                    className="inline-flex items-center gap-1 text-xs text-[#112D4E]/70 hover:text-[#112D4E] transition-colors"
+                    className="inline-flex items-center justify-center p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
                     title="Mark all as read"
                   >
-                    <CheckCheck className="h-3.5 w-3.5" />
-                    <span>Mark all read</span>
+                    <CheckCheck className="h-4 w-4" />
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="text-[#112D4E]/45 hover:text-[#112D4E] transition-colors"
-                  aria-label="Close notifications"
-                >
-                  <X className="h-4 w-4" />
-                </button>
               </div>
             </div>
 
             {/* List */}
-            <ul className="max-h-[420px] overflow-y-auto p-2 space-y-1.5">
+            <div className="max-h-[440px] overflow-y-auto w-full [scrollbar-width:thin] [scrollbar-color:#e4e4e7_transparent]">
               {notifications.length === 0 ? (
-                <li className="flex flex-col items-center justify-center gap-2 py-12 text-[#112D4E]/55">
-                  <Bell className="h-8 w-8 opacity-40" />
-                  <p className="text-sm font-medium">No notifications yet</p>
-                </li>
+                <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                  <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-4">
+                    <Bell className="h-8 w-8 text-zinc-300" />
+                  </div>
+                  <p className="text-[15px] font-semibold text-zinc-900 mb-1">No notifications yet</p>
+                  <p className="text-sm font-medium text-zinc-500">We'll let you know when something arrives.</p>
+                </div>
               ) : (
-                notifications.map((n) => (
-                  <Motion.li
-                    key={n._id}
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className={`rounded-lg border transition-colors duration-200 ${
-                      !n.isRead
-                        ? 'border-[#DBE2EF] bg-[#DBE2EF]/45 hover:bg-[#DBE2EF]/65'
-                        : 'border-[#DBE2EF]/75 bg-[#F9F7F7] hover:bg-[#DBE2EF]/40'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
+                <ul className="flex flex-col">
+                  {notifications.map((n) => (
+                    <Motion.li
+                      key={n._id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className={`relative border-b border-zinc-100 last:border-none transition-colors duration-200 group ${
+                        !n.isRead ? 'bg-zinc-50/50 hover:bg-zinc-100/80' : 'bg-white hover:bg-zinc-50/80'
+                      }`}
+                    >
                       <button
                         type="button"
                         onClick={() => handleNotificationClick(n)}
-                        className="flex-1 min-w-0 px-3.5 py-3 text-left flex items-start gap-3 focus-visible:outline-none"
+                        className="w-full text-left px-5 py-4 focus-visible:outline-none focus:bg-zinc-50 block"
                       >
-                        {/* Icon */}
-                        <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-[#DBE2EF] bg-[#F9F7F7] text-[#112D4E]/80" aria-hidden="true">
-                          {React.createElement(typeIcons[n.type] || Bell, { className: 'h-3.5 w-3.5' })}
-                        </span>
+                        <div className="flex items-start gap-4">
+                          {/* Icon */}
+                          <div className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl flex-none ${
+                            !n.isRead 
+                              ? 'bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-100' 
+                              : 'bg-zinc-100 text-zinc-500 border border-zinc-200'
+                          }`}>
+                            {React.createElement(typeIcons[n.type] || Bell, { className: 'h-[18px] w-[18px]' })}
+                          </div>
 
-                        {/* Text */}
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm leading-snug ${!n.isRead ? 'font-semibold text-[#112D4E]' : 'font-medium text-[#112D4E]'}`}>
-                            {n.title}
-                          </p>
-                          <p className="text-xs text-[#112D4E]/70 mt-0.5 line-clamp-2 leading-relaxed">
-                            {n.message}
-                          </p>
-                          <p className="text-[11px] text-[#112D4E]/50 mt-1">{timeAgo(n.createdAt)}</p>
+                          {/* Content */}
+                          <div className="flex-1 min-w-0 pr-6">
+                            <p className="text-xs font-semibold text-zinc-500 mb-1.5 uppercase tracking-wide">
+                              {timeAgo(n.createdAt)}
+                            </p>
+                            <p className={`text-sm tracking-tight leading-snug mb-1 ${
+                              !n.isRead ? 'font-bold text-zinc-900' : 'font-semibold text-zinc-700'
+                            }`}>
+                              {n.title}
+                            </p>
+                            <p className="text-[13px] text-zinc-600 line-clamp-2 leading-relaxed">
+                              {n.message}
+                            </p>
+                          </div>
                         </div>
                       </button>
 
-                      <div className="flex items-center gap-2 mt-3 mr-3.5">
-                        {!n.isRead && (
+                      {/* Unread indicator & Mark read button */}
+                      {!n.isRead && (
+                        <div className="absolute right-5 inset-y-0 flex items-center justify-center">
                           <button
                             type="button"
-                            onClick={() => handleMarkOne(n._id)}
-                            className="text-[11px] font-medium text-[#112D4E]/65 hover:text-[#112D4E] transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkOne(n._id);
+                            }}
+                            className="p-1.5 rounded-lg text-zinc-300 hover:text-zinc-600 hover:bg-white border border-transparent hover:border-zinc-200 hover:shadow-sm opacity-0 group-hover:opacity-100 transition-all z-10"
                             title="Mark as read"
                           >
-                            Mark as read
+                            <CheckCheck className="h-4 w-4" />
                           </button>
-                        )}
-
-                        {/* Unread dot */}
-                        {!n.isRead && (
-                          <span className="flex-shrink-0 h-1.5 w-1.5 rounded-full bg-[#DC2626]/75" aria-hidden="true" />
-                        )}
-                      </div>
-                    </div>
-                  </Motion.li>
-                ))
+                          <div className="absolute top-1/2 -translate-y-1/2 right-1 lg:group-hover:opacity-0 transition-opacity pointer-events-none">
+                            <span className="block h-2 w-2 rounded-full bg-blue-500 shadow-sm shadow-blue-500/40" />
+                          </div>
+                        </div>
+                      )}
+                    </Motion.li>
+                  ))}
+                </ul>
               )}
-            </ul>
+            </div>
           </Motion.div>
         )}
       </AnimatePresence>

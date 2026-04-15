@@ -49,17 +49,17 @@ const ApplicationDetails = () => {
 
   const getStatusColor = (status) => {
     const colors = {
-      'Applied': 'bg-blue-100 text-blue-800 border-blue-200',
-      'Under Review': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'Shortlisted': 'bg-purple-100 text-purple-800 border-purple-200',
-      'Interview Scheduled': 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      'Job Closed': 'bg-amber-100 text-amber-800 border-amber-200',
-      'Job Deleted': 'bg-slate-200 text-slate-800 border-slate-300',
-      'Rejected': 'bg-red-100 text-red-800 border-red-200',
-      'Hired': 'bg-green-100 text-green-800 border-green-200',
-      'Withdrawn': 'bg-gray-100 text-gray-800 border-gray-200'
+      'Applied': 'bg-slate-100 text-slate-700 border-slate-200/80',
+      'Under Review': 'bg-amber-50 text-amber-700 border-amber-200/80',
+      'Shortlisted': 'bg-sky-50 text-sky-700 border-sky-200/80',
+      'Interview Scheduled': 'bg-cyan-50 text-cyan-700 border-cyan-200/80',
+      'Job Closed': 'bg-zinc-100 text-zinc-600 border-zinc-200/80',
+      'Job Deleted': 'bg-zinc-200 text-zinc-700 border-zinc-300',
+      'Rejected': 'bg-rose-50 text-rose-700 border-rose-200/80',
+      'Hired': 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+      'Withdrawn': 'bg-zinc-100 text-zinc-600 border-zinc-200/80'
     };
-    return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+    return colors[status] || 'bg-zinc-100 text-zinc-700 border-zinc-200/80';
   };
 
   const getStatusIcon = (status) => {
@@ -93,10 +93,10 @@ const ApplicationDetails = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading application details...</p>
+          <div className="w-12 h-12 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-zinc-600 font-medium">Loading application details...</p>
         </div>
       </div>
     );
@@ -104,23 +104,23 @@ const ApplicationDetails = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
         <div className="text-center max-w-md">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">Error Loading Application</h2>
-          <p className="text-slate-600 mb-4">{error}</p>
+          <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-zinc-900 mb-2 tracking-tight">Error Loading Application</h2>
+          <p className="text-zinc-600 mb-6 font-medium">{error}</p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={() => navigate('/candidate/applications')}
-              className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors"
+              className="px-5 py-2.5 bg-white border-2 border-zinc-200 text-zinc-700 font-bold rounded-xl hover:bg-zinc-50 hover:border-zinc-300 transition-colors"
             >
-              Back to Applications
+              Back
             </button>
             <button
               onClick={fetchApplicationDetails}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              className="px-5 py-2.5 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 transition-colors flex items-center gap-2 shadow-sm"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-4 h-4 text-zinc-400" />
               Retry
             </button>
           </div>
@@ -131,14 +131,16 @@ const ApplicationDetails = () => {
 
   if (!application) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
         <div className="text-center">
-          <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">Application Not Found</h2>
-          <p className="text-slate-600 mb-4">The application you're looking for doesn't exist.</p>
+          <div className="w-16 h-16 bg-zinc-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <FileText className="w-8 h-8 text-zinc-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-900 mb-2 tracking-tight">Application Not Found</h2>
+          <p className="text-zinc-600 mb-6 font-medium">The application you're looking for doesn't exist.</p>
           <button
             onClick={() => navigate('/candidate/applications')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-6 py-3 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 transition-colors shadow-sm"
           >
             Back to Applications
           </button>
@@ -148,36 +150,36 @@ const ApplicationDetails = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-zinc-50/50 pb-12">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
-          <div className="flex items-center gap-4 mb-4">
+      <div className="bg-white border-b border-zinc-200">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+          <div className="flex items-center gap-4 mb-5">
             <button
               onClick={() => navigate('/candidate/applications')}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-zinc-100 rounded-xl transition-colors group"
             >
-              <ArrowLeft className="w-5 h-5 text-slate-600" />
+              <ArrowLeft className="w-5 h-5 text-zinc-500 group-hover:text-zinc-900" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Application Details</h1>
-              <p className="text-slate-600">Application ID: {application.applicationId}</p>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 tracking-tight">Application Details</h1>
+              <p className="text-zinc-500 text-sm font-medium mt-1 uppercase tracking-widest">ID: {application.applicationId}</p>
             </div>
           </div>
           
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className={`px-4 py-2 rounded-full text-sm font-medium border flex items-center gap-2 ${getStatusColor(application.status)}`}>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center w-fit gap-1.5 ${getStatusColor(application.status)}`}>
               {getStatusIcon(application.status)}
               {application.status}
             </div>
             
-            <div className="flex w-full flex-col gap-3 md:w-auto md:items-end">
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
               {applicationJobId && !application.jobId?.isDeleted && (
                 <button
                   onClick={() => navigate(`/candidate/jobs/${applicationJobId}`)}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 md:min-w-[190px]"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 py-2.5 text-zinc-700 font-bold transition-all hover:bg-zinc-50 hover:border-zinc-300 md:min-w-[190px] shadow-sm"
                 >
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className="w-4 h-4 text-zinc-400" />
                   View Job Posting
                 </button>
               )}
@@ -215,7 +217,7 @@ const ApplicationDetails = () => {
                       ? 'Give Interview'
                       : 'Window Closed';
                 return (
-                  <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
+                  <div className="flex w-full flex-col gap-2 md:w-auto md:items-end md:mt-0 mt-4">
                     {hasValidStart && hasValidDeadline && (
                       <InterviewSlotCard
                         start={formatDateTime(start)}
@@ -224,18 +226,21 @@ const ApplicationDetails = () => {
                       />
                     )}
                     {interviewLocked && (
-                      <span className="text-xs text-slate-500 md:max-w-[320px] md:text-right">Your interview is under review.</span>
+                      <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide md:max-w-[320px] md:text-right flex items-center justify-end gap-1.5 pt-1.5">
+                         <CheckCircle className="w-3.5 h-3.5" />
+                         Your interview is under review
+                      </span>
                     )}
                     {!interviewLocked && beforeStart && (
-                      <span className="text-xs text-slate-500 md:max-w-[320px] md:text-right">
-                        Starts at {formatDateTime(start)}.
+                      <span className="text-xs font-bold text-cyan-600 bg-cyan-50 border border-cyan-200/60 px-2 py-1 rounded md:max-w-[320px] md:text-right tracking-wide uppercase">
+                        Starts at {formatDateTime(start)}
                       </span>
                     )}
                     {!enrollmentsReady && !interviewLocked && (
-                      <span className="text-xs text-slate-500 md:max-w-[320px] md:text-right">
+                      <span className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 uppercase tracking-wide md:max-w-[320px] md:text-right flex items-start gap-1.5 mt-1">
                         {enrollmentFailed
-                          ? 'Interview setup failed. Please contact support or ask the employer to reschedule.'
-                          : 'Interview setup in progress. Please wait...'}
+                          ? <span className="flex text-rose-600 gap-1.5"><AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" /> Setup Failed. Contact support.</span>
+                          : <span className="flex text-zinc-500 gap-1.5"><RefreshCw className="w-3.5 h-3.5 flex-shrink-0 mt-px animate-spin" /> Setup in progress...</span>}
                       </span>
                     )}
                     {enrollmentsReady && (
@@ -250,13 +255,13 @@ const ApplicationDetails = () => {
                             },
                           })
                         }
-                        className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all md:min-w-[190px] ${
+                        className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-all md:min-w-[190px] w-full mt-2 group/interview shadow-sm focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900 ${
                           !ctaDisabled
-                            ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-md'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            ? 'bg-zinc-900 border border-zinc-900 text-white hover:bg-zinc-800 shadow-md hover:-translate-y-[1px]'
+                            : 'bg-zinc-100 border border-zinc-200 text-zinc-400 cursor-not-allowed hover:-translate-y-0'
                         }`}
                       >
-                        <Video className="w-4 h-4" />
+                        <Video className={`w-4 h-4 ${!ctaDisabled ? 'text-zinc-400 group-hover/interview:text-white transition-colors' : ''}`} />
                         {ctaLabel}
                       </button>
                     )}
@@ -268,67 +273,73 @@ const ApplicationDetails = () => {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {application.status === 'Job Closed' && (
-          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50/80 p-4 text-sm font-medium text-amber-800 flex items-start gap-3 shadow-sm">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-600 mt-0.5" />
             This role has been closed by the employer. Hiring is paused for this job.
           </div>
         )}
 
         {application.status === 'Job Deleted' && (
-          <div className="mb-6 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-800">
-            This role was deleted by the employer. This application remains visible for record-keeping.
+          <div className="mb-6 rounded-xl border border-zinc-300 bg-zinc-100 p-4 text-sm font-medium text-zinc-800 flex items-start gap-3 shadow-sm">
+             <FileText className="w-5 h-5 flex-shrink-0 text-zinc-500 mt-0.5" />
+             This role was deleted by the employer. This application remains visible for record-keeping.
           </div>
         )}
 
         {application.status === 'Interview Scheduled' && application.jobId?.status === 'closed' && (
-          <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
-            The job is closed for new applicants, but your scheduled interview is still active.
+          <div className="mb-6 rounded-xl border border-cyan-200/60 bg-cyan-50/80 p-4 text-sm font-medium text-cyan-800 flex items-start gap-3 shadow-sm">
+             <Calendar className="w-5 h-5 flex-shrink-0 text-cyan-600 mt-0.5" />
+             The job is closed for new applicants, but your scheduled interview is still active.
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Job Information */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
+              className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 sm:p-8"
             >
-              <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <Building2 className="w-5 h-5" />
+              <h2 className="text-sm font-bold text-zinc-900 mb-5 tracking-widest uppercase flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-zinc-400" />
                 Job Information
               </h2>
               
               {application.jobId ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div>
-                    <h3 className="text-xl font-semibold text-slate-900">{application.jobId.title}</h3>
-                    <p className="text-slate-600">{application.jobId.company}</p>
+                    <h3 className="text-xl sm:text-2xl font-extrabold text-zinc-900 tracking-tight mb-1">{application.jobId.title}</h3>
+                    <p className="text-zinc-600 font-medium">{application.jobId.company}</p>
                   </div>
                   
-                  <div className="flex items-center gap-4 text-sm text-slate-600">
-                    <div className="flex items-center gap-1">
-                      <MapPin className="w-4 h-4" />
+                  <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-zinc-500 uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
+                      <MapPin className="w-3.5 h-3.5" />
                       <span>{application.jobId.location}</span>
                     </div>
                     {application.jobId.employmentType && (
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
+                      <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
+                        <Clock className="w-3.5 h-3.5" />
                         <span>{application.jobId.employmentType}</span>
                       </div>
                     )}
                   </div>
                   
                   {application.jobId.salaryRange && (
-                    <div className="text-sm text-slate-600">
-                      <strong>Salary:</strong> ${application.jobId.salaryRange.min?.toLocaleString()} - ${application.jobId.salaryRange.max?.toLocaleString()}
+                    <div className="text-sm text-zinc-600 font-medium pt-2 border-t border-zinc-100">
+                      <strong className="text-zinc-900 mr-2">Salary:</strong> 
+                      <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200/60 font-bold">
+                        ${application.jobId.salaryRange.min?.toLocaleString()} - ${application.jobId.salaryRange.max?.toLocaleString()}
+                      </span>
                     </div>
                   )}
                 </div>
               ) : (
-                <p className="text-slate-500">Job information not available</p>
+                <p className="text-zinc-500 text-sm font-medium italic">Job information not available</p>
               )}
             </motion.div>
 
@@ -337,43 +348,43 @@ const ApplicationDetails = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
+              className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 sm:p-8"
             >
-              <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <User className="w-5 h-5" />
-                Personal Information
+              <h2 className="text-sm font-bold text-zinc-900 mb-6 tracking-widest uppercase flex items-center gap-2">
+                <User className="w-4 h-4 text-zinc-400" />
+                Applied With Info
               </h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center gap-3">
-                  <User className="w-4 h-4 text-slate-400" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-zinc-50/50 border border-zinc-200/60 p-5 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <User className="w-4 h-4 text-zinc-400 mt-0.5" />
                   <div>
-                    <p className="text-sm text-slate-500">Name</p>
-                    <p className="font-medium">{application.applicationProfile?.personalInfo?.name || 'Not provided'}</p>
+                     <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">Name</p>
+                    <p className="font-bold text-zinc-900 text-sm">{application.applicationProfile?.personalInfo?.name || 'Not provided'}</p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-slate-400" />
+                <div className="flex items-start gap-3">
+                  <Mail className="w-4 h-4 text-zinc-400 mt-0.5" />
                   <div>
-                    <p className="text-sm text-slate-500">Email</p>
-                    <p className="font-medium">{application.applicationProfile?.personalInfo?.email || 'Not provided'}</p>
+                    <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">Email</p>
+                    <p className="font-bold text-zinc-900 text-sm">{application.applicationProfile?.personalInfo?.email || 'Not provided'}</p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                  <Phone className="w-4 h-4 text-slate-400" />
+                <div className="flex items-start gap-3">
+                  <Phone className="w-4 h-4 text-zinc-400 mt-0.5" />
                   <div>
-                    <p className="text-sm text-slate-500">Phone</p>
-                    <p className="font-medium">{application.applicationProfile?.personalInfo?.phone || 'Not provided'}</p>
+                    <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">Phone</p>
+                    <p className="font-bold text-zinc-900 text-sm">{application.applicationProfile?.personalInfo?.phone || 'Not provided'}</p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                  <MapPin className="w-4 h-4 text-slate-400" />
+                <div className="flex items-start gap-3">
+                  <MapPin className="w-4 h-4 text-zinc-400 mt-0.5" />
                   <div>
-                    <p className="text-sm text-slate-500">Location</p>
-                    <p className="font-medium">{application.applicationProfile?.personalInfo?.location || 'Not provided'}</p>
+                    <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">Location</p>
+                    <p className="font-bold text-zinc-900 text-sm">{application.applicationProfile?.personalInfo?.location || 'Not provided'}</p>
                   </div>
                 </div>
               </div>
@@ -385,14 +396,14 @@ const ApplicationDetails = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
+                className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 sm:p-8"
               >
-                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
+                <h2 className="text-sm font-bold text-zinc-900 mb-5 tracking-widest uppercase flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-zinc-400" />
                   Cover Letter
                 </h2>
-                <div className="prose prose-sm max-w-none">
-                  <p className="text-slate-700 whitespace-pre-wrap">{application.coverLetter}</p>
+                <div className="bg-zinc-50/80 border border-zinc-200/60 p-5 rounded-xl">
+                  <p className="text-zinc-700 text-sm leading-relaxed whitespace-pre-wrap font-medium">{application.coverLetter}</p>
                 </div>
               </motion.div>
             )}
@@ -405,49 +416,49 @@ const ApplicationDetails = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
+              className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6"
             >
-              <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
-                Application Timeline
+              <h2 className="text-sm font-bold text-zinc-900 mb-6 tracking-widest uppercase flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-zinc-400" />
+                Timeline
               </h2>
               
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div className="flex items-start gap-3">
-                  <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
+                  <div className="w-2.5 h-2.5 bg-cyan-600 rounded-full mt-1.5 shadow-sm border-2 border-white ring-1 ring-cyan-600/30"></div>
                   <div>
-                    <p className="font-medium text-slate-900">Application Submitted</p>
-                    <p className="text-sm text-slate-500">{formatDate(application.appliedAt)}</p>
+                    <p className="font-bold text-zinc-900 text-sm">Application Submitted</p>
+                    <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5">{formatDate(application.appliedAt)}</p>
                   </div>
                 </div>
                 
                 {application.reviewedAt && (
                   <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 bg-yellow-600 rounded-full mt-2"></div>
+                    <div className="w-2.5 h-2.5 bg-amber-500 rounded-full mt-1.5 shadow-sm border-2 border-white ring-1 ring-amber-500/30"></div>
                     <div>
-                      <p className="font-medium text-slate-900">Under Review</p>
-                      <p className="text-sm text-slate-500">{formatDate(application.reviewedAt)}</p>
+                      <p className="font-bold text-zinc-900 text-sm">Under Review</p>
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5">{formatDate(application.reviewedAt)}</p>
                     </div>
                   </div>
                 )}
                 
                 {application.lastUpdated && application.lastUpdated !== application.appliedAt && (
                   <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 bg-green-600 rounded-full mt-2"></div>
+                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full mt-1.5 shadow-sm border-2 border-white ring-1 ring-emerald-500/30"></div>
                     <div>
-                      <p className="font-medium text-slate-900">Status Updated</p>
-                      <p className="text-sm text-slate-500">{formatDate(application.lastUpdated)}</p>
+                      <p className="font-bold text-zinc-900 text-sm">Status Updated</p>
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5">{formatDate(application.lastUpdated)}</p>
                     </div>
                   </div>
                 )}
 
                 {application.interviewWindowStart && application.interviewWindowEnd && (
                   <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 bg-indigo-600 rounded-full mt-2"></div>
+                    <div className="w-2.5 h-2.5 bg-sky-600 rounded-full mt-1.5 shadow-sm border-2 border-white ring-1 ring-sky-600/30"></div>
                     <div>
-                      <p className="font-medium text-slate-900">Interview Slot</p>
-                      <p className="text-sm text-slate-500">Opens: {formatDate(application.interviewWindowStart)}</p>
-                      <p className="text-sm text-slate-500">Closes: {formatDate(application.interviewWindowEnd)}</p>
+                      <p className="font-bold text-zinc-900 text-sm">Interview Slot</p>
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5 whitespace-nowrap">Opens: {formatDate(application.interviewWindowStart)}</p>
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5 whitespace-nowrap">Closes: {formatDate(application.interviewWindowEnd)}</p>
                     </div>
                   </div>
                 )}
@@ -459,22 +470,24 @@ const ApplicationDetails = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
+              className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6"
             >
-              <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5" />
+              <h2 className="text-sm font-bold text-zinc-900 mb-6 tracking-widest uppercase flex items-center gap-2">
+                <FileText className="w-4 h-4 text-zinc-400" />
                 Resume
               </h2>
               
               {application.resume ? (
-                <div className="space-y-3">
-                  <div>
-                    <p className="font-medium text-slate-900">{application.resume.originalName || application.resume.filename}</p>
-                    <p className="text-sm text-slate-500">
-                      Uploaded: {formatDate(application.resume.uploadDate)}
+                <div className="space-y-4">
+                  <div className="bg-zinc-50 border border-zinc-200/60 p-4 rounded-xl text-center">
+                    <p className="font-bold text-zinc-900 text-sm break-all truncate" title={application.resume.originalName || application.resume.filename}>
+                      {application.resume.originalName || application.resume.filename}
+                    </p>
+                    <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mt-2 border-t border-zinc-200/60 pt-2">
+                      Uploaded {formatDate(application.resume.uploadDate)}
                     </p>
                     {application.resume.fileSize && (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mt-0.5">
                         Size: {(application.resume.fileSize / 1024 / 1024).toFixed(2)} MB
                       </p>
                     )}
@@ -491,14 +504,14 @@ const ApplicationDetails = () => {
                         document.body.removeChild(link);
                       }
                     }}
-                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                    className="w-full px-5 py-2.5 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 shadow-sm focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900"
                   >
-                    <Download className="w-4 h-4" />
+                    <Download className="w-4 h-4 text-zinc-400" />
                     Download Resume
                   </button>
                 </div>
               ) : (
-                <p className="text-slate-500">No resume attached</p>
+                <p className="text-zinc-500 text-sm font-medium italic text-center p-4 bg-zinc-50 rounded-xl border border-zinc-200/60">No resume attached</p>
               )}
             </motion.div>
 
@@ -508,10 +521,12 @@ const ApplicationDetails = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                className="bg-white rounded-lg shadow-sm border border-slate-200 p-6"
+                className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6"
               >
-                <h2 className="text-lg font-semibold text-slate-900 mb-4">Employer Notes</h2>
-                <p className="text-slate-700 whitespace-pre-wrap">{application.employerNotes}</p>
+                <h2 className="text-sm font-bold text-zinc-900 mb-5 tracking-widest uppercase">Employer Notes</h2>
+                <div className="bg-amber-50/80 border border-amber-200/60 p-4 rounded-xl">
+                  <p className="text-amber-900 text-sm leading-relaxed whitespace-pre-wrap font-medium">{application.employerNotes}</p>
+                </div>
               </motion.div>
             )}
           </div>

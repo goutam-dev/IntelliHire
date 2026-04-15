@@ -3,76 +3,93 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchMyApplications, clearApplicationsCache } from '../../../store/slices/jobApplicationsSlice';
+import { ChevronRight, Building2, MapPin } from 'lucide-react';
 
-const ApplicationRow = ({ application, index }) => {
-  const getStatusColor = (status) => {
+const ApplicationCard = ({ application, index }) => {
+  const getStatusConfig = (status) => {
     const statusLower = status?.toLowerCase();
-    const colors = {
-      applied: 'bg-blue-100 text-blue-800 border-blue-200',
-      pending: 'bg-blue-100 text-blue-800 border-blue-200',
-      shortlisted: 'bg-orange-100 text-orange-800 border-orange-200',
-      'under review': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      interview: 'bg-purple-100 text-purple-800 border-purple-200',
-      accepted: 'bg-green-100 text-green-800 border-green-200',
-      hired: 'bg-green-100 text-green-800 border-green-200',
-      rejected: 'bg-red-100 text-red-800 border-red-200',
-      withdrawn: 'bg-gray-100 text-gray-800 border-gray-200'
+    const dots = {
+      applied: 'bg-blue-500 shadow-blue-500/40',
+      pending: 'bg-amber-500 shadow-amber-500/40',
+      shortlisted: 'bg-emerald-500 shadow-emerald-500/40',
+      'under review': 'bg-indigo-500 shadow-indigo-500/40',
+      interview: 'bg-purple-500 shadow-purple-500/40',
+      'interview scheduled': 'bg-purple-500 shadow-purple-500/40',
+      accepted: 'bg-green-500 shadow-green-500/40',
+      hired: 'bg-green-500 shadow-green-500/40',
+      rejected: 'bg-rose-500 shadow-rose-500/40',
+      withdrawn: 'bg-zinc-400 shadow-zinc-400/40'
     };
-    return colors[statusLower] || 'bg-slate-100 text-slate-800 border-slate-200';
+    
+    return {
+      bg: 'bg-zinc-50',
+      text: 'text-zinc-700',
+      border: 'border-zinc-200',
+      dot: dots[statusLower] || 'bg-zinc-400 shadow-zinc-400/40'
+    };
   };
 
-  // Extract job title and company from the real application data structure
   const jobTitle = application.jobId?.title || application.jobTitle || 'Unknown Position';
   const company = application.jobId?.company || 
                   application.jobId?.employer?.companyName || 
                   application.jobId?.employer?.name || 
                   application.company || 
                   'Unknown Company';
-  const appliedDate = application.appliedAt || application.createdAt || application.appliedDate;
+  const location = application.jobId?.location || application.location || 'Remote / Hybrid';
   const status = application.status || 'Applied';
+  
+  const companyInitial = company.charAt(0).toUpperCase();
+  const statusConfig = getStatusConfig(status);
 
   return (
-    <motion.tr 
-      className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.1 }}
-      whileHover={{ 
-        backgroundColor: "rgba(248, 250, 252, 1)",
-        transition: { duration: 0.2 }
-      }}
+    <motion.div 
+      className="group relative flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-zinc-200 rounded-xl hover:shadow-md hover:border-zinc-300 transition-all duration-300 cursor-pointer gap-4"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05 }}
     >
-      <td className="py-2 px-3">
-        <div className="font-medium text-slate-900 text-sm">{jobTitle}</div>
-      </td>
-      <td className="py-2 px-3 text-slate-600 text-sm">{company}</td>
-      <td className="py-2 px-3 text-slate-600 text-xs">
-        {appliedDate ? new Date(appliedDate).toLocaleDateString() : 'N/A'}
-      </td>
-      <td className="py-2 px-3">
-        <motion.span 
-          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(status)}`}
-          whileHover={{ scale: 1.05 }}
-        >
-          {status.charAt(0).toUpperCase() + status.slice(1)}
-        </motion.span>
-      </td>
-    </motion.tr>
+      {/* Left: Job Details */}
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        {/* Company Icon Placeholder */}
+        <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-lg bg-zinc-100 border border-zinc-200 shadow-sm text-zinc-900 font-bold text-lg">
+          {companyInitial}
+        </div>
+        
+        <div className="flex flex-col min-w-0">
+          <h3 className="font-semibold text-zinc-900 group-hover:text-black transition-colors truncate">{jobTitle}</h3>
+          <div className="flex items-center gap-1.5 mt-1 text-sm text-zinc-500 truncate">
+            <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-zinc-400" />
+            <span className="truncate">{company}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Center: Status Badge */}
+      <div className="flex-1 flex sm:justify-center">
+        <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-[0.7rem] uppercase tracking-[0.1em] font-bold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
+          <span className={`w-2 h-2 rounded-full mr-2 shadow-sm ${statusConfig.dot}`}></span>
+          {status}
+        </div>
+      </div>
+
+      {/* Right: Info */}
+      <div className="flex-1 flex sm:justify-end items-center gap-1.5 text-sm text-zinc-500 font-medium truncate">
+        <MapPin className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+        <span className="truncate">{location}</span>
+      </div>
+    </motion.div>
   );
 };
 
 const RecentApplications = ({ showAll }) => {
   const dispatch = useDispatch();
   
-  // Get real applications data from jobApplicationsSlice
   const { myApplications, loading } = useSelector(state => state.jobApplications);
   const isLoading = loading?.fetchingApplications || false;
   const [showAllApplications, setShowAllApplications] = useState(false);
   
-  // Use showAll prop or local state
   const shouldShowAll = showAll !== undefined ? showAll : showAllApplications;
   
-  // Filter out withdrawn applications and sort by applied date (most recent first)
   const activeApplications = myApplications.filter(app => 
     app.status?.toLowerCase() !== 'withdrawn'
   );
@@ -85,7 +102,6 @@ const RecentApplications = ({ showAll }) => {
   
   const applicationsToShow = shouldShowAll ? sortedApplications : sortedApplications.slice(0, 5);
 
-  // Fetch applications when component mounts - always fetch fresh data
   useEffect(() => {
     dispatch(clearApplicationsCache());
     dispatch(fetchMyApplications());
@@ -97,69 +113,68 @@ const RecentApplications = ({ showAll }) => {
 
   return (
     <motion.div 
-      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-      whileHover={{ y: -2 }}
+      className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50/30 shadow-sm flex flex-col h-full"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
     >
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">
-          {shouldShowAll ? 'All Applications' : 'Recent Applications'}
+      <div className="relative z-10 flex items-center justify-between p-6 pb-4">
+        <h2 className="text-base font-semibold text-zinc-900 tracking-tight">
+          {shouldShowAll ? 'Application History' : 'Recent Activity'}
           {!isLoading && (
-            <span className="ml-2 text-sm font-normal text-slate-500">
-              ({sortedApplications.length})
+            <span className="ml-2 inline-flex items-center justify-center bg-zinc-200/50 text-zinc-700 text-xs font-bold rounded-full h-5 px-2 border border-zinc-200">
+              {sortedApplications.length}
             </span>
           )}
         </h2>
         {sortedApplications.length > 5 && (
-          <motion.button
+          <button
             onClick={handleToggleView}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-400 transition-colors"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            className="group flex items-center text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors"
           >
-            {shouldShowAll ? 'Show Less' : 'View All'}
-          </motion.button>
+            {shouldShowAll ? 'Collapse' : 'View All'}
+            <ChevronRight className="w-4 h-4 ml-0.5 group-hover:translate-x-0.5 transition-transform" />
+          </button>
         )}
       </div>
 
-      <div className="overflow-hidden">
+      <div className="px-6 pb-6 relative z-10 w-full">
         {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-300 border-t-slate-600"></div>
-            <span className="ml-2 text-sm text-slate-600">Loading applications...</span>
+          <div className="flex flex-col items-center justify-center py-16 space-y-3 bg-white rounded-xl border border-zinc-200">
+            <div className="flex gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-zinc-300 animate-pulse" />
+              <div className="w-2 h-2 rounded-full bg-zinc-400 animate-pulse delay-100" />
+              <div className="w-2 h-2 rounded-full bg-zinc-500 animate-pulse delay-200" />
+            </div>
+            <span className="text-sm font-medium text-zinc-500">Retrieving applications...</span>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200">
-                <th className="text-left py-2 px-3 text-xs font-medium text-slate-600">Job Title</th>
-                <th className="text-left py-2 px-3 text-xs font-medium text-slate-600">Company</th>
-                <th className="text-left py-2 px-3 text-xs font-medium text-slate-600">Applied</th>
-                <th className="text-left py-2 px-3 text-xs font-medium text-slate-600">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <AnimatePresence mode="wait">
-                {applicationsToShow.map((application, index) => (
-                  <ApplicationRow 
-                    key={application.applicationId || application._id || application.id || index} 
-                    application={application} 
-                    index={index} 
-                  />
-                ))}
-              </AnimatePresence>
-            </tbody>
-          </table>
+          <div className={`flex flex-col space-y-3 transition-all duration-300 ${shouldShowAll ? 'max-h-[500px] overflow-y-auto pr-2 [scrollbar-width:thin] [scrollbar-color:#d4d4d8_transparent]' : ''}`}>
+            <AnimatePresence mode="popLayout">
+              {applicationsToShow.map((application, index) => (
+                <ApplicationCard 
+                  key={application.applicationId || application._id || application.id || index} 
+                  application={application} 
+                  index={index} 
+                />
+              ))}
+            </AnimatePresence>
+          </div>
         )}
         
         {!isLoading && applicationsToShow.length === 0 && (
           <motion.div 
-            className="text-center py-8 text-slate-500 text-sm"
+            className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-xl border border-zinc-200"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <div className="mb-2">📄</div>
-            <div className="font-medium mb-1">No applications yet</div>
-            <div>Start applying to jobs to see them here!</div>
+            <div className="w-12 h-12 bg-zinc-50 rounded-2xl flex items-center justify-center mb-4">
+              <span className="text-xl">📫</span>
+            </div>
+            <div className="text-sm font-semibold text-zinc-900 mb-1">No Applications Found</div>
+            <div className="text-sm text-zinc-500 max-w-xs">
+              When you apply for a position, it will show up here along with its current status.
+            </div>
           </motion.div>
         )}
       </div>

@@ -47,19 +47,17 @@ const MyApplications = () => {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [highlightedApplication, setHighlightedApplication] = useState(null);
+  const [withdrawingAppId, setWithdrawingAppId] = useState(null);
 
-  // Status options for filter
+  // Status options for filter - simplified to only important ones
   const statusOptions = [
     { value: 'all', label: 'All Applications', count: 0 },
     { value: 'Applied', label: 'Applied', count: 0 },
     { value: 'Under Review', label: 'Under Review', count: 0 },
     { value: 'Shortlisted', label: 'Shortlisted', count: 0 },
     { value: 'Interview Scheduled', label: 'Interview Scheduled', count: 0 },
-    { value: 'Job Closed', label: 'Job Closed', count: 0 },
-    { value: 'Job Deleted', label: 'Job Deleted', count: 0 },
-    { value: 'Rejected', label: 'Rejected', count: 0 },
     { value: 'Hired', label: 'Hired', count: 0 },
-    { value: 'Withdrawn', label: 'Withdrawn', count: 0 }
+    { value: 'Rejected', label: 'Rejected', count: 0 }
   ];
 
   // Load applications on component mount
@@ -99,12 +97,11 @@ const MyApplications = () => {
   };
 
   const handleWithdrawApplication = async (applicationId) => {
-    if (window.confirm('Are you sure you want to withdraw this application? This action cannot be undone.')) {
-      try {
-        await dispatch(withdrawApplication(applicationId)).unwrap();
-      } catch (error) {
-        console.error('Failed to withdraw application:', error);
-      }
+    try {
+      await dispatch(withdrawApplication(applicationId)).unwrap();
+      setWithdrawingAppId(null);
+    } catch (error) {
+      console.error('Failed to withdraw application:', error);
     }
   };
 
@@ -141,17 +138,17 @@ const MyApplications = () => {
 
   const getStatusColor = (status) => {
     const colors = {
-      'Applied': 'bg-blue-100 text-blue-800 border-blue-200',
-      'Under Review': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'Shortlisted': 'bg-purple-100 text-purple-800 border-purple-200',
-      'Interview Scheduled': 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      'Job Closed': 'bg-amber-100 text-amber-800 border-amber-200',
-      'Job Deleted': 'bg-slate-200 text-slate-800 border-slate-300',
-      'Rejected': 'bg-red-100 text-red-800 border-red-200',
-      'Hired': 'bg-green-100 text-green-800 border-green-200',
-      'Withdrawn': 'bg-gray-100 text-gray-800 border-gray-200'
+      'Applied': 'bg-slate-100 text-slate-700 border-slate-200/80',
+      'Under Review': 'bg-amber-50 text-amber-700 border-amber-200/80',
+      'Shortlisted': 'bg-sky-50 text-sky-700 border-sky-200/80',
+      'Interview Scheduled': 'bg-cyan-50 text-cyan-700 border-cyan-200/80',
+      'Job Closed': 'bg-zinc-100 text-zinc-600 border-zinc-200/80',
+      'Job Deleted': 'bg-zinc-200 text-zinc-700 border-zinc-300',
+      'Rejected': 'bg-rose-50 text-rose-700 border-rose-200/80',
+      'Hired': 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+      'Withdrawn': 'bg-zinc-100 text-zinc-600 border-zinc-200/80'
     };
-    return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+    return colors[status] || 'bg-zinc-100 text-zinc-700 border-zinc-200/80';
   };
 
   const getStatusIcon = (status) => {
@@ -171,32 +168,32 @@ const MyApplications = () => {
 
   if (loading.fetchingApplications) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading your applications...</p>
+          <div className="w-12 h-12 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-zinc-600 font-medium">Loading your applications...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-zinc-50/50 pb-12">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-          <div className="flex items-center justify-between">
+      <div className="bg-white border-b border-zinc-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">My Applications</h1>
-              <p className="text-slate-600 mt-1">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 tracking-tight">My Applications</h1>
+              <p className="text-zinc-500 mt-1.5 text-sm sm:text-base font-medium">
                 Track and manage your job applications
               </p>
             </div>
             <button
               onClick={() => navigate('/candidate/jobs')}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              className="px-5 py-2.5 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 shadow-sm focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900"
             >
-              <Search className="w-4 h-4" />
+              <Search className="w-4 h-4 text-zinc-400" />
               Browse Jobs
             </button>
           </div>
@@ -206,46 +203,48 @@ const MyApplications = () => {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         {/* Success/Error Messages */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-            <AlertCircle className="w-5 h-5" />
-            <span>{error}</span>
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 p-4 bg-rose-50/80 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-800 shadow-sm">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span className="text-sm font-medium">{error}</span>
             <button
               onClick={() => dispatch(clearError())}
-              className="ml-auto text-red-500 hover:text-red-700"
+              className="ml-auto text-rose-500 hover:text-rose-700 hover:bg-rose-100 p-1 rounded-lg transition-colors"
             >
-              ×
+              <X className="w-4 h-4" />
             </button>
-          </div>
+          </motion.div>
         )}
 
         {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
-            <CheckCircle className="w-5 h-5" />
-            <span>{successMessage}</span>
-          </div>
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center gap-3 text-emerald-800 shadow-sm">
+            <CheckCircle className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+            <span className="text-sm font-medium">{successMessage}</span>
+          </motion.div>
         )}
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Filter className="w-5 h-5 text-slate-600" />
-            <h2 className="text-lg font-semibold text-slate-900">Filter Applications</h2>
+        <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
+          <div className="flex items-center gap-2.5 mb-5">
+            <Filter className="w-4 h-4 text-zinc-400" />
+            <h2 className="text-sm font-bold text-zinc-900 tracking-wide uppercase">Filter Applications</h2>
           </div>
           
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2.5">
             {statusOptions.map((option) => (
               <button
                 key={option.value}
                 onClick={() => handleStatusFilter(option.value)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${
                   filters.status === option.value
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
+                    : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-900'
                 }`}
               >
                 {option.label}
                 {option.value === 'all' && applicationsPagination.totalApplications > 0 && (
-                  <span className="ml-2 text-xs">({applicationsPagination.totalApplications})</span>
+                  <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[10px] ${filters.status === option.value ? 'bg-zinc-800/80 text-zinc-300' : 'bg-zinc-100 text-zinc-500'}`}>
+                    {applicationsPagination.totalApplications}
+                  </span>
                 )}
               </button>
             ))}
@@ -254,26 +253,28 @@ const MyApplications = () => {
 
         {/* Applications List */}
         {myApplications.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-12 text-center">
-            <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+          <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-12 sm:p-16 text-center">
+            <div className="w-16 h-16 bg-zinc-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <FileText className="w-8 h-8 text-zinc-400" />
+            </div>
+            <h3 className="text-xl font-bold text-zinc-900 mb-2">
               No Applications Found
             </h3>
-            <p className="text-slate-600 mb-6">
+            <p className="text-zinc-500 mb-8 max-w-md mx-auto text-sm">
               {filters.status === 'all' 
-                ? "You haven't applied to any jobs yet."
-                : `No applications with status "${filters.status}" found.`
+                ? "Your journey starts here. Explore opportunities and submit your first application to get started."
+                : `We couldn't find any applications matching the status "${filters.status}". Try adjusting your filters.`
               }
             </p>
             <button
               onClick={() => navigate('/candidate/jobs')}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-6 py-3 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 transition-all shadow-sm focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900 inline-flex items-center gap-2"
             >
               Browse Jobs
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <AnimatePresence>
               {myApplications.map((application) => (
                 <motion.div
@@ -281,46 +282,46 @@ const MyApplications = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
-                  className={`bg-white rounded-lg shadow-sm border transition-all duration-300 ${
+                  className={`bg-white rounded-2xl shadow-sm border transition-all duration-300 group overflow-hidden ${
                     highlightedApplication === application.applicationId
-                      ? 'border-blue-300 shadow-md ring-2 ring-blue-100'
-                      : 'border-slate-200 hover:shadow-md'
+                      ? 'border-zinc-900 shadow-lg ring-1 ring-zinc-900'
+                      : 'border-zinc-200 hover:shadow-xl hover:-translate-y-0.5 hover:border-zinc-300'
                   }`}
                 >
-                  <div className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-lg font-semibold text-slate-900">
+                  <div className="p-6 sm:p-8">
+                    <div className="flex items-start justify-between mb-6">
+                      <div className="flex-1 w-full">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
+                          <h3 className="text-xl font-bold text-zinc-900 tracking-tight group-hover:text-zinc-700 transition-colors">
                             {application.jobId?.title || 'Job Title Not Available'}
                           </h3>
-                          <div className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${getStatusColor(application.status)}`}>
+                          <div className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold uppercase tracking-wider border flex items-center self-start sm:self-auto gap-1.5 shadow-sm ${getStatusColor(application.status)}`}>
                             {getStatusIcon(application.status)}
                             {application.status}
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-4 text-sm text-slate-600 mb-3">
-                          <div className="flex items-center gap-1">
-                            <Building2 className="w-4 h-4" />
+                        <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-zinc-600 mb-4">
+                          <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
+                            <Building2 className="w-4 h-4 text-zinc-400" />
                             <span>{application.jobId?.company || 'Company'}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="w-4 h-4" />
+                          <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
+                            <MapPin className="w-4 h-4 text-zinc-400" />
                             <span>{application.jobId?.location || 'Location'}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
+                          <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
+                            <Calendar className="w-4 h-4 text-zinc-400" />
                             <span>Applied {application.appliedAgo}</span>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <span>Application ID: {application.applicationId}</span>
+                        <div className="flex items-center gap-2.5 text-xs font-bold tracking-widest text-zinc-400 uppercase">
+                          <span>ID: {application.applicationId}</span>
                           {application.jobId?.salaryRange && (
                             <>
-                              <span>•</span>
-                              <span>
+                              <span className="w-1 h-1 rounded-full bg-zinc-300"></span>
+                              <span className="text-emerald-600">
                                 ${application.jobId.salaryRange.min?.toLocaleString()} - 
                                 ${application.jobId.salaryRange.max?.toLocaleString()}
                               </span>
@@ -329,32 +330,35 @@ const MyApplications = () => {
                         </div>
 
                         {application.status === 'Job Closed' && (
-                          <p className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                            This role has been closed by the employer. New applications are stopped.
-                          </p>
+                          <div className="mt-4 p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-800">
+                            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
+                            <p className="text-sm font-medium">This role has been closed by the employer. New applications are stopped.</p>
+                          </div>
                         )}
 
                         {application.status === 'Job Deleted' && (
-                          <p className="mt-3 text-sm text-slate-700 bg-slate-100 border border-slate-300 rounded-md px-3 py-2">
-                            This role was removed by the employer. This application is retained for your records only.
-                          </p>
+                          <div className="mt-4 p-3 bg-zinc-100 border border-zinc-300 rounded-xl flex items-start gap-2.5 text-zinc-700">
+                            <FileText className="w-4 h-4 text-zinc-500 mt-0.5" />
+                            <p className="text-sm font-medium">This role was removed by the employer. This application is retained for your records only.</p>
+                          </div>
                         )}
 
                         {application.status === 'Interview Scheduled' && application.jobId?.status === 'closed' && (
-                          <p className="mt-3 text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-3 py-2">
-                            The job is closed for new applicants, but your scheduled interview remains valid.
-                          </p>
+                          <div className="mt-4 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex items-start gap-2.5 text-indigo-800">
+                            <Calendar className="w-4 h-4 text-indigo-600 mt-0.5" />
+                            <p className="text-sm font-medium">The job is closed for new applicants, but your scheduled interview remains valid.</p>
+                          </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-4 pt-4 border-t border-slate-100 md:flex-row md:items-start md:justify-between">
-                      <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex flex-col gap-4 pt-5 border-t border-zinc-100 sm:flex-row sm:items-center justify-between">
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                         <button
                           onClick={() => navigate(`/candidate/applications/${application.applicationId}`)}
-                          className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                          className="flex-1 sm:flex-none px-4 py-2 bg-zinc-900 border border-zinc-900 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-zinc-800 hover:shadow-md transition-all flex items-center justify-center gap-1.5 focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900"
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4 text-zinc-400" />
                           View Details
                         </button>
                         
@@ -363,28 +367,46 @@ const MyApplications = () => {
                             onClick={() =>
                               navigate(`/candidate/jobs/${typeof application.jobId === 'string' ? application.jobId : application.jobId._id}`)
                             }
-                            className="text-sm text-slate-600 hover:text-slate-700 flex items-center gap-1"
+                            className="flex-1 sm:flex-none px-4 py-2 bg-white border-2 border-zinc-200 text-zinc-700 rounded-xl text-sm font-bold hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-900 transition-all flex items-center justify-center gap-1.5"
                           >
                             <ExternalLink className="w-4 h-4" />
                             View Job
                           </button>
                         )}
-                      </div>
 
                       {application.status === 'Applied' && (
-                        <button
-                          onClick={() => handleWithdrawApplication(application.applicationId)}
-                          disabled={loading.withdrawing}
-                          className="text-sm text-red-600 hover:text-red-700 disabled:opacity-50 flex items-center gap-1"
-                        >
-                          {loading.withdrawing ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
+                        <div className="flex items-center">
+                          {!withdrawingAppId || withdrawingAppId !== application.applicationId ? (
+                            <button
+                              onClick={() => setWithdrawingAppId(application.applicationId)}
+                              className="flex-1 sm:flex-none px-4 py-2 bg-white border-2 border-rose-200 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 transition-all flex items-center justify-center gap-1.5 group/withdraw"
+                            >
+                              <XCircle className="w-4 h-4 text-rose-400 group-hover/withdraw:text-rose-500" />
+                              Withdraw
+                            </button>
                           ) : (
-                            <XCircle className="w-4 h-4" />
+                            <div className="flex items-center justify-center gap-2 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl shadow-sm animate-in fade-in duration-200 flex-1 sm:flex-none">
+                              <span className="text-[13px] font-bold text-rose-700">Are you sure?</span>
+                              <button
+                                onClick={() => handleWithdrawApplication(application.applicationId)}
+                                disabled={loading.withdrawing}
+                                className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                              >
+                                {loading.withdrawing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                                Yes
+                              </button>
+                              <button
+                                onClick={() => setWithdrawingAppId(null)}
+                                disabled={loading.withdrawing}
+                                className="px-3 py-1.5 bg-white text-zinc-600 border border-zinc-200 rounded-lg text-xs font-bold hover:bg-zinc-50 transition-all disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           )}
-                          Withdraw
-                        </button>
+                        </div>
                       )}
+                      </div>
 
                       {application.status === 'Interview Scheduled' && (() => {
                         const active = isInterviewWindowActive(application);
@@ -424,7 +446,7 @@ const MyApplications = () => {
                               : 'Window Closed';
 
                         return (
-                          <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">
+                          <div className="flex w-full flex-col gap-2 md:w-auto md:items-end mt-4 sm:mt-0">
                             {windowLabel && (
                               <InterviewSlotCard
                                 start={windowLabel.start}
@@ -433,15 +455,16 @@ const MyApplications = () => {
                               />
                             )}
                             {interviewLocked && (
-                              <span className="text-xs text-slate-500 md:max-w-[290px] md:text-right">
-                                Your interview is under review.
+                              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide md:max-w-[290px] md:text-right flex items-center justify-end gap-1.5 pt-1.5">
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                Review in Progress
                               </span>
                             )}
                             {!enrollmentsReady && !interviewLocked && (
-                              <span className="text-xs text-slate-500 md:max-w-[290px] md:text-right" title={ctaTitle}>
+                              <span className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 uppercase tracking-wide md:max-w-[290px] md:text-right flex items-start gap-1.5" title={ctaTitle}>
                                 {enrollmentFailed
-                                  ? 'Interview setup failed. Please contact support or ask the employer to reschedule.'
-                                  : 'Interview setup in progress. Please wait...'}
+                                  ? <span className="flex text-rose-600 gap-1.5"><AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" /> Setup Failed</span>
+                                  : <span className="flex text-zinc-500 gap-1.5"><RefreshCw className="w-3.5 h-3.5 flex-shrink-0 mt-px animate-spin" /> Setup in Progress</span>}
                               </span>
                             )}
                             {enrollmentsReady && (
@@ -457,13 +480,13 @@ const MyApplications = () => {
                                   })
                                 }
                                 title={ctaTitle}
-                                className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all md:min-w-[190px] ${
+                                className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-all mt-1.5 w-full md:min-w-[190px] group/interview hover:-translate-y-[1px] ${
                                   !ctaDisabled
-                                    ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow'
-                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                    ? 'bg-zinc-900 border border-zinc-900 text-white hover:bg-zinc-800 shadow-sm hover:shadow-md'
+                                    : 'bg-zinc-100 border border-zinc-200 text-zinc-400 cursor-not-allowed hover:-translate-y-0'
                                 }`}
                               >
-                                <Video className="w-4 h-4" />
+                                <Video className={`w-4 h-4 ${!ctaDisabled ? 'text-zinc-400 group-hover/interview:text-white transition-colors' : ''}`} />
                                 {ctaLabel}
                               </button>
                             )}
@@ -480,21 +503,21 @@ const MyApplications = () => {
 
         {/* Pagination */}
         {applicationsPagination.totalPages > 1 && (
-          <div className="flex items-center justify-between mt-8">
-            <div className="text-sm text-slate-600">
-              Showing {((currentPage - 1) * 10) + 1} to {Math.min(currentPage * 10, applicationsPagination.totalApplications)} of {applicationsPagination.totalApplications} applications
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mt-10 gap-4">
+             <div className="text-[13px] font-bold uppercase tracking-wider text-zinc-500 bg-zinc-100/50 px-3 py-1.5 rounded-lg border border-zinc-200 w-fit">
+              <span className="text-zinc-900">{((currentPage - 1) * 10) + 1} - {Math.min(currentPage * 10, applicationsPagination.totalApplications)}</span> OF <span className="text-zinc-900">{applicationsPagination.totalApplications}</span> APPS
             </div>
             
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={!applicationsPagination.hasPrevPage}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                className="px-4 py-2 bg-white border-2 border-zinc-200 text-zinc-700 rounded-xl text-sm font-bold hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900"
               >
                 Previous
               </button>
               
-              <div className="flex items-center gap-1">
+              <div className="hidden sm:flex items-center gap-1">
                 {Array.from({ length: applicationsPagination.totalPages }, (_, i) => i + 1)
                   .filter(page => 
                     page === 1 || 
@@ -504,14 +527,14 @@ const MyApplications = () => {
                   .map((page, index, array) => (
                     <React.Fragment key={page}>
                       {index > 0 && array[index - 1] !== page - 1 && (
-                        <span className="px-2 text-slate-400">...</span>
+                        <span className="px-2 font-bold text-zinc-300 tracking-widest text-lg">...</span>
                       )}
                       <button
                         onClick={() => setCurrentPage(page)}
-                        className={`px-3 py-2 rounded-lg text-sm ${
+                        className={`w-10 h-10 rounded-xl text-sm font-bold flex items-center justify-center transition-all border-2 ${
                           currentPage === page
-                            ? 'bg-blue-600 text-white'
-                            : 'border border-slate-300 hover:bg-slate-50'
+                            ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
+                            : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-900'
                         }`}
                       >
                         {page}
@@ -523,7 +546,7 @@ const MyApplications = () => {
               <button
                 onClick={() => setCurrentPage(prev => Math.min(applicationsPagination.totalPages, prev + 1))}
                 disabled={!applicationsPagination.hasNextPage}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                className="px-4 py-2 bg-white border-2 border-zinc-200 text-zinc-700 rounded-xl text-sm font-bold hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900"
               >
                 Next
               </button>

@@ -151,26 +151,25 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
     if (onClose) onClose();
   };
 
-  // Desktop version (always visible)
   const desktopSidebar = (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm h-full flex flex-col">
-      <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
+    <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm h-full flex flex-col">
+      <div className="p-6 flex-1 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#d4d4d8_transparent]">
         {/* Header */}
         <div className="mb-6">
-          <h2 className="text-lg font-semibold text-slate-900">Filters</h2>
+          <h2 className="text-lg font-semibold text-zinc-900 tracking-tight">Filters</h2>
         </div>
 
         {/* Filter Options */}
         <div className="space-y-6">
           {/* Location */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Location
             </label>
             <select
               value={localFilters.location}
               onChange={(e) => handleFilterChange('location', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors"
             >
               <option value="">All Locations</option>
               {filterOptions.locations?.map(location => (
@@ -181,13 +180,13 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
 
           {/* Department */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Department
             </label>
             <select
               value={localFilters.department}
               onChange={(e) => handleFilterChange('department', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors"
             >
               <option value="">All Departments</option>
               {departmentOptions.map(department => (
@@ -200,13 +199,13 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
 
           {/* Experience Level */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Experience Level
             </label>
             <select
               value={localFilters.experienceLevel}
               onChange={(e) => handleFilterChange('experienceLevel', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors"
             >
               <option value="">All Levels</option>
               {experienceOptions.map(level => (
@@ -219,13 +218,13 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
 
           {/* Employment Type */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Employment Type
             </label>
             <select
               value={localFilters.employmentType}
               onChange={(e) => handleFilterChange('employmentType', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors"
             >
               <option value="">All Types</option>
               {employmentOptions.map(type => (
@@ -238,13 +237,13 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
 
           {/* Sort */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Sort By
             </label>
             <select
               value={localFilters.sortBy}
               onChange={(e) => handleFilterChange('sortBy', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors"
             >
               <option value="createdAt">Date Posted</option>
               <option value="salaryMin">Minimum Salary</option>
@@ -255,13 +254,13 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Sort Order
             </label>
             <select
               value={localFilters.sortOrder}
               onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors"
             >
               <option value="desc">Descending</option>
               <option value="asc">Ascending</option>
@@ -270,7 +269,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
 
           {/* Salary Range */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Salary Range
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -279,27 +278,27 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
                 placeholder="Min"
                 value={localFilters.salaryMin}
                 onChange={(e) => handleFilterChange('salaryMin', e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+                className="px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors placeholder:text-zinc-400"
               />
               <input
                 type="number"
                 placeholder="Max"
                 value={localFilters.salaryMax}
                 onChange={(e) => handleFilterChange('salaryMax', e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+                className="px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors placeholder:text-zinc-400"
               />
             </div>
           </div>
 
           {/* Posted Date */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-700 mb-2">
               Posted Date
             </label>
             <select
               value={localFilters.postedDate}
               onChange={(e) => handleFilterChange('postedDate', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm bg-zinc-50 hover:bg-white transition-colors"
             >
               <option value="">Any time</option>
               <option value="24h">Last 24 hours</option>
@@ -313,7 +312,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
         <div className="mt-8">
           <button
             onClick={clearFilters}
-            className="w-full px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+            className="w-full px-4 py-2 border border-zinc-200 text-zinc-700 font-medium rounded-xl hover:bg-zinc-50 hover:text-zinc-900 transition-colors shadow-sm"
           >
             Clear All Filters
           </button>
@@ -508,13 +507,13 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
               <div className="flex gap-3 mt-8">
                 <button
                   onClick={clearFilters}
-                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                  className="flex-1 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-zinc-700 font-medium rounded-xl transition-colors"
                 >
                   Clear All
                 </button>
                 <button
                   onClick={applyFilters}
-                  className="flex-1 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
+                  className="flex-1 px-4 py-2 bg-zinc-900 border-zinc-900 font-medium text-white rounded-xl hover:bg-zinc-800 transition-colors shadow-sm"
                 >
                   Apply Filters
                 </button>
@@ -536,40 +535,41 @@ const JobCardSkeleton = ({ index }) => (
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay: index * 0.1 }}
-    className="bg-white rounded-2xl border border-slate-200 p-6 animate-pulse"
+    className="bg-white rounded-2xl border border-zinc-200 p-6 shadow-sm animate-pulse"
   >
     <div className="flex items-start justify-between mb-4">
       <div className="flex-1">
-        <div className="h-6 bg-slate-200 rounded w-3/4 mb-2"></div>
+        <div className="h-6 bg-zinc-200 rounded w-3/4 mb-3"></div>
         <div className="flex gap-4">
-          <div className="h-4 bg-slate-200 rounded w-24"></div>
-          <div className="h-4 bg-slate-200 rounded w-20"></div>
+          <div className="h-4 bg-zinc-100 rounded w-24"></div>
+          <div className="h-4 bg-zinc-100 rounded w-20"></div>
         </div>
       </div>
       <div className="text-right">
-        <div className="h-4 bg-slate-200 rounded w-16 mb-1"></div>
-        <div className="h-3 bg-slate-200 rounded w-12"></div>
+        <div className="h-4 bg-zinc-200 rounded w-8 mb-2"></div>
       </div>
     </div>
     
-    <div className="space-y-3 mb-4">
+    <div className="space-y-4 mb-6">
       <div className="flex gap-4">
-        <div className="h-4 bg-slate-200 rounded w-20"></div>
-        <div className="h-4 bg-slate-200 rounded w-24"></div>
-        <div className="h-4 bg-slate-200 rounded w-28"></div>
+        <div className="h-4 bg-zinc-100 rounded w-20"></div>
+        <div className="h-4 bg-zinc-100 rounded w-24"></div>
+        <div className="h-4 bg-zinc-100 rounded w-28"></div>
       </div>
-      <div className="h-4 bg-slate-200 rounded w-full"></div>
-      <div className="h-4 bg-slate-200 rounded w-2/3"></div>
-      <div className="flex gap-2">
-        <div className="h-6 bg-slate-200 rounded-full w-16"></div>
-        <div className="h-6 bg-slate-200 rounded-full w-20"></div>
-        <div className="h-6 bg-slate-200 rounded-full w-18"></div>
+      <div className="space-y-2 mt-4">
+        <div className="h-3 bg-zinc-100 rounded w-full"></div>
+        <div className="h-3 bg-zinc-100 rounded w-5/6"></div>
+      </div>
+      <div className="flex gap-2 mt-4 pt-2">
+        <div className="h-6 bg-zinc-100 rounded-md w-16"></div>
+        <div className="h-6 bg-zinc-100 rounded-md w-20"></div>
+        <div className="h-6 bg-zinc-100 rounded-md w-18"></div>
       </div>
     </div>
     
-    <div className="flex gap-3">
-      <div className="h-10 bg-slate-200 rounded flex-1"></div>
-      <div className="h-10 bg-slate-200 rounded flex-1"></div>
+    <div className="flex gap-3 pt-4 border-t border-zinc-100">
+      <div className="h-10 bg-zinc-100 rounded-lg flex-1"></div>
+      <div className="h-10 bg-zinc-200 rounded-lg flex-1"></div>
     </div>
   </motion.div>
 );
@@ -731,19 +731,19 @@ const BrowseJobs = () => {
         <button
           onClick={() => handlePageChange(pagination.currentPage - 1)}
           disabled={!pagination.hasPrevPage}
-          className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+          className="p-2 rounded-lg border border-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-zinc-50 text-zinc-600 transition-colors shadow-sm"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-5 h-5" />
         </button>
         
         {pages.map(page => (
           <button
             key={page}
             onClick={() => handlePageChange(page)}
-            className={`px-3 py-2 rounded-lg border ${
+            className={`px-4 py-2 font-medium rounded-lg border shadow-sm transition-colors ${
               page === pagination.currentPage
-                ? 'bg-slate-900 text-white border-slate-900'
-                : 'border-slate-300 hover:bg-slate-50'
+                ? 'bg-zinc-900 text-white border-zinc-900'
+                : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
             }`}
           >
             {page}
@@ -753,9 +753,9 @@ const BrowseJobs = () => {
         <button
           onClick={() => handlePageChange(pagination.currentPage + 1)}
           disabled={!pagination.hasNextPage}
-          className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+          className="p-2 rounded-lg border border-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-zinc-50 text-zinc-600 transition-colors shadow-sm"
         >
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="w-5 h-5" />
         </button>
       </div>
     );
@@ -779,140 +779,154 @@ const BrowseJobs = () => {
   }
 
   return (
-    <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 h-screen overflow-hidden">
-      <motion.div
-        initial="hidden"
-        animate="visible"
-        variants={staggerChildren}
-        className="space-y-6 h-full flex flex-col"
-      >
-          {/* Header */}
-          <motion.div variants={fadeUp}>
-            <h1 className="text-2xl font-semibold text-slate-900 mb-2">Browse Jobs</h1>
-            <p className="text-slate-600">
-              Discover your next career opportunity from {pagination.totalJobs} available positions
-            </p>
-          </motion.div>
+    <main className="min-h-screen bg-zinc-50/50 pb-12">
+      {/* Hero Section */}
+      <div className="bg-zinc-900 py-16 px-4 sm:px-6 relative overflow-hidden">
+        {/* Abstract decorative elements */}
+        <div className="absolute top-0 left-0 right-0 h-full overflow-hidden pointer-events-none">
+          <div className="absolute -top-24 -left-24 w-96 h-96 bg-zinc-800 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
+          <div className="absolute top-12 -right-24 w-96 h-96 bg-zinc-800 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-2000"></div>
+          <div className="absolute -bottom-24 left-48 w-96 h-96 bg-zinc-800 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-4000"></div>
+        </div>
 
-          {/* Search Bar */}
-          <motion.div variants={fadeUp}>
-            <div className="flex gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Search by job title, company, or keywords... (live search)"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent"
-                />
-                {(isSearching || (loading && searchTerm)) && (
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-slate-300 border-t-slate-600"></div>
-                  </div>
-                )}
+        <div className="max-w-7xl mx-auto relative z-10">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={staggerChildren}
+            className="flex flex-col items-center text-center space-y-8"
+          >
+            {/* Header Text */}
+            <motion.div variants={fadeUp} className="max-w-2xl">
+              <h1 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight mb-4">
+                Find Your <span className="text-zinc-400">Dream Job</span>
+              </h1>
+              <p className="text-lg font-medium text-zinc-400">
+                Discover {pagination.totalJobs > 0 ? pagination.totalJobs : 'many'} exciting career opportunities curated just for you.
+              </p>
+            </motion.div>
+
+            {/* Search Bar */}
+            <motion.div variants={fadeUp} className="w-full max-w-3xl">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative group w-full">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-zinc-400 w-5 h-5 transition-colors group-focus-within:text-zinc-900" />
+                  <input
+                    type="text"
+                    placeholder="Search by job title, company, or keywords..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-12 pr-12 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white placeholder:text-zinc-400 rounded-2xl focus:bg-white focus:text-zinc-900 focus:placeholder:text-zinc-500 focus:ring-4 focus:ring-zinc-500/30 focus:border-transparent transition-all shadow-xl font-medium"
+                  />
+                  {(isSearching || (loading && searchTerm)) && (
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-zinc-400 border-t-white group-focus-within:border-zinc-300 group-focus-within:border-t-zinc-900"></div>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFilters(true)}
+                  className="lg:hidden flex items-center justify-center gap-2 px-6 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl hover:bg-white/20 transition-colors shadow-xl font-semibold"
+                >
+                  <Filter className="w-5 h-5" />
+                  Filters
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowFilters(true)}
-                className="px-4 py-3 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors lg:hidden"
-              >
-                <Filter className="w-5 h-5" />
-              </button>
-            </div>
-            {searchTerm && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-2 text-sm text-slate-600"
-              >
-                {isSearching || loading ? (
-                  <span className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-3 w-3 border border-slate-300 border-t-slate-600"></div>
-                    Searching...
-                  </span>
-                ) : (
-                  `Found ${pagination.totalJobs} jobs matching "${searchTerm}"`
+              
+              {/* Search Result Count */}
+              <AnimatePresence>
+                {searchTerm && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className="mt-3 text-sm font-medium text-zinc-400 text-left ml-2"
+                  >
+                    {isSearching || loading ? (
+                      <span className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-3 w-3 border-2 border-zinc-500 border-t-zinc-300"></div>
+                        Searching...
+                      </span>
+                    ) : (
+                      `Found ${pagination.totalJobs} jobs matching "${searchTerm}"`
+                    )}
+                  </motion.div>
                 )}
+              </AnimatePresence>
+            </motion.div>
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 mt-4 relative z-20">
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Sidebar Filters */}
+          <div className="hidden lg:block lg:col-span-3 sticky top-6">
+            <FiltersSidebar isDesktop={true} jobsContainerRef={jobsContainerRef} />
+          </div>
+
+          {/* Jobs List */}
+          <div 
+            ref={jobsContainerRef}
+            className="lg:col-span-9 flex flex-col gap-6"
+          >
+            {loading && !isSearching ? (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="grid grid-cols-1 gap-6"
+              >
+                {[...Array(5)].map((_, index) => (
+                  <JobCardSkeleton key={index} index={index} />
+                ))}
+              </motion.div>
+            ) : jobs.length === 0 ? (
+              <motion.div 
+                variants={fadeUp}
+                className="text-center py-20 bg-white border border-zinc-200 rounded-2xl shadow-sm"
+              >
+                <div className="w-16 h-16 bg-zinc-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                  <Search className="w-8 h-8 text-zinc-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-zinc-900 mb-2">No jobs found</h3>
+                <p className="text-sm text-zinc-500 mb-6 max-w-sm mx-auto">
+                  Try adjusting your search criteria or removing filters to find more opportunities.
+                </p>
+                <button
+                  onClick={() => {
+                    dispatch(resetFilters());
+                    dispatch(fetchJobs({ page: 1, includeClosed: true }));
+                    setSearchTerm('');
+                  }}
+                  className="px-6 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors shadow-sm text-sm font-medium"
+                >
+                  Clear Filters
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="jobs-list"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+                variants={staggerChildren}
+                className="grid grid-cols-1 gap-6"
+              >
+                {jobs.map((job, index) => (
+                  <JobCard key={job._id} job={job} index={index} />
+                ))}
               </motion.div>
             )}
-          </motion.div>
 
-          {/* Content */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
-            {/* Filters Sidebar - Desktop */}
-            <div className="hidden lg:block">
-              <div className="h-full max-h-[calc(100vh-16rem)] overflow-hidden">
-                <FiltersSidebar isOpen={true} isDesktop={true} onClose={() => {}} jobsContainerRef={jobsContainerRef} />
-              </div>
-            </div>
-
-            {/* Jobs List */}
-            <div 
-              ref={jobsContainerRef}
-              className="lg:col-span-3 h-full max-h-[calc(100vh-16rem)] overflow-y-auto custom-scrollbar scroll-container jobs-container lg:pr-2 relative scroll-smooth"
-            >
-              <AnimatePresence mode="wait">
-                {isSearching && <SearchLoadingOverlay />}
-              </AnimatePresence>
-              
-              {loading && !isSearching ? (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="space-y-4"
-                >
-                  {[...Array(6)].map((_, index) => (
-                    <JobCardSkeleton key={index} index={index} />
-                  ))}
-                </motion.div>
-              ) : jobs.length === 0 ? (
-                <motion.div 
-                  variants={fadeUp}
-                  className="text-center py-12"
-                >
-                  <div className="text-slate-400 mb-4">
-                    <Search className="w-16 h-16 mx-auto mb-4" />
-                  </div>
-                  <h3 className="text-lg font-medium text-slate-900 mb-2">No jobs found</h3>
-                  <p className="text-slate-600 mb-4">
-                    Try adjusting your search criteria or filters to find more opportunities.
-                  </p>
-                  <button
-                    onClick={() => {
-                      dispatch(resetFilters());
-                      dispatch(fetchJobs({ page: 1, includeClosed: true }));
-                      setSearchTerm('');
-                    }}
-                    className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
-                  >
-                    Clear Filters
-                  </button>
-                </motion.div>
-              ) : (
-                <motion.div 
-                  key="jobs-list"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3 }}
-                  variants={staggerChildren}
-                  className="space-y-4"
-                >
-                  <AnimatePresence mode="wait">
-                    {jobs.map((job, index) => (
-                      <JobCard key={job._id} job={job} index={index} />
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              )}
-
-              {/* Pagination */}
-              {renderPagination()}
-            </div>
+            {/* Pagination Controls */}
+            {renderPagination()}
           </div>
-      </motion.div>
+        </div>
+      </div>
 
-      {/* Mobile Filters */}
+      {/* Mobile Filters Modal */}
       <div className="lg:hidden">
         <FiltersSidebar isOpen={showFilters} isDesktop={false} onClose={() => setShowFilters(false)} jobsContainerRef={jobsContainerRef} />
       </div>

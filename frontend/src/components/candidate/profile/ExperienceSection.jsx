@@ -171,10 +171,10 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Work Experience</h2>
+        <h2 className="text-xl font-semibold text-zinc-900">Work Experience</h2>
         <button
           onClick={() => setShowForm(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          className="px-4 py-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors"
         >
           Add Experience
         </button>
@@ -183,23 +183,23 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
       {/* Experience List */}
       <div className="space-y-4 mb-6">
         {experienceList.length === 0 ? (
-          <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="text-center py-8 bg-zinc-50 rounded-2xl border border-zinc-200">
+            <svg className="mx-auto h-12 w-12 text-zinc-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2V6" />
             </svg>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Work Experience Added</h3>
-            <p className="text-gray-600 mb-4">Add your professional experience to showcase your career journey</p>
+            <h3 className="text-lg font-medium text-zinc-900 mb-2">No Work Experience Added</h3>
+            <p className="text-zinc-600 mb-4">Add your professional experience to showcase your career journey</p>
             <div className="flex flex-wrap gap-2 justify-center">
               <button
                 onClick={() => setShowForm(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors"
               >
                 Add Your First Experience
               </button>
               <button
                 onClick={handleMarkNoExperience}
                 disabled={saving}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition-colors disabled:opacity-50"
+                className="px-4 py-2 border border-zinc-300 text-zinc-700 rounded-xl hover:bg-zinc-100 transition-colors disabled:opacity-50"
               >
                 I am a Fresher (No Experience)
               </button>
@@ -207,15 +207,15 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
           </div>
         ) : (
           experienceList.map((experience) => (
-            <div key={experience._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div key={experience._id} className="bg-white border border-zinc-200 rounded-2xl p-4 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start">
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900">{experience.title}</h3>
-                  <p className="text-blue-600 font-medium">{experience.companyName}</p>
+                  <h3 className="text-lg font-semibold text-zinc-900">{experience.title}</h3>
+                  <p className="text-zinc-900 font-medium">{experience.companyName}</p>
                   {experience.location && (
-                    <p className="text-gray-600">{experience.location}</p>
+                    <p className="text-zinc-600">{experience.location}</p>
                   )}
-                  <div className="flex items-center text-sm text-gray-500 mt-1">
+                  <div className="flex items-center text-sm text-zinc-500 mt-1">
                     <span>
                       {formatDate(experience.startDate)} - {
                         experience.currentlyWorking 
@@ -226,14 +226,14 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                       }
                     </span>
                     {experience.startDate && (
-                      <span className="ml-2 text-gray-400">
+                      <span className="ml-2 text-zinc-400">
                         • {calculateDuration(experience.startDate, experience.endDate, experience.currentlyWorking)}
                       </span>
                     )}
                   </div>
                   {experience.description && (
                     <div className="mt-3">
-                      <p className="text-gray-700 whitespace-pre-line">{experience.description}</p>
+                      <p className="text-zinc-700 whitespace-pre-line">{experience.description}</p>
                     </div>
                   )}
                 </div>
@@ -257,13 +257,13 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
 
       {/* Add Experience Form */}
       {showForm && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Work Experience</h3>
+        <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-zinc-900 mb-4">Add Work Experience</h3>
           
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
                   Job Title *
                 </label>
                 <input
@@ -272,13 +272,13 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                   value={formData.title}
                   onChange={handleChange}
                   placeholder="e.g., Software Engineer, Marketing Manager"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
                   Company Name *
                 </label>
                 <input
@@ -287,14 +287,14 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                   value={formData.companyName}
                   onChange={handleChange}
                   placeholder="e.g., Google, Microsoft, Startup Inc."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
                 Location
               </label>
               <input
@@ -303,13 +303,13 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                 value={formData.location}
                 onChange={handleChange}
                 placeholder="e.g., San Francisco, CA or Remote"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
                   Start Date
                 </label>
                 <input
@@ -318,7 +318,7 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                   value={formData.startDate}
                   onChange={handleChange}
                   max={maxMonth}
-                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.startDate ? 'border-red-300' : 'border-gray-300'}`}
+                  className={`w-full px-3 py-2 border rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 ${errors.startDate ? 'border-red-300' : 'border-zinc-300'}`}
                 />
                 {errors.startDate && (
                   <p className="mt-1 text-sm text-red-600">{errors.startDate}</p>
@@ -326,7 +326,7 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
                   End Date
                 </label>
                 <input
@@ -336,7 +336,7 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                   onChange={handleChange}
                   max={maxMonth}
                   disabled={formData.currentlyWorking}
-                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed ${errors.endDate ? 'border-red-300' : 'border-gray-300'}`}
+                  className={`w-full px-3 py-2 border rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 disabled:bg-zinc-100 disabled:cursor-not-allowed ${errors.endDate ? 'border-red-300' : 'border-zinc-300'}`}
                 />
                 {errors.endDate && (
                   <p className="mt-1 text-sm text-red-600">{errors.endDate}</p>
@@ -350,15 +350,15 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                 name="currentlyWorking"
                 checked={formData.currentlyWorking}
                 onChange={handleChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                className="h-4 w-4 text-zinc-900 focus:ring-zinc-900 border-zinc-300 rounded"
               />
-              <label className="ml-2 text-sm text-gray-700">
+              <label className="ml-2 text-sm text-zinc-700">
                 I currently work here
               </label>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
                 Description/Responsibilities
               </label>
               <textarea
@@ -367,9 +367,9 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                 onChange={handleChange}
                 rows={4}
                 placeholder="Describe your key responsibilities, achievements, and impact in this role..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-zinc-500 mt-1">
                 Tip: Use bullet points and quantify your achievements with numbers when possible
               </p>
             </div>
@@ -379,19 +379,16 @@ const ExperienceSection = ({ profile, onAdd, onDelete }) => {
                 type="button"
                 onClick={resetForm}
                 disabled={saving}
-                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-zinc-700 bg-white border border-zinc-300 rounded-xl hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                className="px-4 py-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
               >
-                {saving && (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                )}
-                Add Experience
+                {saving ? 'Adding...' : 'Add Experience'}
               </button>
             </div>
 

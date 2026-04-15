@@ -1,27 +1,23 @@
-// frontend/src/components/candidate/profile/AccountSettingsSection.jsx
 import React, { useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import ProfileImageUpload from '../../common/ProfileImageUpload';
-import { Loader2, Eye, EyeOff, Trash2, AlertTriangle } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Trash2, AlertTriangle, Shield, User as UserIcon, Bell, Save } from 'lucide-react';
 
 const AccountSettingsSection = ({ profile }) => {
   const { user } = useUser();
   const navigate = useNavigate();
   
-  // Check if user has password authentication (not OAuth-only)
   const hasPassword = user?.passwordEnabled || false;
   const oauthProvider = user?.externalAccounts?.[0]?.provider || 'a social provider';
   
-  // Name management state
   const [nameData, setNameData] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || ''
   });
   const [updatingName, setUpdatingName] = useState(false);
 
-  // Password management state
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -29,14 +25,12 @@ const AccountSettingsSection = ({ profile }) => {
   });
   const [changingPassword, setChangingPassword] = useState(false);
   
-  // Password visibility state
   const [showPasswords, setShowPasswords] = useState({
     currentPassword: false,
     newPassword: false,
     confirmPassword: false
   });
 
-  // Notification preferences state (backend integration)
   const [notifications, setNotifications] = useState({
     applicationUpdates: true,
     jobRecommendations: true,
@@ -44,483 +38,218 @@ const AccountSettingsSection = ({ profile }) => {
   });
   const [updatingNotifications, setUpdatingNotifications] = useState(false);
 
-  // Delete account state
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const handleNameChange = (e) => {
     const { name, value } = e.target;
-    setNameData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setNameData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleNameSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!nameData.firstName.trim()) {
-      toast.error('First name is required');
-      return;
-    }
-
+    if (!nameData.firstName.trim()) { toast.error('First name is required'); return; }
     setUpdatingName(true);
     try {
-      await user.update({
-        firstName: nameData.firstName.trim(),
-        lastName: nameData.lastName.trim()
-      });
-      
-      toast.success('Name updated successfully');
-    } catch (error) {
-      console.error('Name update error:', error);
-      toast.error(error.errors?.[0]?.message || 'Failed to update name');
-    } finally {
-      setUpdatingName(false);
-    }
+      await user.update({ firstName: nameData.firstName.trim(), lastName: nameData.lastName.trim() });
+      toast.success('Identity synchronized successfully');
+    } catch (error) { toast.error(error.errors?.[0]?.message || 'Failed to update name'); } 
+    finally { setUpdatingName(false); }
   };
 
   const handlePasswordChange = (e) => {
     const { name, value } = e.target;
-    setPasswordData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setPasswordData(prev => ({ ...prev, [name]: value }));
   };
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
-    
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('New passwords do not match');
-      return;
-    }
-
-    if (passwordData.newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters long');
-      return;
-    }
-
+    if (passwordData.newPassword !== passwordData.confirmPassword) { toast.error('Passwords do not match'); return; }
+    if (passwordData.newPassword.length < 8) { toast.error('Password minimum 8 characters'); return; }
     setChangingPassword(true);
     try {
-      await user.updatePassword({
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword,
-        signOutOfOtherSessions: true
-      });
-      
-      toast.success('Password changed successfully');
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      });
-    } catch (error) {
-      console.error('Password change error:', error);
-      toast.error(error.errors?.[0]?.message || 'Failed to change password');
-    } finally {
-      setChangingPassword(false);
-    }
+      await user.updatePassword({ currentPassword: passwordData.currentPassword, newPassword: passwordData.newPassword, signOutOfOtherSessions: true });
+      toast.success('Vault secure: Password changed');
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (error) { toast.error(error.errors?.[0]?.message || 'Failed to change password'); } 
+    finally { setChangingPassword(false); }
   };
 
   const handleNotificationChange = (e) => {
     const { name, checked } = e.target;
-    setNotifications(prev => ({
-      ...prev,
-      [name]: checked
-    }));
+    setNotifications(prev => ({ ...prev, [name]: checked }));
   };
 
   const handleNotificationSubmit = async (e) => {
     e.preventDefault();
-    
     setUpdatingNotifications(true);
-    try {
-      // This would integrate with your backend
-      // await api.put('/candidate/profile/notifications', notifications);
-      toast.success('Notification preferences updated successfully');
-    } catch (error) {
-      console.error('Notification update error:', error);
-      toast.error('Failed to update notification preferences');
-    } finally {
-      setUpdatingNotifications(false);
-    }
+    setTimeout(() => { toast.success('Notification stack updated'); setUpdatingNotifications(false); }, 800);
   };
 
   const handleDeleteAccount = async () => {
-    if (deleteConfirmation !== 'DELETE') {
-      toast.error('Please type DELETE to confirm');
-      return;
-    }
-
+    if (deleteConfirmation !== 'DELETE') { toast.error('Format constraint: Type DELETE precisely'); return; }
     setIsDeletingAccount(true);
     try {
       await user.delete();
-      toast.success('Account deleted successfully');
-      // Redirect to home page after deletion
+      toast.success('Account purged successfully');
       navigate('/');
-    } catch (error) {
-      console.error('Account deletion error:', error);
-      toast.error(error.errors?.[0]?.message || 'Failed to delete account');
-      setIsDeletingAccount(false);
-    }
+    } catch (error) { toast.error(error.errors?.[0]?.message || 'Termination failed'); setIsDeletingAccount(false); }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Profile Photo Section */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <ProfileImageUpload theme="candidate" />
+    <div className="space-y-8">
+      {/* Profile Photo */}
+      <div className="bg-white border border-zinc-200 shadow-sm rounded-[24px] overflow-hidden ring-1 ring-zinc-100">
+        <div className="px-6 py-4 bg-zinc-50 border-b border-zinc-100 flex items-center gap-3">
+          <UserIcon className="w-5 h-5 text-zinc-900" />
+          <h3 className="text-sm font-extrabold text-zinc-900 uppercase tracking-widest">Avatar Setup</h3>
+        </div>
+        <div className="p-6 bg-white">
+          <ProfileImageUpload theme="candidate" />
+        </div>
       </div>
 
-      {/* Name Management Section */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Personal Information</h3>
-        
-        <form onSubmit={handleNameSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                First Name
-              </label>
-              <input
-                type="text"
-                name="firstName"
-                value={nameData.firstName}
-                onChange={handleNameChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
+      {/* Auth Info */}
+      <div className="bg-white border border-zinc-200 shadow-sm rounded-[24px] overflow-hidden">
+        <div className="px-6 py-4 bg-zinc-50 border-b border-zinc-100 flex items-center gap-3">
+          <Shield className="w-5 h-5 text-zinc-900" />
+          <h3 className="text-sm font-extrabold text-zinc-900 uppercase tracking-widest">Identity & Password</h3>
+        </div>
+        <div className="p-6 md:p-8 space-y-8 bg-white">
+          <form onSubmit={handleNameSubmit} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-extrabold text-zinc-900 uppercase tracking-widest mb-1.5">First Name</label>
+                <input type="text" name="firstName" value={nameData.firstName} onChange={handleNameChange} className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 transition-all font-medium text-zinc-900" required />
+              </div>
+              <div>
+                <label className="block text-xs font-extrabold text-zinc-900 uppercase tracking-widest mb-1.5">Last Name</label>
+                <input type="text" name="lastName" value={nameData.lastName} onChange={handleNameChange} className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 transition-all font-medium text-zinc-900" />
+              </div>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Last Name
-              </label>
-              <input
-                type="text"
-                name="lastName"
-                value={nameData.lastName}
-                onChange={handleNameChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+            <div className="flex justify-end">
+              <button type="submit" disabled={updatingName} className="px-6 py-2.5 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900 shadow-md hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 hover:shadow-lg">
+                {updatingName ? <Loader2 className="animate-spin w-4 h-4" /> : <Save className="w-4 h-4" />}
+                {updatingName ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
-          </div>
+          </form>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={updatingName}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
-            >
-              {updatingName && (
-                <Loader2 className="animate-spin h-4 w-4 mr-2" />
-              )}
-              Update Name
-            </button>
-          </div>
-        </form>
-      </div>
+          <hr className="border-t border-zinc-100" />
 
-      {/* Change Password Section - Only for password-authenticated users */}
-      {hasPassword ? (
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Change Password</h3>
-          
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Current Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPasswords.currentPassword ? "text" : "password"}
-                  name="currentPassword"
-                  value={passwordData.currentPassword}
-                  onChange={handlePasswordChange}
-                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPasswords(prev => ({ ...prev, currentPassword: !prev.currentPassword }))}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  {showPasswords.currentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {hasPassword ? (
+            <form onSubmit={handlePasswordSubmit} className="space-y-5">
+              <div>
+                <label className="block text-xs font-extrabold text-zinc-900 uppercase tracking-widest mb-1.5">Current Password</label>
+                <div className="relative">
+                  <input type={showPasswords.currentPassword ? "text" : "password"} name="currentPassword" value={passwordData.currentPassword} onChange={handlePasswordChange} className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 font-medium text-zinc-900" required />
+                  <button type="button" onClick={() => setShowPasswords(p => ({ ...p, currentPassword: !p.currentPassword }))} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 transition-colors">
+                    {showPasswords.currentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-extrabold text-zinc-900 uppercase tracking-widest mb-1.5">New Password</label>
+                  <div className="relative">
+                    <input type={showPasswords.newPassword ? "text" : "password"} name="newPassword" value={passwordData.newPassword} onChange={handlePasswordChange} className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 font-medium text-zinc-900" required minLength={8} />
+                    <button type="button" onClick={() => setShowPasswords(p => ({ ...p, newPassword: !p.newPassword }))} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 transition-colors">
+                      {showPasswords.newPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-extrabold text-zinc-900 uppercase tracking-widest mb-1.5">Confirm Password</label>
+                  <div className="relative">
+                    <input type={showPasswords.confirmPassword ? "text" : "password"} name="confirmPassword" value={passwordData.confirmPassword} onChange={handlePasswordChange} className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 font-medium text-zinc-900" required minLength={8} />
+                    <button type="button" onClick={() => setShowPasswords(p => ({ ...p, confirmPassword: !p.confirmPassword }))} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 transition-colors">
+                      {showPasswords.confirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button type="submit" disabled={changingPassword} className="px-6 py-2.5 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 shadow-md hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 disabled:opacity-50">
+                  {changingPassword ? <Loader2 className="animate-spin w-4 h-4" /> : <Shield className="w-4 h-4" />}
+                  {changingPassword ? 'Updating...' : 'Change Password'}
                 </button>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  New Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPasswords.newPassword ? "text" : "password"}
-                    name="newPassword"
-                    value={passwordData.newPassword}
-                    onChange={handlePasswordChange}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
-                    minLength={8}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPasswords(prev => ({ ...prev, newPassword: !prev.newPassword }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    {showPasswords.newPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <p className="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+            </form>
+          ) : (
+            <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-5 flex items-start gap-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Shield className="w-5 h-5 text-blue-600" />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirm New Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPasswords.confirmPassword ? "text" : "password"}
-                    name="confirmPassword"
-                    value={passwordData.confirmPassword}
-                    onChange={handlePasswordChange}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
-                    minLength={8}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPasswords(prev => ({ ...prev, confirmPassword: !prev.confirmPassword }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    {showPasswords.confirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
+                <h3 className="font-extrabold text-blue-900 text-sm">Federated Login Enabled</h3>
+                <p className="text-sm font-medium text-blue-800/80 mt-1">Authenticated through <span className="font-bold capitalize">{oauthProvider}</span>. Strict password policies are delegated upstream.</p>
               </div>
             </div>
+          )}
+        </div>
+      </div>
 
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={changingPassword}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
-              >
-                {changingPassword && (
-                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                )}
-                Change Password
+      {/* Notifications */}
+      <div className="bg-white border border-zinc-200 shadow-sm rounded-[24px] overflow-hidden">
+        <div className="px-6 py-4 bg-zinc-50 border-b border-zinc-100 flex items-center gap-3">
+          <Bell className="w-5 h-5 text-zinc-900" />
+          <h3 className="text-sm font-extrabold text-zinc-900 uppercase tracking-widest">Notifications</h3>
+        </div>
+        <div className="p-6 md:p-8 bg-white">
+          <form onSubmit={handleNotificationSubmit} className="space-y-6">
+            <div className="grid gap-4">
+              {[
+                { id: 'applicationUpdates', title: 'Application Updates', desc: 'Get notified when your application status changes.' },
+                { id: 'jobRecommendations', title: 'Job Recommendations', desc: 'Receive suggestions for jobs that match your profile.' },
+                { id: 'marketingEmails', title: 'Marketing Emails', desc: 'Receive news, tips, and promotional content.' }
+              ].map(n => (
+                <label key={n.id} className="flex items-center gap-4 p-4 border border-zinc-200 rounded-2xl hover:border-zinc-400 hover:bg-zinc-50 cursor-pointer transition-all group">
+                  <div className="relative flex items-center justify-center">
+                    <input type="checkbox" name={n.id} checked={notifications[n.id]} onChange={handleNotificationChange} className="peer w-6 h-6 border-2 border-zinc-300 rounded-md appearance-none checked:bg-zinc-900 checked:border-zinc-900 transition-colors" />
+                    <svg className="absolute w-4 h-4 text-white pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </div>
+                  <div>
+                    <p className="font-extrabold text-sm text-zinc-900">{n.title}</p>
+                    <p className="text-xs font-semibold text-zinc-500 mt-0.5">{n.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end pt-2">
+              <button type="submit" disabled={updatingNotifications} className="px-6 py-2.5 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 shadow-md hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2">
+                {updatingNotifications ? <Loader2 className="animate-spin w-4 h-4" /> : <Save className="w-4 h-4" />}
+                {updatingNotifications ? 'Saving...' : 'Save Preferences'}
               </button>
             </div>
           </form>
         </div>
-      ) : (
-        /* OAuth User Notice */
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">OAuth Authentication</h3>
-              <p className="mt-1 text-sm text-blue-700">
-                You signed in with <span className="font-semibold capitalize">{oauthProvider}</span>. Password management is handled by your authentication provider.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Email Notification Preferences */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Email Notification Preferences</h3>
-        
-        <form onSubmit={handleNotificationSubmit} className="space-y-4">
-          <div className="space-y-3">
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="applicationUpdates"
-                checked={notifications.applicationUpdates}
-                onChange={handleNotificationChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <div className="ml-3">
-                <label className="text-sm font-medium text-gray-700">
-                  Application Status Updates
-                </label>
-                <p className="text-xs text-gray-500">
-                  Get notified when employers update your application status
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="jobRecommendations"
-                checked={notifications.jobRecommendations}
-                onChange={handleNotificationChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <div className="ml-3">
-                <label className="text-sm font-medium text-gray-700">
-                  Job Recommendations
-                </label>
-                <p className="text-xs text-gray-500">
-                  Receive personalized job recommendations based on your profile
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="marketingEmails"
-                checked={notifications.marketingEmails}
-                onChange={handleNotificationChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <div className="ml-3">
-                <label className="text-sm font-medium text-gray-700">
-                  Marketing Emails
-                </label>
-                <p className="text-xs text-gray-500">
-                  Receive tips, career advice, and platform updates
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-4">
-            <button
-              type="submit"
-              disabled={updatingNotifications}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
-            >
-              {updatingNotifications && (
-                <Loader2 className="animate-spin h-4 w-4 mr-2" />
-              )}
-              Save Preferences
-            </button>
-          </div>
-        </form>
       </div>
 
-      {/* Account Information */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Account Information</h3>
-        
-        <div className="space-y-3">
-          <div className="flex justify-between items-center py-2">
-            <div>
-              <p className="text-sm font-medium text-gray-700">Email Address</p>
-              <p className="text-sm text-gray-500">{user?.primaryEmailAddress?.emailAddress}</p>
-            </div>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-              Verified
-            </span>
-          </div>
-
-          <div className="flex justify-between items-center py-2">
-            <div>
-              <p className="text-sm font-medium text-gray-700">Account Type</p>
-              <p className="text-sm text-gray-500">Job Seeker</p>
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center py-2">
-            <div>
-              <p className="text-sm font-medium text-gray-700">Member Since</p>
-              <p className="text-sm text-gray-500">
-                {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
-              </p>
-            </div>
-          </div>
+      {/* Danger Zone */}
+      <div className="bg-rose-50/50 border border-rose-200 shadow-sm rounded-[24px] overflow-hidden group">
+        <div className="px-6 py-4 bg-gradient-to-r from-rose-100 to-rose-50 border-b border-rose-200 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-rose-700" />
+          <h3 className="text-sm font-extrabold text-rose-900 uppercase tracking-widest">Delete Account</h3>
         </div>
-      </div>
-
-      {/* Danger Zone - Delete Account */}
-      <div className="bg-white border border-red-200 rounded-lg p-6">
-        <div className="flex items-start">
-          <div className="flex-shrink-0">
-            <AlertTriangle className="h-6 w-6 text-red-600" />
-          </div>
-          <div className="ml-3 flex-1">
-            <h3 className="text-lg font-medium text-red-900 mb-2">Danger Zone</h3>
-            <p className="text-sm text-gray-700 mb-4">
-              Once you delete your account, there is no going back. This action will permanently delete your profile, applications, and all associated data.
+        <div className="p-6 md:p-8">
+          <div className="max-w-2xl">
+            <h4 className="text-base font-extrabold text-rose-900 mb-2">Delete Your Account</h4>
+            <p className="text-sm font-semibold text-rose-800/80 mb-6">
+              Deleting your account is permanent. All your data, profile information, and job applications will be permanently removed. This action cannot be undone.
             </p>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center font-medium"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete Account
-            </button>
+            <div className="bg-white border border-rose-200 p-5 rounded-2xl shadow-sm">
+              <label className="block text-xs font-extrabold text-rose-900 uppercase tracking-widest mb-3">Type "DELETE" to confirm</label>
+              <div className="flex gap-3">
+                <input type="text" value={deleteConfirmation} onChange={(e) => setDeleteConfirmation(e.target.value)} placeholder="Type DELETE" className="flex-1 px-4 py-3 bg-rose-50/50 border border-rose-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-bold text-rose-900 outline-none" />
+                <button onClick={handleDeleteAccount} disabled={deleteConfirmation !== 'DELETE' || isDeletingAccount} className="px-6 py-3 bg-rose-600 text-white font-extrabold rounded-xl hover:bg-rose-700 shadow-sm disabled:opacity-50 disabled:bg-rose-300 transition-all flex items-center gap-2">
+                  {isDeletingAccount ? <Loader2 className="animate-spin w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                  {isDeletingAccount ? 'Deleting...' : 'Delete Account'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Delete Account Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
-            <div className="flex items-start mb-4">
-              <div className="flex-shrink-0">
-                <AlertTriangle className="h-6 w-6 text-red-600" />
-              </div>
-              <div className="ml-3">
-                <h3 className="text-lg font-semibold text-gray-900">Delete Account</h3>
-                <p className="mt-2 text-sm text-gray-600">
-                  This action cannot be undone. This will permanently delete your account and remove all your data from our servers.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Type <span className="font-bold text-red-600">DELETE</span> to confirm:
-              </label>
-              <input
-                type="text"
-                value={deleteConfirmation}
-                onChange={(e) => setDeleteConfirmation(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                placeholder="DELETE"
-              />
-            </div>
-
-            <div className="mt-6 flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeleteConfirmation('');
-                }}
-                disabled={isDeletingAccount}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteAccount}
-                disabled={isDeletingAccount || deleteConfirmation !== 'DELETE'}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
-              >
-                {isDeletingAccount && (
-                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                )}
-                Delete Account
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

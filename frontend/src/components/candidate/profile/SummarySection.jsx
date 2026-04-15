@@ -1,6 +1,6 @@
-// frontend/src/components/candidate/profile/SummarySection.jsx
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import { FileText, Lightbulb, Sparkles, AlignLeft, CheckCircle2 } from 'lucide-react';
 
 const SummarySection = ({ profile, onUpdate, onUnsavedChanges }) => {
   const [summary, setSummary] = useState('');
@@ -49,128 +49,107 @@ const SummarySection = ({ profile, onUpdate, onUnsavedChanges }) => {
   const remainingChars = maxLength - summary.length;
   const isNearLimit = remainingChars <= 50;
 
-  // Sample summaries for inspiration
   const sampleSummaries = [
     "Experienced software engineer with 5+ years developing scalable web applications using React, Node.js, and AWS. Passionate about clean code, user experience, and mentoring junior developers. Led cross-functional teams to deliver projects 20% ahead of schedule.",
-    
     "Results-driven marketing professional with expertise in digital campaigns, content strategy, and data analytics. Increased brand engagement by 150% and generated $2M+ in revenue through innovative social media strategies. Skilled in SEO, PPC, and marketing automation.",
-    
-    "Detail-oriented data scientist with strong background in machine learning, statistical analysis, and Python programming. Built predictive models that improved business efficiency by 30%. Experience with SQL, TensorFlow, and cloud platforms.",
-    
-    "Creative UX/UI designer with 4+ years crafting intuitive digital experiences for web and mobile applications. Proficient in Figma, Adobe Creative Suite, and user research methodologies. Collaborated with product teams to increase user satisfaction by 40%."
   ];
 
   return (
-    <div className="p-6">
-      <h2 className="text-xl font-semibold text-gray-900 mb-6">Professional Summary</h2>
+    <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6 lg:p-8">
+      <div className="flex items-center justify-between mb-6 border-b border-zinc-100 pb-5">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-zinc-100 rounded-xl flex items-center justify-center border border-zinc-200">
+            <AlignLeft className="w-6 h-6 text-zinc-900" />
+          </div>
+          <div>
+            <h2 className="text-xl md:text-2xl font-extrabold text-zinc-900 mb-1">Impact Summary</h2>
+            <p className="text-sm text-zinc-500">
+              Provide a brief overview of your professional background and top achievements.
+            </p>
+          </div>
+        </div>
+      </div>
       
       <div className="space-y-6">
-        {/* Summary Input */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Professional Summary
+        <div className="relative">
+          <label className="block text-sm font-bold text-zinc-900 mb-2">
+            Your Narrative
           </label>
-          <div className="relative">
+          <div className="relative group">
             <textarea
               value={summary}
               onChange={handleChange}
               rows={6}
-              placeholder="Write a brief overview of your professional experience, key skills, and career goals. This appears at the top of your profile and helps employers understand your value proposition."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              placeholder="E.g. Full-stack developer with 5 years building high-traffic platforms..."
+              className="w-full px-4 py-3 bg-zinc-50/50 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 resize-none text-zinc-900 text-sm font-medium placeholder:font-normal transition-all shadow-sm group-hover:border-zinc-400"
             />
-            <div className={`absolute bottom-2 right-2 text-xs ${
-              isNearLimit ? 'text-red-500' : 'text-gray-400'
+            <div className={`absolute bottom-3 right-3 text-xs font-bold px-2 py-1 rounded-md backdrop-blur-sm ${
+              isNearLimit ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-white/80 text-zinc-400 border border-zinc-200'
             }`}>
-              {remainingChars} characters remaining
+              {remainingChars} left
             </div>
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Maximum {maxLength} characters. This summary will be visible to employers when they view your profile.
-          </p>
         </div>
 
-        {/* Writing Tips */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-blue-800 mb-2">Writing Tips</h3>
-          <ul className="text-sm text-blue-700 space-y-1">
-            <li>• Start with your years of experience and primary role</li>
-            <li>• Highlight your key technical skills and expertise</li>
-            <li>• Include quantifiable achievements when possible</li>
-            <li>• Mention your career goals or what you're looking for</li>
-            <li>• Keep it concise and focused on your strongest points</li>
-          </ul>
-        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 shadow-sm">
+            <h3 className="text-xs font-extrabold flex items-center gap-2 text-zinc-900 uppercase tracking-widest mb-3">
+              <Lightbulb className="w-4 h-4 text-yellow-500" />
+              Pro Tips
+            </h3>
+            <ul className="text-sm font-medium text-zinc-600 space-y-2.5">
+              <li className="flex items-start gap-2"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-zinc-400 flex-shrink-0"/> Keep it under 4 sentences</li>
+              <li className="flex items-start gap-2"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-zinc-400 flex-shrink-0"/> Highlight metrics over tasks</li>
+              <li className="flex items-start gap-2"><div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-zinc-400 flex-shrink-0"/> Mention your desired next move</li>
+            </ul>
+          </div>
 
-        {/* Sample Summaries */}
-        {!summary && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Sample Summaries for Inspiration</h3>
-            <div className="space-y-3">
-              {sampleSummaries.map((sample, index) => (
-                <div key={index} className="bg-white border border-gray-200 rounded p-3">
-                  <p className="text-sm text-gray-700 mb-2">{sample}</p>
-                  <button
-                    onClick={() => {
-                      setSummary(sample);
-                      setHasChanges(true);
-                    }}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                  >
-                    Use as template
-                  </button>
-                </div>
-              ))}
+          {!summary && (
+            <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-5 shadow-sm">
+              <h3 className="text-xs font-extrabold flex items-center gap-2 text-zinc-900 uppercase tracking-widest mb-3">
+                <Sparkles className="w-4 h-4 text-blue-500" />
+                Templates
+              </h3>
+              <div className="space-y-3">
+                {sampleSummaries.map((sample, index) => (
+                  <div key={index} className="bg-white border border-blue-100 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer group" onClick={() => { setSummary(sample); setHasChanges(true); }}>
+                    <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed mb-2 font-medium">{sample}</p>
+                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wide group-hover:text-blue-800 transition-colors flex items-center gap-1">
+                      Use template &rarr;
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <p className="text-xs text-gray-500 mt-3">
-              These are examples to inspire your own summary. Customize them with your specific experience and achievements.
-            </p>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Current Summary Preview */}
-        {summary && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Preview</h3>
-            <p className="text-sm text-gray-900 leading-relaxed">{summary}</p>
-          </div>
-        )}
-
-        {/* Action Buttons */}
         {hasChanges && (
-          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+          <div className="flex justify-end space-x-3 pt-6 border-t border-zinc-100 mt-6">
             <button
               onClick={handleCancel}
               disabled={saving}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-5 py-2.5 text-sm font-bold text-zinc-700 bg-white border border-zinc-200 rounded-xl hover:bg-zinc-50 shadow-sm transition-colors disabled:opacity-50"
             >
-              Cancel
+              Discard Wait
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+              className="px-6 py-2.5 text-sm font-bold bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 shadow-md hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
             >
-              {saving && (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-zinc-400 border-t-white"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  Lock it in
+                </>
               )}
-              Save Summary
             </button>
-          </div>
-        )}
-
-        {/* Character Count Warning */}
-        {isNearLimit && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <div className="flex">
-              <svg className="flex-shrink-0 w-5 h-5 text-yellow-400 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-              <div className="ml-3">
-                <p className="text-sm text-yellow-800">
-                  You're approaching the character limit. Consider making your summary more concise.
-                </p>
-              </div>
-            </div>
           </div>
         )}
       </div>

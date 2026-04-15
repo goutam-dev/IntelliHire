@@ -1,6 +1,6 @@
 // frontend/src/components/candidate/dashboard/ProfileSummary.jsx
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { fetchCandidateProfile } from '../../../store/slices/candidateSlice';
@@ -20,14 +20,42 @@ import {
   Calendar,
   Award,
   TrendingUp,
-  Clock
+  Clock,
+  CheckCircle2,
+  Circle,
+  RefreshCw
 } from 'lucide-react';
+
+const SummaryItem = ({ icon: Icon, label, value }) => (
+  <div className="flex flex-col p-4 border border-zinc-200/60 rounded-xl bg-zinc-50/50">
+    <div className="flex items-center gap-2 mb-2 text-zinc-500">
+      <Icon className="w-4 h-4" />
+      <span className="text-xs font-medium uppercase tracking-wider">{label}</span>
+    </div>
+    <span className="text-lg font-semibold text-zinc-900 tracking-tight">{value}</span>
+  </div>
+);
+
+const CompletenessItem = ({ label, isComplete, meta }) => (
+  <div className="flex items-center justify-between py-2 border-b border-zinc-100 last:border-0">
+    <div className="flex items-center gap-2">
+      {isComplete ? (
+        <CheckCircle2 className="w-4 h-4 text-zinc-900" />
+      ) : (
+        <Circle className="w-4 h-4 text-zinc-300" />
+      )}
+      <span className="text-sm font-medium text-zinc-700">{label}</span>
+    </div>
+    <span className="text-xs text-zinc-500">{meta}</span>
+  </div>
+);
 
 const ProfileSummary = ({ onModalOpen }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { profile } = useSelector((state) => state.candidate);
   const [activeTab, setActiveTab] = useState('overview');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   if (!profile) return null;
 
@@ -64,7 +92,6 @@ const ProfileSummary = ({ onModalOpen }) => {
   // Handle resume download
   const handleDownloadResume = () => {
     if (resume?.fileUrl) {
-      // Create a temporary link to download the file
       const link = document.createElement('a');
       link.href = resume.fileUrl;
       link.download = resume.fileName || 'resume.pdf';
@@ -73,46 +100,54 @@ const ProfileSummary = ({ onModalOpen }) => {
       link.click();
       document.body.removeChild(link);
     } else {
-      // Show a message if no resume is available
       alert('No resume available to download. Please upload a resume first.');
     }
   };
 
-  // Handle stats refresh (for debugging the application count issue)
+  // Handle stats refresh
   const handleRefreshStats = async () => {
+    setIsRefreshing(true);
     try {
       await api.post('/job-applications/recalculate-stats');
-      // Refresh the profile data
       dispatch(fetchCandidateProfile());
     } catch (error) {
       console.error('Error refreshing stats:', error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
   const tabs = [
-    { id: 'overview', label: 'Overview', icon: User },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'overview', label: 'Overview' },
+    { id: 'analytics', label: 'Analytics' },
   ];
 
   const renderOverview = () => (
-    <div className="space-y-4">
-      {/* Profile Header */}
-      <div className="flex items-start gap-4">
-        <div className="relative">
+    <motion.div 
+      key="overview"
+      initial={{ opacity: 0, y: 10 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-6"
+    >
+      {/* Header Profile */}
+      <div className="flex items-start gap-5 relative overflow-hidden rounded-2xl p-5 border border-zinc-100/80 bg-gradient-to-br from-zinc-100/80 via-zinc-50/50 to-white shadow-sm">
+        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-zinc-300/80 to-zinc-200/50" />
+        <div className="relative shrink-0">
           {profilePhotoUrl ? (
             <img 
               src={`http://localhost:4000${profilePhotoUrl}`}
               alt="Profile" 
-              className="h-16 w-16 rounded-full object-cover border-2 border-slate-200"
+              className="h-16 w-16 rounded-full object-cover shadow-sm ring-1 ring-zinc-200"
               onError={(e) => {
-                // Fallback to avatar if image fails to load
                 e.target.style.display = 'none';
                 e.target.nextSibling.style.display = 'flex';
               }}
             />
           ) : null}
           <div 
-            className={`h-16 w-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-xl ${profilePhotoUrl ? 'hidden' : ''}`}
+            className={`h-16 w-16 rounded-full bg-zinc-900 flex items-center justify-center text-white font-medium text-lg tracking-tight ${profilePhotoUrl ? 'hidden' : ''}`}
           >
             {user?.fullName ? 
               user.fullName.split(' ').map(name => name[0]).join('').toUpperCase().slice(0, 2) : 
@@ -120,290 +155,206 @@ const ProfileSummary = ({ onModalOpen }) => {
             }
           </div>
         </div>
-        <div className="flex-1">
-          <h3 className="text-lg font-semibold text-slate-900">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-xl font-semibold text-zinc-900 tracking-tight truncate">
             {user?.fullName || 'User'}
-          </h3>
-          <p className="text-sm text-slate-600">{professionalTitle || headline || 'Job Seeker'}</p>
+          </h2>
+          <p className="text-sm text-zinc-500 font-medium truncate mt-0.5">
+            {professionalTitle || headline || 'Job Seeker'}
+          </p>
           
-          {/* Contact Info */}
-          <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-500">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-xs text-zinc-500 font-medium">
             {location && (
-              <div className="flex items-center gap-1">
-                <MapPin className="h-3 w-3" />
-                {location}
-              </div>
+              <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{location}</span>
             )}
             {user?.email && (
-              <div className="flex items-center gap-1">
-                <Mail className="h-3 w-3" />
-                {user.email}
-              </div>
+              <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{user.email}</span>
             )}
             {phoneNumber && (
-              <div className="flex items-center gap-1">
-                <Phone className="h-3 w-3" />
-                {phoneNumber}
-              </div>
+              <span className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" />{phoneNumber}</span>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* External Links */}
-          {(linkedinUrl || portfolioUrl) && (
-            <div className="flex items-center gap-3 mt-2">
-              {linkedinUrl && (
-                <a 
-                  href={linkedinUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition-colors"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  LinkedIn
-                </a>
-              )}
-              {portfolioUrl && (
-                <a 
-                  href={portfolioUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 transition-colors"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Portfolio
-                </a>
-              )}
-            </div>
+      {/* External Links */}
+      {(linkedinUrl || portfolioUrl) && (
+        <div className="flex items-center gap-4 text-xs font-medium">
+          {linkedinUrl && (
+            <a href={linkedinUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-zinc-900 hover:text-zinc-600 transition-colors">
+              <ExternalLink className="h-3.5 w-3.5" /> LinkedIn
+            </a>
+          )}
+          {portfolioUrl && (
+            <a href={portfolioUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-zinc-900 hover:text-zinc-600 transition-colors">
+              <ExternalLink className="h-3.5 w-3.5" /> Portfolio
+            </a>
           )}
         </div>
-      </div>
-
-      {/* Key Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-slate-50 rounded-lg p-3">
-          <div className="flex items-center gap-2">
-            <Briefcase className="h-4 w-4 text-slate-600" />
-            <span className="text-xs font-medium text-slate-600">Experience</span>
-          </div>
-          <p className="text-sm font-semibold text-slate-900 mt-1">
-            {experience.length} position{experience.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <div className="bg-slate-50 rounded-lg p-3">
-          <div className="flex items-center gap-2">
-            <GraduationCap className="h-4 w-4 text-slate-600" />
-            <span className="text-xs font-medium text-slate-600">Education</span>
-          </div>
-          <p className="text-sm font-semibold text-slate-900 mt-1">
-            {education.length} degree{education.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-      </div>
-
-      {/* Resume Status */}
-      {resume?.fileUrl && (
-        <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-green-600" />
-              <span className="text-xs font-medium text-green-700">Resume Uploaded</span>
-            </div>
-            <span className="text-xs text-green-600">
-              {resume.fileName || 'resume.pdf'}
-            </span>
-          </div>
-        </div>
       )}
 
-      {/* Summary */}
+      {/* About */}
       {summary && (
-        <div>
-          <h4 className="text-sm font-medium text-slate-900 mb-2">About</h4>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            {summary.length > 150 ? `${summary.substring(0, 150)}...` : summary}
+        <div className="pt-4 border-t border-zinc-100">
+          <h3 className="text-xs font-semibold text-zinc-900 uppercase tracking-widest mb-2">About</h3>
+          <p className="text-sm text-zinc-600 leading-relaxed font-medium">
+            {summary.length > 200 ? `${summary.substring(0, 200)}...` : summary}
           </p>
         </div>
       )}
 
-      {/* Skills Preview */}
+      {/* Skills */}
       {skills && skills.length > 0 && (
-        <div>
-          <h4 className="text-sm font-medium text-slate-900 mb-2">Skills ({skills.length})</h4>
-          <div className="flex flex-wrap gap-1">
+        <div className="pt-4 border-t border-zinc-100">
+          <h3 className="text-xs font-semibold text-zinc-900 uppercase tracking-widest mb-3">Skills</h3>
+          <div className="flex flex-wrap gap-2">
             {skills.slice(0, 8).map((skill, index) => (
-              <span 
-                key={index}
-                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-              >
+              <span key={index} className="px-2.5 py-1 rounded-md bg-zinc-100/80 text-zinc-800 border border-zinc-200/60 text-xs font-medium tracking-tight">
                 {skill}
               </span>
             ))}
             {skills.length > 8 && (
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                +{skills.length - 8} more
+              <span className="px-2.5 py-1 rounded-md bg-white border border-dashed border-zinc-300 text-zinc-500 text-xs font-medium tracking-tight">
+                +{skills.length - 8}
               </span>
             )}
           </div>
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+      {/* Resume Document */}
+      {resume?.fileUrl && (
+        <div className="pt-4 border-t border-zinc-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-zinc-100/80">
+                <FileText className="w-4 h-4 text-zinc-900" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-zinc-900 tracking-tight">Resume</p>
+                <p className="text-xs text-zinc-500 font-medium truncate max-w-[150px]">{resume.fileName || 'resume.pdf'}</p>
+              </div>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleDownloadResume}
+              className="px-3 py-1.5 rounded-md hover:bg-zinc-100 text-zinc-900 flex items-center gap-2 text-xs font-semibold transition-colors border border-transparent hover:border-zinc-200"
+            >
+              <Download className="w-3.5 h-3.5" /> Download
+            </motion.button>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="pt-4 border-t border-zinc-100 grid grid-cols-2 gap-3">
         <motion.button
           onClick={handleEditProfile}
-          className="flex items-center justify-center gap-1 p-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-zinc-900 text-white text-sm font-medium tracking-tight shadow-sm hover:bg-zinc-800 transition-colors"
         >
-          <Pencil className="h-3 w-3" />
-          Edit Profile
+          <Pencil className="w-4 h-4" /> Edit Profile
         </motion.button>
         <motion.button
           onClick={handleDownloadResume}
           disabled={!resume?.fileUrl}
-          className={`flex items-center justify-center gap-1 p-2 text-xs font-medium rounded-lg transition-colors ${
+          whileHover={resume?.fileUrl ? { scale: 1.01 } : {}}
+          whileTap={resume?.fileUrl ? { scale: 0.99 } : {}}
+          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium tracking-tight transition-colors border ${
             resume?.fileUrl 
-              ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' 
-              : 'text-slate-400 cursor-not-allowed'
+              ? 'bg-white border-zinc-200 text-zinc-900 shadow-sm hover:bg-zinc-50' 
+              : 'bg-zinc-50 border-zinc-200/50 text-zinc-400 cursor-not-allowed'
           }`}
-          whileHover={resume?.fileUrl ? { scale: 1.02 } : {}}
-          whileTap={resume?.fileUrl ? { scale: 0.98 } : {}}
         >
-          <Download className="h-3 w-3" />
-          Download Resume
+          <Download className="w-4 h-4" /> Resume
         </motion.button>
       </div>
-    </div>
+    </motion.div>
   );
 
   const renderAnalytics = () => (
-    <div className="space-y-4">
-      {/* Application Stats */}
+    <motion.div 
+      key="analytics"
+      initial={{ opacity: 0, y: 10 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-6"
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-zinc-900 uppercase tracking-widest">Metrics</h3>
+        <button 
+          onClick={handleRefreshStats} 
+          disabled={isRefreshing}
+          className="p-1.5 rounded-md hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 transition-colors flex items-center gap-1.5"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <span className="text-xs font-medium uppercase tracking-wider">Sync</span>
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-blue-600" />
-              <span className="text-xs font-medium text-blue-600">Job Applications</span>
-            </div>
-            {totalApplications === 0 && (
-              <button
-                onClick={handleRefreshStats}
-                className="text-xs text-blue-500 hover:text-blue-700 underline"
-                title="Click to refresh application count"
-              >
-                Refresh
-              </button>
-            )}
-          </div>
-          <p className="text-lg font-bold text-blue-900 mt-1">{totalApplications}</p>
-          <p className="text-xs text-blue-600">Jobs applied to</p>
-        </div>
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3">
-          <div className="flex items-center gap-2">
-            <Award className="h-4 w-4 text-purple-600" />
-            <span className="text-xs font-medium text-purple-600">Skills</span>
-          </div>
-          <p className="text-lg font-bold text-purple-900 mt-1">{skills.length}</p>
-          <p className="text-xs text-purple-600">Added to profile</p>
+        <SummaryItem icon={TrendingUp} label="Applications" value={totalApplications} />
+        <SummaryItem icon={Award} label="Skills" value={skills?.length || 0} />
+        <SummaryItem icon={Briefcase} label="Experience" value={experience?.length || 0} />
+        <SummaryItem icon={GraduationCap} label="Education" value={education?.length || 0} />
+      </div>
+
+      <div className="pt-4 border-t border-zinc-100">
+        <h3 className="text-xs font-semibold text-zinc-900 uppercase tracking-widest mb-4">Profile Completeness</h3>
+        <div className="flex flex-col">
+          <CompletenessItem label="Basic Info" isComplete={true} meta="Complete" />
+          <CompletenessItem label="Resume" isComplete={!!resume?.fileUrl} meta={resume?.fileUrl ? "Uploaded" : "Missing"} />
+          <CompletenessItem label="Experience" isComplete={experience?.length > 0} meta={experience?.length ? `${experience.length} Added` : "None"} />
+          <CompletenessItem label="Education" isComplete={education?.length > 0} meta={education?.length ? `${education.length} Added` : "None"} />
+          <CompletenessItem label="Skills" isComplete={skills?.length >= 3} meta={skills?.length >= 3 ? `${skills.length} Added` : "Needs 3+"} />
         </div>
       </div>
 
-      {/* Profile Activity */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-green-600" />
-            <span className="text-xs font-medium text-green-600">Profile Age</span>
-          </div>
-          <p className="text-lg font-bold text-green-900 mt-1">{profileAge}</p>
-          <p className="text-xs text-green-600">Days active</p>
+      <div className="pt-4 border-t border-zinc-100 grid grid-cols-2 gap-3">
+        <div className="flex flex-col p-4 bg-zinc-50/50 rounded-xl border border-zinc-200/60">
+          <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">Profile Age</span>
+          <span className="text-sm font-semibold text-zinc-900">{profileAge} days</span>
         </div>
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-3">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-orange-600" />
-            <span className="text-xs font-medium text-orange-600">Last Update</span>
-          </div>
-          <p className="text-lg font-bold text-orange-900 mt-1">{lastUpdated}</p>
-          <p className="text-xs text-orange-600">Days ago</p>
+        <div className="flex flex-col p-4 bg-zinc-50/50 rounded-xl border border-zinc-200/60">
+          <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-1">Last Updated</span>
+          <span className="text-sm font-semibold text-zinc-900">{lastUpdated === 0 ? 'Today' : `${lastUpdated} days ago`}</span>
         </div>
       </div>
-
-      {/* Profile Completeness */}
-      <div className="bg-slate-50 rounded-lg p-3">
-        <h4 className="text-sm font-medium text-slate-900 mb-2">Profile Completeness</h4>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-600">Basic Info</span>
-            <span className="text-green-600 font-medium">✓ Complete</span>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-600">Resume</span>
-            <span className={resume?.fileUrl ? "text-green-600 font-medium" : "text-slate-400"}>
-              {resume?.fileUrl ? "✓ Uploaded" : "Not uploaded"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-600">Experience</span>
-            <span className={experience.length > 0 ? "text-green-600 font-medium" : "text-slate-400"}>
-              {experience.length > 0 ? `✓ ${experience.length} added` : "None added"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-600">Education</span>
-            <span className={education.length > 0 ? "text-green-600 font-medium" : "text-slate-400"}>
-              {education.length > 0 ? `✓ ${education.length} added` : "None added"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-600">Skills</span>
-            <span className={skills.length >= 3 ? "text-green-600 font-medium" : "text-amber-600"}>
-              {skills.length >= 3 ? `✓ ${skills.length} skills` : `${skills.length}/3 minimum`}
-            </span>
-          </div>
-        </div>
-      </div>
-
-
-    </div>
+    </motion.div>
   );
 
   return (
-    <motion.div 
-      className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"
-      whileHover={{ y: -2 }}
-      transition={{ duration: 0.3 }}
-    >
-      {/* Tab Navigation */}
-      <div className="flex border-b border-slate-200">
+    <div className="bg-white rounded-2xl border-[0.5px] border-zinc-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] overflow-hidden">
+      {/* Tabs Navigation */}
+      <div className="flex px-4 pt-2 border-b border-zinc-100">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
+            className="relative pb-3 pt-2 px-4 text-sm font-medium tracking-tight outline-none transition-colors"
           >
-            <tab.icon className="h-4 w-4" />
-            {tab.label}
+            <span className={activeTab === tab.id ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}>
+              {tab.label}
+            </span>
+            {activeTab === tab.id && (
+              <motion.div
+                layoutId="activeTabBadge"
+                className="absolute bottom-0 left-0 right-0 h-[2px] bg-zinc-900 rounded-t-full"
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+              />
+            )}
           </button>
         ))}
       </div>
 
       {/* Tab Content */}
-      <div className="p-4">
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
+      <div className="p-5 sm:p-6 min-h-[400px]">
+        <AnimatePresence mode="wait">
           {activeTab === 'overview' ? renderOverview() : renderAnalytics()}
-        </motion.div>
+        </AnimatePresence>
       </div>
-    </motion.div>
+    </div>
   );
 };
 

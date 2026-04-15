@@ -148,10 +148,10 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Education</h2>
+        <h2 className="text-xl font-semibold text-zinc-900">Education</h2>
         <button
           onClick={() => setShowForm(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          className="px-4 py-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors"
         >
           Add Education
         </button>
@@ -160,28 +160,28 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
       {/* Education List */}
       <div className="space-y-4 mb-6">
         {educationList.length === 0 ? (
-          <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="text-center py-8 bg-zinc-50 rounded-2xl border border-zinc-200">
+            <svg className="mx-auto h-12 w-12 text-zinc-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Education Added</h3>
-            <p className="text-gray-600 mb-4">Add your educational background to showcase your qualifications</p>
+            <h3 className="text-lg font-medium text-zinc-900 mb-2">No Education Added</h3>
+            <p className="text-zinc-600 mb-4">Add your educational background to showcase your qualifications</p>
             <button
               onClick={() => setShowForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors"
             >
               Add Your First Education
             </button>
           </div>
         ) : (
           educationList.map((education) => (
-            <div key={education._id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div key={education._id} className="bg-white border border-zinc-200 rounded-2xl p-4 hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start">
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900">{education.degree}</h3>
-                  <p className="text-blue-600 font-medium">{education.fieldOfStudy}</p>
-                  <p className="text-gray-600">{education.institution}</p>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <h3 className="text-lg font-semibold text-zinc-900">{education.degree}</h3>
+                  <p className="text-zinc-900 font-medium">{education.fieldOfStudy}</p>
+                  <p className="text-zinc-600">{education.institution}</p>
+                  <p className="text-sm text-zinc-500 mt-1">
                     {formatDate(education.startDate)} - {
                       education.currentlyEnrolled 
                         ? 'Present' 
@@ -191,10 +191,10 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                     }
                   </p>
                   {education.grade && (
-                    <p className="text-sm text-gray-600 mt-1">Grade: {education.grade}</p>
+                    <p className="text-sm text-zinc-600 mt-1">Grade: {education.grade}</p>
                   )}
                   {education.description && (
-                    <p className="text-sm text-gray-600 mt-2">{education.description}</p>
+                    <p className="text-sm text-zinc-600 mt-2">{education.description}</p>
                   )}
                 </div>
                 <div className="flex space-x-2 ml-4">
@@ -217,20 +217,20 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
 
       {/* Add Education Form */}
       {showForm && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Education</h3>
+        <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-zinc-900 mb-4">Add Education</h3>
           
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
                   Degree/Qualification *
                 </label>
                 <select
                   name="degree"
                   value={formData.degree}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
                   required
                 >
                   <option value="">Select degree</option>
@@ -243,7 +243,7 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
                   Field of Study *
                 </label>
                 <input
@@ -252,14 +252,14 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                   value={formData.fieldOfStudy}
                   onChange={handleChange}
                   placeholder="e.g., Computer Science, Business Administration"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
                 Institution Name *
               </label>
               <input
@@ -268,14 +268,14 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                 value={formData.institution}
                 onChange={handleChange}
                 placeholder="e.g., University of California, Berkeley"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
                 required
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
                   Start Date *
                 </label>
                 <input
@@ -284,8 +284,8 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                   value={formData.startDate}
                   onChange={handleChange}
                   max={currentMonth}
-                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.startDate ? 'border-red-300' : 'border-gray-300'
+                  className={`w-full px-3 py-2 border rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 ${
+                    errors.startDate ? 'border-red-300' : 'border-zinc-300'
                   }`}
                   required
                 />
@@ -295,7 +295,7 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">
                   End Date
                 </label>
                 <input
@@ -305,8 +305,8 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                   onChange={handleChange}
                   max={currentMonth}
                   disabled={formData.currentlyEnrolled}
-                  className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed ${
-                    errors.endDate ? 'border-red-300' : 'border-gray-300'
+                  className={`w-full px-3 py-2 border rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 disabled:bg-zinc-100 disabled:cursor-not-allowed ${
+                    errors.endDate ? 'border-red-300' : 'border-zinc-300'
                   }`}
                 />
                 {errors.endDate && (
@@ -321,15 +321,15 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                 name="currentlyEnrolled"
                 checked={formData.currentlyEnrolled}
                 onChange={handleChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                className="h-4 w-4 text-zinc-900 focus:ring-zinc-900 border-zinc-300 rounded"
               />
-              <label className="ml-2 text-sm text-gray-700">
+              <label className="ml-2 text-sm text-zinc-700">
                 Currently pursuing this degree
               </label>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
                 Grade/GPA (Optional)
               </label>
               <input
@@ -338,12 +338,12 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                 value={formData.grade}
                 onChange={handleChange}
                 placeholder="e.g., 3.8/4.0, First Class, 85%"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-zinc-700 mb-1">
                 Description (Optional)
               </label>
               <textarea
@@ -352,7 +352,7 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                 onChange={handleChange}
                 rows={3}
                 placeholder="Relevant coursework, achievements, or activities..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
               />
             </div>
 
@@ -361,19 +361,16 @@ const EducationSection = ({ profile, onAdd, onDelete }) => {
                 type="button"
                 onClick={resetForm}
                 disabled={saving}
-                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-zinc-700 bg-white border border-zinc-300 rounded-xl hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                className="px-4 py-2 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
               >
-                {saving && (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                )}
-                Add Education
+                {saving ? 'Adding...' : 'Add Education'}
               </button>
             </div>
           </form>
