@@ -157,8 +157,37 @@ const getDashboardStats = async (clerkUserId) => {
     .populate('jobId', 'title')
     .lean();
 
+  // Upcoming Interviews (Pending AI interviews or scheduled ones)
+  const upcomingApplications = await JobApplication.find({
+    jobId: { $in: jobIds },
+    status: { $in: ['Interviewing', 'Invited', 'Shortlisted', 'Applied'] }
+  })
+    .sort({ interviewWindowEnd: 1, _id: -1 })
+    .limit(5)
+    .populate({
+      path: 'candidateId',
+      select: 'fullName email'
+    })
+    .populate('jobId', 'title')
+    .lean();
+
   // Transform to match frontend expectations
   const formattedApplications = recentApplications.map(app => ({
+    ...app,
+    candidate: {
+      user: {
+        fullName: app.candidateId?.fullName || app.applicationProfile?.personalInfo?.name || 'Candidate',
+        email: app.candidateId?.email || app.applicationProfile?.personalInfo?.email
+      }
+    },
+    job: {
+      _id: app.jobId?._id,
+      title: app.jobId?.title || 'Job Title'
+    },
+    createdAt: app.createdAt || app.appliedAt
+  }));
+
+  const formattedUpcoming = upcomingApplications.map(app => ({
     ...app,
     candidate: {
       user: {
@@ -183,6 +212,7 @@ const getDashboardStats = async (clerkUserId) => {
     pendingReviews: pendingApplications,
     newApplications,
     recentApplications: formattedApplications,
+    upcomingInterviews: formattedUpcoming,
   };
 };
 
