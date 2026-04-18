@@ -159,6 +159,18 @@ const interviewSessionSchema = new mongoose.Schema({
     recommendations: [String],
   },
 
+  // ── Internal End Metadata (DB-only) ─────────────────────────────────────
+  // Persist why a session ended. Hidden from normal API reads.
+  interviewEndMeta: {
+    endReasonCode: { type: String, default: '', select: false },
+    endReasonSource: { type: String, default: '', select: false },
+    endReasonDetail: { type: String, default: '', select: false },
+    endInitiator: { type: String, default: '', select: false },
+    endTrigger: { type: String, default: '', select: false },
+    endedAtStage: { type: String, default: '', select: false },
+    recordedAt: { type: Date, default: null, select: false },
+  },
+
   // ── Integrity / Anti-Cheating (Screen Events) ───────────────────────────────
   // Tracks tab switches, fullscreen exits, window blur etc.
   // Voice mismatch events are stored separately in voiceProctoring below.

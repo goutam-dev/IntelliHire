@@ -508,18 +508,37 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
   // Process next question
   let nextQuestion = null;
   let shouldEnd = false;
+  let endReasonCode = '';
+  let endReasonSource = '';
+  let endReasonDetail = '';
   const maxDurationSec = session.config?.maxDurationSec || 30 * 60;
   const hardQuestionCap = 12;
   const reachedMaxDuration = session.totalDurationSec >= maxDurationSec;
   const reachedHardQuestionCap = (session.interviewState.questionCount || 0) >= hardQuestionCap;
 
   // Auto-end conditions
-  if (session.interviewState.consecutiveSilent >= 3 || reachedMaxDuration || reachedHardQuestionCap) {
+  if (session.interviewState.consecutiveSilent >= 3) {
     shouldEnd = true;
+    endReasonCode = 'consecutive_silence_threshold';
+    endReasonSource = 'engine';
+    endReasonDetail = 'Interview ended after 3 consecutive unanswered turns.';
+  } else if (reachedMaxDuration) {
+    shouldEnd = true;
+    endReasonCode = 'max_duration_reached';
+    endReasonSource = 'timer';
+    endReasonDetail = `Interview reached configured max duration (${maxDurationSec}s).`;
+  } else if (reachedHardQuestionCap) {
+    shouldEnd = true;
+    endReasonCode = 'hard_question_cap_reached';
+    endReasonSource = 'engine';
+    endReasonDetail = `Interview reached hard question cap (${hardQuestionCap}).`;
   } else if (nextQuestionResult.status === 'fulfilled') {
     const q = nextQuestionResult.value;
     if (q.endInterview) {
       shouldEnd = true;
+      endReasonCode = 'llm_end_token';
+      endReasonSource = 'llm';
+      endReasonDetail = 'LLM emitted [END_INTERVIEW] token.';
     } else {
       nextQuestion = q.question;
 
@@ -544,6 +563,14 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
 
   if (shouldEnd) {
     session.status = 'completing';
+    setInterviewEndMeta(session, {
+      endReasonCode,
+      endReasonSource,
+      endReasonDetail,
+      endInitiator: 'backend_engine',
+      endTrigger: 'auto_end_condition',
+      endedAtStage: 'submit_answer',
+    });
   }
 
   await session.save();
@@ -560,6 +587,14 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
     evaluation: deferredEvaluation,
     nextQuestion,
     shouldEnd,
+    endSignal: shouldEnd
+      ? {
+        endReasonCode,
+        endReasonSource,
+        endReasonDetail,
+        endedAtStage: 'submit_answer',
+      }
+      : null,
     turnIndex: nextQuestion ? session.turns.length - 1 : turnIndex,
     interviewState: {
       phase: session.interviewState.currentPhase,
@@ -574,8 +609,12 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
 /**
  * Finalize the interview — generate closing summary and detailed evaluation.
  */
-async function completeSession(sessionId, { cheatingEvents = [], totalCheatingScore = 0, terminationReason = '' } = {}) {
-  let session = await InterviewSession.findById(sessionId);
+async function completeSession(
+  sessionId,
+  { cheatingEvents = [], totalCheatingScore = 0, terminationReason = '', completionContext = {} } = {}
+) {
+  let session = await InterviewSession.findById(sessionId)
+    .select('+interviewEndMeta.endReasonCode +interviewEndMeta.endReasonSource +interviewEndMeta.endReasonDetail +interviewEndMeta.endInitiator +interviewEndMeta.endTrigger +interviewEndMeta.endedAtStage +interviewEndMeta.recordedAt');
   if (!session) throw new Error('Session not found');
 
   // Flush voice proctoring before finalizing so mismatch/session stats are up to date.
@@ -591,8 +630,13 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
     logger.warn(`[Interview] Face proctoring stop failed during completeSession: ${err.message}`);
   }
 
-  session = await InterviewSession.findById(sessionId);
+  session = await InterviewSession.findById(sessionId)
+    .select('+interviewEndMeta.endReasonCode +interviewEndMeta.endReasonSource +interviewEndMeta.endReasonDetail +interviewEndMeta.endInitiator +interviewEndMeta.endTrigger +interviewEndMeta.endedAtStage +interviewEndMeta.recordedAt');
   if (!session) throw new Error('Session not found');
+
+  const completionInitiator = String(completionContext?.completionInitiator || '').trim();
+  const completionTrigger = String(completionContext?.completionTrigger || '').trim();
+  const completionDetail = String(completionContext?.completionDetail || '').trim();
 
   session.completedAt = new Date();
 
@@ -602,8 +646,24 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
   if (terminationReason) {
     session.integrity.terminationReason = terminationReason;
     session.status = 'terminated';
+    setInterviewEndMeta(session, {
+      endReasonCode: 'terminated_by_integrity',
+      endReasonSource: 'integrity',
+      endReasonDetail: terminationReason,
+      endInitiator: completionInitiator || 'frontend_engine',
+      endTrigger: completionTrigger || 'integrity_terminate',
+      endedAtStage: 'complete_session',
+    });
   } else {
     session.status = 'completed';
+    setInterviewEndMeta(session, {
+      endReasonCode: session.interviewEndMeta?.endReasonCode || 'completed_via_complete_session',
+      endReasonSource: session.interviewEndMeta?.endReasonSource || 'manual_or_frontend',
+      endReasonDetail: session.interviewEndMeta?.endReasonDetail || completionDetail || 'Session finalized through completeSession endpoint.',
+      endInitiator: session.interviewEndMeta?.endInitiator || completionInitiator || 'frontend_engine',
+      endTrigger: session.interviewEndMeta?.endTrigger || completionTrigger || 'complete_session_called',
+      endedAtStage: 'complete_session',
+    });
   }
 
   session.computeIntegrityVerdict();
@@ -1249,6 +1309,28 @@ function normalizeAggregateScore(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   return Math.max(1, Math.min(10, n));
+}
+
+function setInterviewEndMeta(session, {
+  endReasonCode = '',
+  endReasonSource = '',
+  endReasonDetail = '',
+  endInitiator = '',
+  endTrigger = '',
+  endedAtStage = '',
+} = {}) {
+  if (!session) return;
+
+  const existing = session.interviewEndMeta || {};
+  session.interviewEndMeta = {
+    endReasonCode: String(endReasonCode || existing.endReasonCode || '').trim(),
+    endReasonSource: String(endReasonSource || existing.endReasonSource || '').trim(),
+    endReasonDetail: String(endReasonDetail || existing.endReasonDetail || '').trim().slice(0, 500),
+    endInitiator: String(endInitiator || existing.endInitiator || '').trim(),
+    endTrigger: String(endTrigger || existing.endTrigger || '').trim(),
+    endedAtStage: String(endedAtStage || existing.endedAtStage || '').trim(),
+    recordedAt: new Date(),
+  };
 }
 
 function formatSessionSummary(session) {

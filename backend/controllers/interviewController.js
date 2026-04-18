@@ -145,12 +145,13 @@ exports.transcribeAudio = asyncHandler(async (req, res) => {
  */
 exports.completeSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
-  const { cheatingEvents, totalCheatingScore, terminationReason } = req.body;
+  const { cheatingEvents, totalCheatingScore, terminationReason, completionContext } = req.body;
 
   const summary = await interviewService.completeSession(sessionId, {
     cheatingEvents: cheatingEvents || [],
     totalCheatingScore: totalCheatingScore || 0,
     terminationReason: terminationReason || '',
+    completionContext: completionContext && typeof completionContext === 'object' ? completionContext : {},
   });
 
   res.json({ success: true, data: summary });

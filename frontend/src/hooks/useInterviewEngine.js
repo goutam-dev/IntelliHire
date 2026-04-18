@@ -238,7 +238,14 @@ export function useInterviewEngine({
 
       if (result.shouldEnd) {
         // Interview is ending
-        await finishInterview();
+        await finishInterview({
+          completionContext: {
+            completionInitiator: 'frontend_engine',
+            completionTrigger: 'backend_should_end',
+            completionDetail: result.endSignal?.endReasonDetail || 'Backend signaled interview end.',
+            backendEndSignal: result.endSignal || null,
+          },
+        });
       } else if (result.nextQuestion) {
         // Brief pause for natural pacing, then ask next question
         await new Promise(r => setTimeout(r, 1000));
@@ -416,6 +423,11 @@ export function useInterviewEngine({
     await finishInterview({
       ...cheatingData,
       terminationReason: cheatingData.terminationReason || 'Integrity threshold exceeded',
+      completionContext: {
+        completionInitiator: 'frontend_engine',
+        completionTrigger: 'integrity_terminate',
+        completionDetail: cheatingData.terminationReason || 'Integrity threshold exceeded',
+      },
     });
   }, [stopVAD, finishInterview]);
 
