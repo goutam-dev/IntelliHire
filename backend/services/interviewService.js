@@ -92,21 +92,23 @@ function buildSystemPrompt(session, lastEval = null) {
     `- Do not include commentary, praise, scoring, or explanations in output.\n\n`;
 
   prompt +=
-    `## Progression Strategy\n` +
-    `- Questions 1-2: establish role context and recent hands-on work.\n` +
-    `- Questions 3-6: deep technical and execution probing with realistic scenarios.\n` +
-    `- Questions 7+: challenge edge cases, trade-offs, failure handling, and prioritization under constraints.\n\n`;
+    `## Coverage Strategy\n` +
+    `- Prioritize collecting enough evidence across core requirements before deciding to end.\n` +
+    `- Depth is adaptive: ask as many follow-ups as needed on a topic when evidence is incomplete.\n` +
+    `- Move to another requirement only after the current one is sufficiently validated or clearly weak.\n` +
+    `- Prefer unresolved evidence gaps over rigid sequencing by question number.\n\n`;
 
-  // Adaptive difficulty based on last evaluation
+  // Adaptive guidance based on evidence quality from the previous answer
   if (lastEval?.score != null) {
     if (lastEval.score >= 7) {
-      prompt += `The candidate's last answer was strong (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
-        `Escalate difficulty with a deeper follow-up, architectural trade-off, or edge-case stress test.\n\n`;
+      prompt += `The previous answer provided relatively strong evidence (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
+        `Either (a) ask one deeper validation follow-up to confirm consistency, or (b) move to an uncovered requirement.\n\n`;
     } else if (lastEval.score <= 4) {
-      prompt += `The candidate's last answer was weak (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
-        `Pivot to another key requirement and ask a clearer but still rigorous question.\n\n`;
+      prompt += `The previous answer left important evidence gaps (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
+        `Ask a clearer, targeted follow-up first; only pivot topics if the gap cannot be resolved.\n\n`;
     } else {
-      prompt += `The last answer was average (score ${lastEval.score}/10). Continue with a targeted follow-up or adjacent topic.\n\n`;
+      prompt += `The previous answer gave partial evidence (score ${lastEval.score}/10). ` +
+        `Choose the next question to maximize assessment confidence: deepen the same area or probe a closely related uncovered requirement.\n\n`;
     }
   }
 

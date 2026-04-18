@@ -26,6 +26,7 @@ import { useInterviewEngine, ENGINE_STATE } from '../../hooks/useInterviewEngine
 import { useVAD } from '../../hooks/useVAD';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { useVoiceProctoring } from '../../hooks/useVoiceProctoring';
+import ConfirmDialog from '../../components/common/ConfirmDialog';
 import * as faceProctoringApi from '../../services/api/faceProctoringApi';
 import * as voiceProctoringApi from '../../services/api/voiceProctoringApi';
 
@@ -648,6 +649,8 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   const [cheatingWarning, setCheatingWarning] = useState(null);
   const [proctoringViolation, setProctoringViolation] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [showEndInterviewConfirm, setShowEndInterviewConfirm] = useState(false);
+  const [isEndingInterview, setIsEndingInterview] = useState(false);
   const [pauseMode, setPauseMode] = useState('lockdown');
   const [pauseReason, setPauseReason] = useState('');
   const [resumeConditions, setResumeConditions] = useState(getResumeConditions());
@@ -1365,6 +1368,26 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   const isNoFacePause = pauseMode === 'no_face';
   const listeningActive = vadSpeaking || energyLevel > 0.02;
 
+  const handleConfirmEndInterview = useCallback(async () => {
+    if (isEndingInterview || engine.engineState !== ENGINE_STATE.LISTENING) return;
+
+    setShowEndInterviewConfirm(false);
+    setIsEndingInterview(true);
+    try {
+      stopVAD();
+      await stopRecording().catch(() => { });
+      await engine.finishInterview({
+        completionContext: {
+          completionInitiator: 'candidate',
+          completionTrigger: 'candidate_end_button',
+          completionDetail: 'Candidate ended interview via explicit UI confirmation.',
+        },
+      });
+    } finally {
+      setIsEndingInterview(false);
+    }
+  }, [isEndingInterview, engine, stopVAD, stopRecording]);
+
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#020817] text-white flex flex-col overflow-hidden">
@@ -1475,14 +1498,26 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => engine.completeCurrentAnswer?.()}
-                        className="h-11 px-4 rounded-full bg-gradient-to-r from-emerald-500/90 to-cyan-400/90 text-[#031525] text-xs font-semibold tracking-wide uppercase shadow-[0_8px_20px_rgba(16,185,129,0.28)] hover:brightness-105 transition-all active:scale-[0.98]"
-                        aria-label="Complete answer and continue"
-                      >
-                        Complete answer
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowEndInterviewConfirm(true)}
+                          disabled={isEndingInterview}
+                          className="h-11 px-4 rounded-full border border-red-400/50 bg-red-500/15 text-red-200 text-xs font-semibold tracking-wide uppercase hover:bg-red-500/25 transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                          aria-label="End interview"
+                        >
+                          End interview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => engine.completeCurrentAnswer?.()}
+                          disabled={isEndingInterview}
+                          className="h-11 px-4 rounded-full bg-gradient-to-r from-emerald-500/90 to-cyan-400/90 text-[#031525] text-xs font-semibold tracking-wide uppercase shadow-[0_8px_20px_rgba(16,185,129,0.28)] hover:brightness-105 transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                          aria-label="Complete answer and continue"
+                        >
+                          Complete answer
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 ) : engine.finalTranscript ? (
@@ -1657,6 +1692,20 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
 
       {/* ── Proctoring toast notifications ────────────── */}
       <ProctoringToastContainer toasts={proctoringToasts} onDismiss={dismissToast} />
+
+      <ConfirmDialog
+        open={showEndInterviewConfirm}
+        title="End Interview?"
+        message="Are you sure you want to end the interview now? This will submit your session and cannot be resumed."
+        confirmLabel={isEndingInterview ? 'Ending...' : 'Yes, end interview'}
+        cancelLabel="Cancel"
+        variant="danger"
+        onCancel={() => {
+          if (isEndingInterview) return;
+          setShowEndInterviewConfirm(false);
+        }}
+        onConfirm={handleConfirmEndInterview}
+      />
     </div>
   );
 }
