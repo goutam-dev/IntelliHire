@@ -12,7 +12,9 @@
     "test": "npm run test:lifecycle",
     "test:lifecycle": "node test-application-lifecycle.js",
     "test:ranking": "node test-hybrid-ranking.js && node test-projects-format.js",
-    "reconcile-stats": "node scripts/reconcile-stats.js"
+    "reconcile-stats": "node scripts/reconcile-stats.js",
+    "migrate:legacy-closed-status:dry": "node scripts/migrate-legacy-job-closed-status.js",
+    "migrate:legacy-closed-status": "node scripts/migrate-legacy-job-closed-status.js --write"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

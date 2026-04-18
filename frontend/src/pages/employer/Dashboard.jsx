@@ -20,6 +20,7 @@ import {
 import { motion } from 'framer-motion';
 import EmployerHeader from '../../components/layout/EmployerHeader';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 import { fetchEmployerJobs } from '../../store/slices/jobSlice';
 import { fetchEmployerProfile } from '../../store/slices/employerSlice';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
@@ -42,29 +43,39 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } }
 };
 
-const StatCard = ({ label, value, subtext, color = "bg-cyan-500", gradientFrom, gradientTo }) => (
+const StatCard = ({ label, value, subtext, color = "bg-cyan-500", gradientFrom, gradientTo, isLoading }) => (
   <motion.div
     variants={itemVariants}
     className="group relative flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition-all hover:shadow-md hover:-translate-y-1 overflow-hidden"
   >
-    <div className={`absolute top-0 left-0 h-full w-1 bg-gradient-to-b ${gradientFrom} ${gradientTo} opacity-80`} />
-    <div className="relative z-10">
-      <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1">{label}</p>
-      <div className="flex items-baseline gap-2 mt-2">
-        <h3 className="text-4xl font-extrabold text-zinc-900 tracking-tight">{value}</h3>
+    {isLoading ? (
+      <div className="space-y-4">
+        <div className="h-3 w-24 bg-zinc-200 rounded animate-pulse mb-3"></div>
+        <div className="h-10 w-16 bg-zinc-200 rounded-lg animate-pulse"></div>
+        {subtext && <div className="h-3 w-3/4 bg-zinc-100 rounded animate-pulse mt-4"></div>}
       </div>
-    </div>
-    {subtext && (
-      <div className="mt-4 flex items-center gap-2">
-        <div className={`h-1.5 w-1.5 rounded-full ${color}`} />
-        <p className="text-xs font-medium text-zinc-500">
-          {subtext}
-        </p>
-      </div>
-    )}
+    ) : (
+      <>
+        <div className={`absolute top-0 left-0 h-full w-1 bg-gradient-to-b ${gradientFrom} ${gradientTo} opacity-80`} />
+        <div className="relative z-10">
+          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1">{label}</p>
+          <div className="flex items-baseline gap-2 mt-2">
+            <h3 className="text-4xl font-extrabold text-zinc-900 tracking-tight">{value}</h3>
+          </div>
+        </div>
+        {subtext && (
+          <div className="mt-4 flex items-center gap-2">
+            <div className={`h-1.5 w-1.5 rounded-full ${color}`} />
+            <p className="text-xs font-medium text-zinc-500">
+              {subtext}
+            </p>
+          </div>
+        )}
 
-    {/* Decorative background element */}
-    <div className={`absolute -right-6 -bottom-6 h-24 w-24 rounded-full ${color} opacity-5 blur-2xl transition-opacity group-hover:opacity-10`} />
+        {/* Decorative background element */}
+        <div className={`absolute -right-6 -bottom-6 h-24 w-24 rounded-full ${color} opacity-5 blur-2xl transition-opacity group-hover:opacity-10`} />
+      </>
+    )}
   </motion.div>
 );
 
@@ -100,6 +111,7 @@ const Dashboard = () => {
     archivedJobs: 0,
     totalJobs: 0,
     totalApplications: 0,
+    uniqueCandidates: 0,
     newApplications: 0
   });
   const [recentApplications, setRecentApplications] = useState([]);
@@ -133,6 +145,7 @@ const Dashboard = () => {
           archivedJobs: data.archivedJobs,
           totalJobs: data.totalJobs,
           totalApplications: data.totalApplications,
+          uniqueCandidates: data.uniqueCandidates || 0,
           newApplications: data.newApplications
         });
         setRecentApplications(data.recentApplications || []);
@@ -231,7 +244,7 @@ const Dashboard = () => {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Active Jobs"
               value={stats.activeJobs}
@@ -239,14 +252,25 @@ const Dashboard = () => {
               color="bg-emerald-500"
               gradientFrom="from-emerald-400"
               gradientTo="to-emerald-600"
+              isLoading={loading.stats}
             />
             <StatCard
-              label="Total Candidates"
+              label="Total Applications"
               value={stats.totalApplications}
-              subtext="Across all active listings"
+              subtext="Across all your listings"
               color="bg-cyan-500"
               gradientFrom="from-cyan-400"
               gradientTo="to-cyan-600"
+              isLoading={loading.stats}
+            />
+            <StatCard
+              label="Individual Applicants"
+              value={stats.uniqueCandidates}
+              subtext="Distinct individuals"
+              color="bg-indigo-500"
+              gradientFrom="from-indigo-400"
+              gradientTo="to-indigo-600"
+              isLoading={loading.stats}
             />
             <StatCard
               label="New Applications"
@@ -255,6 +279,7 @@ const Dashboard = () => {
               color="bg-rose-500"
               gradientFrom="from-rose-400"
               gradientTo="to-rose-600"
+              isLoading={loading.stats}
             />
           </div>
 
@@ -279,11 +304,8 @@ const Dashboard = () => {
 
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   {jobsLoading ? (
-                    <div className="col-span-full py-12 flex justify-center items-center">
-                      <div className="animate-pulse flex flex-col items-center gap-3">
-                        <div className="h-10 w-10 bg-zinc-200 rounded-full" />
-                        <div className="h-4 w-24 bg-zinc-200 rounded" />
-                      </div>
+                      <div className="col-span-full grid grid-cols-1 gap-6 sm:grid-cols-2">
+                        <SkeletonLoader type="card" count={2} />
                     </div>
                   ) : recentJobs.length === 0 ? (
                     <div className="col-span-full rounded-2xl border border-dashed border-zinc-300 bg-white py-16 text-center shadow-sm">
@@ -365,14 +387,8 @@ const Dashboard = () => {
 
                 <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
                   {loading ? (
-                    <div className="py-16 flex justify-center items-center">
-                       <div className="animate-pulse flex space-x-4">
-                        <div className="rounded-full bg-zinc-200 h-10 w-10"></div>
-                        <div className="flex-1 space-y-4 py-1">
-                          <div className="h-2 bg-zinc-200 rounded w-24"></div>
-                          <div className="h-2 bg-zinc-200 rounded w-32"></div>
-                        </div>
-                      </div>
+                      <div className="divide-y divide-zinc-100">
+                        <SkeletonLoader type="list-item" count={4} />
                     </div>
                   ) : recentApplications.length === 0 ? (
                     <div className="py-16 text-center text-sm font-medium text-zinc-500">No recent applications found.</div>
@@ -399,8 +415,9 @@ const Dashboard = () => {
                               {getApplicationDate(app)}
                             </span>
                             <button
-                              onClick={() => navigate(`/employer/jobs/${app?.job?._id}/applications`)}
-                              className="bg-white border border-zinc-200 text-zinc-900 font-bold text-xs px-4 py-2 hover:bg-zinc-50 hover:border-zinc-300 rounded-lg shadow-sm transition-all"
+                              onClick={() => app?.job?._id && navigate(`/employer/jobs/${app.job._id}/applications`)}
+                              disabled={!app?.job?._id}
+                              className="bg-white border border-zinc-200 text-zinc-900 font-bold text-xs px-4 py-2 hover:bg-zinc-50 hover:border-zinc-300 rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-zinc-200"
                             >
                               Review
                             </button>
@@ -483,7 +500,9 @@ const Dashboard = () => {
                       </div>
                       
                       <div className="space-y-4">
-                        {upcomingInterviews.length === 0 ? (
+                          {loading ? (
+                            <SkeletonLoader type="list-item" count={3} />
+                          ) : upcomingInterviews.length === 0 ? (
                           <div className="text-center py-6 text-zinc-500 text-sm font-medium">
                             No upcoming interviews right now.
                           </div>
@@ -500,23 +519,29 @@ const Dashboard = () => {
                             ];
                             const colorClass = colors[index % colors.length];
 
-                            // Simple date formatting for UI mockup
-                            const date = new Date(interview.interviewWindowEnd || interview.createdAt || Date.now());
-                            const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            // Formatting start and end times to dates instead
+                            const startDate = new Date(interview.interviewWindowStart || interview.createdAt || Date.now());
+                            const endDate = interview.interviewWindowEnd ? new Date(interview.interviewWindowEnd) : null;
                             
-                            // Let's create a dynamic relative day label
+                            const options = { month: 'short', day: 'numeric' };
+                            const startStr = startDate.toLocaleDateString([], options);
+                            const endStr = endDate ? endDate.toLocaleDateString([], options) : '';
+                            
+                            const dateDisplay = (endStr && startStr !== endStr) ? `${startStr} - ${endStr}` : startStr;
+
+                            // Let's create a dynamic relative day label for the top
                             const today = new Date();
-                            const isToday = date.getDate() === today.getDate() && date.getMonth() === today.getMonth();
-                            const isTomorrow = date.getDate() === today.getDate() + 1 && date.getMonth() === today.getMonth();
-                            const relativeDay = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                            const isToday = startDate.getDate() === today.getDate() && startDate.getMonth() === today.getMonth();
+                            const isTomorrow = startDate.getDate() === today.getDate() + 1 && startDate.getMonth() === today.getMonth();
+                            const relativeDay = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : 'Scheduled';
                             
                             const dayColor = isToday ? 'text-indigo-500' : 'text-zinc-500';
 
                             return (
                               <div 
                                 key={interview._id}
-                                onClick={() => navigate(`/employer/jobs/${interview.job?._id}/applications`)}
-                                className="group flex items-center justify-between p-3 -mx-3 rounded-xl hover:bg-zinc-50 transition-colors cursor-pointer border border-transparent hover:border-zinc-100"
+                                onClick={() => interview?.job?._id && navigate(`/employer/jobs/${interview.job._id}/applications`)}
+                                className={`group flex items-center justify-between p-3 -mx-3 rounded-xl transition-colors border ${interview?.job?._id ? 'hover:bg-zinc-50 cursor-pointer border-transparent hover:border-zinc-100' : 'border-transparent opacity-60 cursor-not-allowed'}`}
                               >
                                 <div className="flex items-center gap-4">
                                   <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-extrabold text-sm border shadow-sm ${colorClass.split('group-hover')[0]}`}>
@@ -528,7 +553,7 @@ const Dashboard = () => {
                                   </div>
                                 </div>
                                 <div className="text-right shrink-0">
-                                  <p className="text-xs font-bold text-zinc-900">{timeString}</p>
+                                  <p className="text-xs font-bold text-zinc-900 whitespace-nowrap">{dateDisplay}</p>
                                   <p className={`text-[10px] font-extrabold uppercase tracking-wider mt-0.5 ${dayColor}`}>{relativeDay}</p>
                                 </div>
                               </div>

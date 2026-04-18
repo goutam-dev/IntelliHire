@@ -106,7 +106,6 @@ export const theme = {
   // Badge/Status colors
   status: {
     'Applied': 'bg-blue-100 text-blue-700',
-    'Under Review': 'bg-yellow-100 text-yellow-700',
     'Shortlisted': 'bg-orange-100 text-orange-700',
     'Interview Scheduled': 'bg-purple-100 text-purple-700',
     'Hired': 'bg-green-100 text-green-700',

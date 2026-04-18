@@ -210,6 +210,8 @@ const formatHumanDate = (value) => {
   return String(value);
 };
 
+import SkeletonLoader from '../../components/common/SkeletonLoader';
+
 const JobApplication = () => {
   const { jobId } = useParams();
   const navigate = useNavigate();
@@ -864,14 +866,7 @@ const JobApplication = () => {
   };
 
   if (jobLoading || loading.fetchingProfile) {
-    return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-zinc-200 border-t-zinc-900 mx-auto mb-4"></div>
-          <p className="text-sm font-medium text-zinc-600 tracking-wide">Loading application form...</p>
-        </div>
-      </div>
-    );
+    return <SkeletonLoader type="layout-form" />;
   }
 
   if (!currentJob) {

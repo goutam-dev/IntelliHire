@@ -525,23 +525,14 @@ const updateJobStatus = async (jobId, status, clerkUserId) => {
   if (status === 'active' && !job.publishedAt) {
     job.publishedAt = new Date();
   }
+  if (status === 'closed') {
+    job.closedAt = new Date();
+  }
+  if (status === 'active') {
+    job.closedAt = null;
+  }
 
   await job.save();
-
-  if (status === 'closed') {
-    await JobApplication.updateMany(
-      {
-        jobId: job._id,
-        status: { $in: ['Applied', 'Under Review', 'Shortlisted'] },
-      },
-      {
-        $set: {
-          status: 'Job Closed',
-          lastUpdated: new Date(),
-        },
-      }
-    );
-  }
 
   return job;
 };

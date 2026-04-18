@@ -180,8 +180,11 @@ export function CompleteProfile() {
 
   if (!isLoaded) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F8FAFC]">
+         <div className="relative flex items-center justify-center mb-4">
+            <div className="absolute inset-0 h-16 w-16 rounded-full border-t-4 border-indigo-600 animate-spin flex m-auto -translate-x-[12px] -translate-y-[12px]"></div>
+            <div className="h-10 w-10 bg-indigo-50 rounded-full animate-pulse shadow-inner shadow-indigo-200"></div>
+         </div>
       </div>
     );
   }

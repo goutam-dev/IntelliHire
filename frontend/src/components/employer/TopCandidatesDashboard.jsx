@@ -198,7 +198,7 @@ const TopCandidatesDashboard = ({ isOpen, onClose, jobId, jobTitle }) => {
                   const score = candidate.supervisorVerdict?.final_resume_score || 0;
                   
                   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-                  const resumePath = candidate.application?.resume?.filePath || candidate.application?.candidate?.resume?.filePath;
+                  const resumePath = candidate.application?.resume?.filePath || candidate.candidate?.resume?.filePath || candidate.application?.candidate?.resume?.filePath;
                   const resumeUrl = resumePath ? (resumePath.startsWith('http') ? resumePath : `${API_BASE_URL}${resumePath}`) : '#';
 
                   return (
@@ -234,10 +234,10 @@ const TopCandidatesDashboard = ({ isOpen, onClose, jobId, jobTitle }) => {
                             <div className="flex items-start gap-3">
                               <div className="flex-1">
                                 <h3 className="text-base font-semibold text-slate-900">
-                                  {candidate.application?.candidate?.user?.fullName || 'Unknown Candidate'}
+                                  {candidate.candidate?.user?.fullName || candidate.application?.personalInfo?.name || 'Unknown Candidate'}
                                 </h3>
                                 <p className="text-sm text-slate-600">
-                                  {candidate.application?.candidate?.professionalTitle || 'Professional'}
+                                  {candidate.candidate?.professionalTitle || candidate.application?.candidate?.professionalTitle || 'Professional'}
                                 </p>
                               </div>
                               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${style.badge}`}>
@@ -249,19 +249,20 @@ const TopCandidatesDashboard = ({ isOpen, onClose, jobId, jobTitle }) => {
                             {/* Contact & Resume */}
                             <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-600">
                               <a 
-                                href={`mailto:${candidate.application?.candidate?.user?.email}`}
+                                href={`mailto:${candidate.candidate?.user?.email || candidate.application?.personalInfo?.email}`}
                                 className="inline-flex items-center gap-1 hover:text-slate-900"
                               >
                                 <Mail className="h-4 w-4" />
-                                {candidate.application?.candidate?.user?.email}
+                                {candidate.candidate?.user?.email || candidate.application?.personalInfo?.email || 'N/A'}
                               </a>
                               <span className="inline-flex items-center gap-1">
                                 <Phone className="h-4 w-4" />
-                                {candidate.application?.candidate?.user?.phoneNumber || 'N/A'}
+                                {candidate.candidate?.user?.phoneNumber || candidate.application?.personalInfo?.phone || 'N/A'}
                               </span>
                               <a 
                                 href={resumeUrl}
                                 target="_blank"
+                                rel="noreferrer"
                                 className="inline-flex items-center gap-1 hover:text-slate-900"
                               >
                                 <FileDown className="h-4 w-4" />

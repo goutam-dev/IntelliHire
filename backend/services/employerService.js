@@ -126,6 +126,12 @@ const getDashboardStats = async (clerkUserId) => {
   const totalApplications = await JobApplication.countDocuments({
     jobId: { $in: jobIds },
   });
+  
+  const uniqueCandidateIds = await JobApplication.distinct('candidateId', {
+    jobId: { $in: jobIds },
+  });
+  const uniqueCandidatesCount = uniqueCandidateIds.length;
+
   const pendingApplications = await JobApplication.countDocuments({
     jobId: { $in: jobIds },
     status: 'Applied',
@@ -160,9 +166,10 @@ const getDashboardStats = async (clerkUserId) => {
   // Upcoming Interviews (Pending AI interviews or scheduled ones)
   const upcomingApplications = await JobApplication.find({
     jobId: { $in: jobIds },
-    status: { $in: ['Interviewing', 'Invited', 'Shortlisted', 'Applied'] }
+    status: { $in: ['Interview Scheduled'] },
+    interviewWindowStart: { $exists: true }
   })
-    .sort({ interviewWindowEnd: 1, _id: -1 })
+    .sort({ interviewWindowStart: 1, _id: -1 })
     .limit(5)
     .populate({
       path: 'candidateId',
@@ -199,7 +206,9 @@ const getDashboardStats = async (clerkUserId) => {
       _id: app.jobId?._id,
       title: app.jobId?.title || 'Job Title'
     },
-    createdAt: app.createdAt || app.appliedAt
+    createdAt: app.createdAt || app.appliedAt,
+    interviewWindowStart: app.interviewWindowStart,
+    interviewWindowEnd: app.interviewWindowEnd
   }));
 
   return {
@@ -209,6 +218,7 @@ const getDashboardStats = async (clerkUserId) => {
     closedJobs,
     archivedJobs,
     totalApplications,
+    uniqueCandidates: uniqueCandidatesCount,
     pendingReviews: pendingApplications,
     newApplications,
     recentApplications: formattedApplications,

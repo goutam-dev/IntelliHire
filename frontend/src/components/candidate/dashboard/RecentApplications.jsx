@@ -2,17 +2,18 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { fetchMyApplications, clearApplicationsCache } from '../../../store/slices/jobApplicationsSlice';
 import { ChevronRight, Building2, MapPin } from 'lucide-react';
 
 const ApplicationCard = ({ application, index }) => {
+  const navigate = useNavigate();
   const getStatusConfig = (status) => {
     const statusLower = status?.toLowerCase();
     const dots = {
       applied: 'bg-blue-500 shadow-blue-500/40',
       pending: 'bg-amber-500 shadow-amber-500/40',
       shortlisted: 'bg-emerald-500 shadow-emerald-500/40',
-      'under review': 'bg-indigo-500 shadow-indigo-500/40',
       interview: 'bg-purple-500 shadow-purple-500/40',
       'interview scheduled': 'bg-purple-500 shadow-purple-500/40',
       accepted: 'bg-green-500 shadow-green-500/40',
@@ -47,6 +48,7 @@ const ApplicationCard = ({ application, index }) => {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
+      onClick={() => navigate(`/candidate/applications/${application.applicationId}`)}
     >
       {/* Left: Job Details */}
       <div className="flex items-center gap-4 flex-1 min-w-0">

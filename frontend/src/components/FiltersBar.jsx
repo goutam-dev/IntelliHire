@@ -9,6 +9,7 @@ const statusOptions = [
   { value: 'Shortlisted', label: 'Shortlisted' },
   { value: 'Interview Scheduled', label: 'Interview Scheduled' },
   { value: 'Interviewed', label: 'Interviewed' },
+  { value: 'Finalist', label: 'Finalist' },
   { value: 'Hired', label: 'Accepted' },
   { value: 'Rejected', label: 'Rejected' },
 ];
@@ -29,53 +30,45 @@ const resumeGradeOptions = [
   { value: 'not_analyzed', label: 'Not analyzed' },
 ];
 
-const FiltersBar = ({ search, setSearch, status, setStatus, sort, setSort, resumeGrade, setResumeGrade, onApply }) => {
+const FiltersBar = ({ search, setSearch, status, setStatus, sort, setSort, resumeGrade, setResumeGrade }) => {
   return (
-    <div className="flex flex-col md:flex-row gap-3 md:items-end bg-white rounded-xl border border-slate-200 p-4">
-      <div className="flex-1">
+    <div className="flex flex-col lg:flex-row gap-3 items-center w-full">
+      <div className="flex-1 w-full">
         <div className="relative">
           <Input
             name="search"
-            label="Search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, email, phone, notes..."
-            className=""
+            placeholder="Search candidates by name..."
+            style={{ paddingRight: '2.5rem' }}
           />
-          <Search className="h-4 w-4 text-slate-400 absolute right-3 top-9" />
+          <Search className="h-4 w-4 text-zinc-400 absolute right-4 top-[13px]" />
         </div>
       </div>
-      <Select
-        name="status"
-        label="Status"
-        value={status}
-        onChange={(e) => setStatus(e.target.value)}
-        options={statusOptions}
-        className="w-full md:w-48"
-      />
-      <Select
-        name="resumeGrade"
-        label="AI Grade"
-        value={resumeGrade}
-        onChange={(e) => setResumeGrade(e.target.value)}
-        options={resumeGradeOptions}
-        className="w-full md:w-48"
-      />
-      <Select
-        name="sort"
-        label="Sort"
-        value={sort}
-        onChange={(e) => setSort(e.target.value)}
-        options={sortOptions}
-        className="w-full md:w-48"
-      />
-      <button
-        type="button"
-        onClick={onApply}
-        className="inline-flex items-center justify-center rounded-xl bg-slate-900 text-white px-4 py-2.5 text-sm hover:bg-slate-800"
-      >
-        Apply
-      </button>
+      
+      <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+        <Select
+          name="status"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          options={statusOptions}
+          className="w-full sm:w-44"
+        />
+        <Select
+          name="resumeGrade"
+          value={resumeGrade}
+          onChange={(e) => setResumeGrade(e.target.value)}
+          options={resumeGradeOptions}
+          className="w-full sm:w-44"
+        />
+        <Select
+          name="sort"
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          options={sortOptions}
+          className="w-full sm:w-44"
+        />
+      </div>
     </div>
   );
 };

@@ -22,6 +22,8 @@ import {
 import api from '../../lib/api';
 import { getCurrencySymbol } from '../../constants/jobConstants';
 
+import SkeletonLoader from '../../components/common/SkeletonLoader';
+
 const JobDetails = () => {
   const { jobId } = useParams();
   const navigate = useNavigate();
@@ -105,14 +107,7 @@ const JobDetails = () => {
   const salarySymbol = hasSalaryRange ? getCurrencySymbol(job.salaryRange.currency || 'USD') : null;
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-zinc-900 mx-auto mb-4"></div>
-          <p className="text-zinc-600">Loading job details...</p>
-        </div>
-      </div>
-    );
+    return <SkeletonLoader type="layout-profile" />;
   }
 
   if (error) {
@@ -222,11 +217,11 @@ const JobDetails = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl shadow-sm border border-zinc-200 p-6"
+              className="bg-white rounded-xl shadow-sm border border-zinc-200 p-6 overflow-hidden"
             >
               <h2 className="text-lg font-semibold text-zinc-900 mb-4">Job Description</h2>
               <div className="prose prose-sm max-w-none">
-                <p className="text-zinc-700 whitespace-pre-wrap">{job.description}</p>
+                <p className="text-zinc-700 whitespace-pre-wrap break-words overflow-wrap-anywhere">{job.description}</p>
               </div>
             </motion.div>
 

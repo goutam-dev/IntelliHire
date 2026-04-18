@@ -394,157 +394,172 @@ const CreateJobPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-100 pb-12">
       <EmployerHeader 
         userName={employerProfile?.user?.fullName || 'User'}
         companyName={employerProfile?.companyName || 'Company'}
       />
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <main className="max-w-4xl mx-auto px-4 pt-8">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.3 }}
         >
-          <div className="border-b border-slate-200 pb-4">
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
               Create Job Posting
             </h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-zinc-500">
               Fill in the details below to create a new job posting
             </p>
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 mb-8">
+              <p className="text-sm font-medium text-red-800">{error}</p>
             </div>
           )}
 
-          <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
-            <div className="grid gap-6 sm:grid-cols-1">
-              {/* Job Title */}
-              <Input
-                label="Job Title"
-                name="title"
-                type="text"
-                value={formData.title}
-                onChange={handleChange}
-                onBlur={() => handleBlur('title')}
-                error={touched.title ? validationErrors.title : null}
-                required
-                placeholder="e.g., Senior Software Engineer"
-              />
+          <form className="space-y-8" onSubmit={(e) => e.preventDefault()}>
+            
+            {/* Basic Information */}
+            <div className="bg-white rounded-2xl border border-zinc-200 relative overflow-hidden p-6 md:p-8 shadow-md shadow-zinc-200/50">
+              <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
+              <h2 className="text-lg font-semibold text-zinc-900 mb-6">Basic Information</h2>
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Input
+                    label="Job Title"
+                    name="title"
+                    type="text"
+                    value={formData.title}
+                    onChange={handleChange}
+                    onBlur={() => handleBlur('title')}
+                    error={touched.title ? validationErrors.title : null}
+                    required
+                    placeholder="e.g., Senior Software Engineer"
+                  />
+                </div>
 
-              {/* Job Category/Department */}
-              <Select
-                label="Job Category/Department"
-                name="department"
-                value={formData.department}
-                onChange={handleChange}
-                onBlur={() => handleBlur('department')}
-                error={
-                  touched.department && formData.department !== 'other'
-                    ? validationErrors.department
-                    : null
-                }
-                placeholder="Select department"
-                options={JOB_CATEGORIES}
-              />
-
-              {formData.department === 'other' && (
-                <Input
-                  label="Custom Department"
-                  name="customDepartment"
-                  type="text"
-                  value={formData.customDepartment}
+                <Select
+                  label="Department"
+                  name="department"
+                  value={formData.department}
                   onChange={handleChange}
-                  onBlur={() => handleBlur('customDepartment')}
-                  error={touched.customDepartment ? validationErrors.department : null}
-                  placeholder="Enter custom department name"
+                  onBlur={() => handleBlur('department')}
+                  error={touched.department && formData.department !== 'other' ? validationErrors.department : null}
+                  placeholder="Select department"
+                  options={JOB_CATEGORIES}
                 />
-              )}
 
-              {/* Job Description */}
-              <Textarea
-                label="Job Description"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                onBlur={() => handleBlur('description')}
-                error={touched.description ? validationErrors.description : null}
-                required
-                rows={8}
-                placeholder="Provide a detailed description of the job, responsibilities, and requirements..."
-              />
+                {formData.department === 'other' ? (
+                  <Input
+                    label="Custom Department"
+                    name="customDepartment"
+                    type="text"
+                    value={formData.customDepartment}
+                    onChange={handleChange}
+                    onBlur={() => handleBlur('customDepartment')}
+                    error={touched.customDepartment ? validationErrors.department : null}
+                    placeholder="Enter custom department name"
+                  />
+                ) : <div className="hidden sm:block"></div>}
 
-              {/* Required Skills */}
-              <TagsInput
-                label="Required Skills"
-                name="requiredSkills"
-                value={formData.requiredSkills}
-                onChange={handleTagsChange}
-                onBlur={() => handleBlur('requiredSkills')}
-                error={touched.requiredSkills ? validationErrors.requiredSkills : null}
-                required
-                placeholder="Type skills (comma-separated or press Enter per skill)"
-              />
+                <Input
+                  label="Job Location"
+                  name="location"
+                  type="text"
+                  value={formData.location}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('location')}
+                  error={touched.location ? validationErrors.location : null}
+                  required
+                  placeholder="e.g., San Francisco, CA or Remote"
+                />
 
-              {/* Experience Level */}
-              <Select
-                label="Required Experience Level"
-                name="experienceLevel"
-                value={formData.experienceLevel}
-                onChange={handleChange}
-                onBlur={() => handleBlur('experienceLevel')}
-                error={touched.experienceLevel ? validationErrors.experienceLevel : null}
-                required
-                placeholder="Select experience level"
-                options={EXPERIENCE_LEVELS}
-              />
-              <p className="-mt-4 text-xs text-slate-500">
-                Guide: Entry = {EXPERIENCE_LEVEL_DURATION_GUIDE.entry}, Mid = {EXPERIENCE_LEVEL_DURATION_GUIDE.mid}, Senior = {EXPERIENCE_LEVEL_DURATION_GUIDE.senior}, Expert = {EXPERIENCE_LEVEL_DURATION_GUIDE.expert}
-              </p>
+                <Select
+                  label="Employment Type"
+                  name="employmentType"
+                  value={formData.employmentType}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('employmentType')}
+                  error={touched.employmentType ? validationErrors.employmentType : null}
+                  required
+                  placeholder="Select employment type"
+                  options={EMPLOYMENT_TYPES}
+                />
+              </div>
+            </div>
 
-              {/* Education Requirements */}
-              <Select
-                label="Education Requirements"
-                name="educationRequirements"
-                value={formData.educationRequirements}
-                onChange={handleChange}
-                onBlur={() => handleBlur('educationRequirements')}
-                error={touched.educationRequirements ? validationErrors.educationRequirements : null}
-                placeholder="Select education requirement"
-                options={EDUCATION_OPTIONS}
-              />
+            {/* Role Requirements */}
+            <div className="bg-white rounded-2xl border border-zinc-200 relative overflow-hidden p-6 md:p-8 shadow-md shadow-zinc-200/50">
+              <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+              <h2 className="text-lg font-semibold text-zinc-900 mb-6">Role Details & Requirements</h2>
+              <div className="space-y-6">
+                <Textarea
+                  label="Job Description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleChange}
+                  onBlur={() => handleBlur('description')}
+                  error={touched.description ? validationErrors.description : null}
+                  required
+                  rows={6}
+                  placeholder="Provide a detailed description of the job, responsibilities, and requirements..."
+                />
 
-              {/* Job Location */}
-              <Input
-                label="Job Location"
-                name="location"
-                type="text"
-                value={formData.location}
-                onChange={handleChange}
-                onBlur={() => handleBlur('location')}
-                error={touched.location ? validationErrors.location : null}
-                required
-                placeholder="e.g., San Francisco, CA or Remote"
-              />
+                <TagsInput
+                  label="Required Skills"
+                  name="requiredSkills"
+                  value={formData.requiredSkills}
+                  onChange={handleTagsChange}
+                  onBlur={() => handleBlur('requiredSkills')}
+                  error={touched.requiredSkills ? validationErrors.requiredSkills : null}
+                  required
+                  placeholder="Type skills (comma-separated or press Enter per skill)"
+                />
 
-              {/* Employment Type */}
-              <Select
-                label="Employment Type"
-                name="employmentType"
-                value={formData.employmentType}
-                onChange={handleChange}
-                onBlur={() => handleBlur('employmentType')}
-                error={touched.employmentType ? validationErrors.employmentType : null}
-                required
-                placeholder="Select employment type"
-                options={EMPLOYMENT_TYPES}
-              />
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <div>
+                    <Select
+                      label="Required Experience Level"
+                      name="experienceLevel"
+                      value={formData.experienceLevel}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('experienceLevel')}
+                      error={touched.experienceLevel ? validationErrors.experienceLevel : null}
+                      required
+                      placeholder="Select experience level"
+                      options={EXPERIENCE_LEVELS}
+                    />
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                      <span className="font-medium mr-1">Guide:</span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-700 border border-zinc-200">Entry: {EXPERIENCE_LEVEL_DURATION_GUIDE.entry}</span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-700 border border-zinc-200">Mid: {EXPERIENCE_LEVEL_DURATION_GUIDE.mid}</span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-700 border border-zinc-200">Senior: {EXPERIENCE_LEVEL_DURATION_GUIDE.senior}</span>
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium text-zinc-700 border border-zinc-200">Expert: {EXPERIENCE_LEVEL_DURATION_GUIDE.expert}</span>
+                    </div>
+                  </div>
 
-              {/* Salary Range */}
-              <div className="grid gap-4 sm:grid-cols-3">
+                  <Select
+                    label="Education Requirements"
+                    name="educationRequirements"
+                    value={formData.educationRequirements}
+                    onChange={handleChange}
+                    onBlur={() => handleBlur('educationRequirements')}
+                    error={touched.educationRequirements ? validationErrors.educationRequirements : null}
+                    placeholder="Select education requirement"
+                    options={EDUCATION_OPTIONS}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Compensation & Timeline */}
+            <div className="bg-white rounded-2xl border border-zinc-200 relative overflow-hidden p-6 md:p-8 shadow-md shadow-zinc-200/50">
+              <div className="absolute top-0 left-0 w-full h-1 bg-amber-500"></div>
+              <h2 className="text-lg font-semibold text-zinc-900 mb-6">Compensation & Timeline</h2>
+              <div className="grid gap-6 sm:grid-cols-3 mb-6">
                 <Select
                   label="Currency"
                   name="salaryCurrency"
@@ -575,26 +590,29 @@ const CreateJobPage = () => {
                 />
               </div>
 
-              {/* Application Deadline */}
-              <Input
-                label="Application Deadline"
-                name="applicationDeadline"
-                type="date"
-                value={formData.applicationDeadline}
-                onChange={handleChange}
-                onBlur={() => handleBlur('applicationDeadline')}
-                error={touched.applicationDeadline ? validationErrors.applicationDeadline : null}
-                min={new Date().toISOString().split('T')[0]}
-              />
+              <div className="border-t border-zinc-100 pt-6">
+                <div className="max-w-xs">
+                  <Input
+                    label="Application Deadline"
+                    name="applicationDeadline"
+                    type="date"
+                    value={formData.applicationDeadline}
+                    onChange={handleChange}
+                    onBlur={() => handleBlur('applicationDeadline')}
+                    error={touched.applicationDeadline ? validationErrors.applicationDeadline : null}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col-reverse gap-3 pt-6 border-t border-slate-200 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-3 pt-6 border-t border-zinc-200 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={handleCancel}
                 disabled={loading}
-                className="inline-flex items-center justify-center rounded-full border border-slate-300 px-6 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-200 px-6 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
@@ -602,7 +620,7 @@ const CreateJobPage = () => {
                 type="button"
                 onClick={handleSaveDraft}
                 disabled={loading}
-                className="inline-flex items-center justify-center rounded-full border border-slate-300 px-6 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-200 px-6 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Saving...' : 'Save as Draft'}
               </button>
@@ -610,15 +628,14 @@ const CreateJobPage = () => {
                 type="button"
                 onClick={handlePublish}
                 disabled={loading}
-                className="inline-flex items-center justify-center rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Publishing...' : 'Publish Job'}
               </button>
             </div>
           </form>
         </motion.div>
-      </div>
-
+      </main>
     </div>
   );
 };

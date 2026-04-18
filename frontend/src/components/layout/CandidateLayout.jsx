@@ -1,11 +1,13 @@
 import React, { useEffect } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import CandidateHeader from "../candidate/CandidateHeader";
 import { fetchCandidateProfile } from "../../store/slices/candidateSlice";
+import SkeletonLoader from "../common/SkeletonLoader";
 
 const CandidateLayout = () => {
   const dispatch = useDispatch();
+  const location = useLocation();
   const { profile, loading, error } = useSelector((state) => state.candidate);
 
   useEffect(() => {
@@ -14,17 +16,20 @@ const CandidateLayout = () => {
 
   // Show loading state for initial profile load
   if (loading && !profile) {
-    return (
-      <div className="min-h-screen bg-slate-50">
-        <CandidateHeader />
-        <div className="flex items-center justify-center min-h-[calc(100vh-80px)]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
-            <p className="mt-4 text-slate-600">Loading your dashboard...</p>
-          </div>
-        </div>
-      </div>
-    );
+    let skeletonType = 'dashboard-layout';
+    const path = location.pathname;
+    
+    if (path.includes('/profile') || path.match(/\/jobs\/[\w-]+$/) || path.match(/\/applications\/[\w-]+$/)) {
+      skeletonType = 'layout-profile';
+    } else if (path.includes('/jobs') && !path.includes('/dashboard')) {
+      skeletonType = 'layout-list';
+    } else if (path.includes('/applications') && !path.includes('/dashboard')) {
+      skeletonType = 'layout-list';
+    } else if (path.includes('/apply') || path.includes('/interview')) {
+      skeletonType = 'layout-form';
+    }
+
+    return <SkeletonLoader type={skeletonType} />;
   }
 
   // Show error state

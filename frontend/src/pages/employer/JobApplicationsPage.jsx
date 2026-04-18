@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
-import { Download, FileText, Handshake, CalendarClock, CheckCircle2, XCircle, Users, ChevronRight, Sparkles, RefreshCw } from 'lucide-react';
+import { Download, FileText, Handshake, CalendarClock, CheckCircle2, XCircle, Users, ChevronRight, Sparkles, RefreshCw, Zap, Award, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -28,14 +28,15 @@ const getLifecycleActions = (application) => {
     Boolean(application?.interviewWindowEnd) &&
     new Date(application.interviewWindowEnd) > new Date();
 
-  if (status === 'Applied' || status === 'Under Review') return ['shortlist', 'reject'];
+  if (status === 'Applied') return ['shortlist', 'reject'];
   if (status === 'Shortlisted') {
     return hasCompletedInterview ? ['accept', 'reject'] : ['interview', 'reject'];
   }
   if (status === 'Interview Scheduled') {
     return canReschedule ? ['reschedule', 'reject'] : ['reject'];
   }
-  if (status === 'Interviewed') return ['accept', 'reject', 'shortlist'];
+  if (status === 'Interviewed') return ['finalist', 'accept', 'reject', 'shortlist'];
+  if (status === 'Finalist') return ['accept', 'reject'];
   return [];
 };
 
@@ -44,22 +45,33 @@ const getLocalDateTimeInputValue = (date = new Date()) => {
   return localDate.toISOString().slice(0, 16);
 };
 
-const StatCard = ({ title, value, icon: Icon, color, delay }) => (
+const StatCard = ({ title, value, icon: Icon, color, delay, isLoading }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.4, delay }}
-    className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow"
+    className="relative overflow-hidden bg-white rounded-2xl border border-zinc-200 p-5 shadow-sm transition-all hover:shadow-md hover:border-zinc-300 hover:-translate-y-0.5 group"
   >
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm font-medium text-slate-500">{title}</p>
-        <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+    {isLoading ? (
+      <div className="flex items-center justify-between">
+        <div className="space-y-3">
+          <div className="h-4 w-20 bg-zinc-200 rounded animate-pulse"></div>
+          <div className="h-8 w-12 bg-zinc-200 rounded animate-pulse"></div>
+        </div>
+        <div className={`p-2.5 rounded-xl bg-zinc-100 ring-1 ring-inset ring-zinc-200 h-10 w-10 animate-pulse`}>
+        </div>
       </div>
-      <div className={`p-2 rounded-lg ${color}`}>
-        <Icon className="h-5 w-5 text-white" />
+    ) : (
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{title}</p>
+          <p className="mt-2 text-3xl font-bold text-zinc-900 group-hover:text-zinc-700 transition-colors">{value}</p>
+        </div>
+        <div className={`p-2.5 rounded-xl ${color.bg} shadow-none ring-1 ring-inset ${color.ring}`}>
+          <Icon className={`h-5 w-5 ${color.text}`} />
+        </div>
       </div>
-    </div>
+    )}
   </motion.div>
 );
 
@@ -72,7 +84,7 @@ const JobApplicationsPage = () => {
   const { user } = useUser();
 
   const [applications, setApplications] = useState([]);
-  const [jobContext, setJobContext] = useState({ title: '', department: '' });
+  const [jobContext, setJobContext] = useState({ title: '', department: '', status: '', closedAt: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -130,15 +142,16 @@ const JobApplicationsPage = () => {
   const bulkActionAvailability = useMemo(() => {
     const totalSelected = selectedApplications.length;
     if (!totalSelected) {
-      return { shortlist: false, reject: false, interview: false, accept: false };
+      return { shortlist: false, reject: false, interview: false, accept: false, finalist: false };
     }
 
     const shortlist = getEligibleApplicationsForAction('shortlist').length === totalSelected;
     const reject = getEligibleApplicationsForAction('reject').length === totalSelected;
     const interview = getEligibleApplicationsForAction('interview').length === totalSelected;
     const accept = getEligibleApplicationsForAction('accept').length === totalSelected;
+    const finalist = getEligibleApplicationsForAction('finalist').length === totalSelected;
 
-    return { shortlist, reject, interview, accept };
+    return { shortlist, reject, interview, accept, finalist };
   }, [selectedApplications]);
 
   const bulkDisabledReason = useMemo(() => {
@@ -149,6 +162,7 @@ const JobApplicationsPage = () => {
     if (!bulkActionAvailability.reject) disabledActions.push('Reject');
     if (!bulkActionAvailability.interview) disabledActions.push('Schedule/Reschedule');
     if (!bulkActionAvailability.accept) disabledActions.push('Accept');
+    if (!bulkActionAvailability.finalist) disabledActions.push('Finalist');
 
     if (disabledActions.length === 0) return '';
 
@@ -180,10 +194,12 @@ const JobApplicationsPage = () => {
         setJobContext({
           title: job.title || '',
           department: job.department || '',
+          status: job.status || '',
+          closedAt: job.closedAt || null,
         });
       } catch (err) {
         if (!isMounted) return;
-        setJobContext({ title: '', department: '' });
+        setJobContext({ title: '', department: '', status: '', closedAt: null });
       }
     };
 
@@ -194,29 +210,76 @@ const JobApplicationsPage = () => {
     };
   }, [jobId]);
 
+  const fetchIdRef = useRef(0);
+  const hasInitializedFiltersRef = useRef(false);
+
   const fetchApplications = async (silent = false) => {
     if (!silent) setLoading(true);
     setError('');
+    
+    // Increment to track the latest request
+    fetchIdRef.current += 1;
+    const currentFetchId = fetchIdRef.current;
+
     try {
-      const params = { status, search, sort, resumeGrade };
+      const params = { status, sort, resumeGrade };
       const data = await applicationApi.getApplicationsByJob(jobId, params);
+      
+      // Prevent stale response overwrite if a newer request exists
+      if (fetchIdRef.current !== currentFetchId) {
+        return data;
+      }
+      
       setApplications(data);
       return data; // return fresh data so callers don't rely on stale closure
     } catch (err) {
+      if (fetchIdRef.current !== currentFetchId) return [];
       console.error('Failed to fetch applications:', err.message);
       setApplications([]);
       setError('Failed to load applications. Please try again.');
       return [];
     } finally {
-      if (!silent) setLoading(false);
+      if (fetchIdRef.current === currentFetchId && !silent) {
+        setLoading(false);
+      }
     }
   };
 
+  // Debounce status, grade, sort
   useEffect(() => {
+    if (!hasInitializedFiltersRef.current) {
+      hasInitializedFiltersRef.current = true;
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      if (jobId) {
+        fetchApplications(true); // silent fetch to prevent full screen flashes
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, resumeGrade, sort]);
+
+  useEffect(() => {
+    // initial fetch
     fetchApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
+  // Derive filtered applications instantly based on search text 
+  const filteredApplications = useMemo(() => {
+    if (!search || !search.trim()) return applications;
+    
+    const lower = search.toLowerCase();
+    return applications.filter((app) => {
+      const name = app?.candidate?.user?.fullName?.toLowerCase() || '';
+      return name.includes(lower);
+    });
+  }, [applications, search]);
+
+  // eslint-disable-next-line
   const applyFilters = () => fetchApplications();
 
   const refresh = () => fetchApplications();
@@ -253,6 +316,7 @@ const JobApplicationsPage = () => {
         shortlist: 'shortlisted',
         reject: 'rejected',
         accept: 'accepted',
+        finalist: 'marked as finalist',
         interview: 'scheduled for interview',
         reschedule: 'interview rescheduled',
         'approve-reinterview': 're-interview approved',
@@ -276,7 +340,7 @@ const JobApplicationsPage = () => {
           note: payload.note || '',
         });
       } else {
-        const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired' };
+        const map = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired', finalist: 'Finalist' };
         const status = map[type];
         await applicationApi.updateApplicationStatus(id, {
           status,
@@ -357,7 +421,7 @@ const JobApplicationsPage = () => {
         await refresh();
         return successCount > 0;
       } else {
-        const statusMap = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired' };
+        const statusMap = { shortlist: 'Shortlisted', reject: 'Rejected', accept: 'Hired', finalist: 'Finalist' };
         const targetStatus = statusMap[type];
 
         const results = await Promise.all(
@@ -452,9 +516,10 @@ const JobApplicationsPage = () => {
     const total = applications.length;
     const shortlisted = applications.filter(a => a.status === 'Shortlisted').length;
     const interviewed = applications.filter(a => a.status === 'Interview Scheduled').length;
+    const finalist = applications.filter(a => a.status === 'Finalist').length;
     const accepted = applications.filter(a => a.status === 'Hired').length;
     const rejected = applications.filter(a => a.status === 'Rejected').length;
-    return { total, shortlisted, interviewed, accepted, rejected };
+    return { total, shortlisted, interviewed, finalist, accepted, rejected };
   }, [applications]);
 
   const handleLogout = async () => {
@@ -591,40 +656,47 @@ const JobApplicationsPage = () => {
         <CalendarClock className="h-4 w-4" /> Schedule/Reschedule
       </button>
       <button
+        onClick={() => bulkAction('finalist')}
+        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 text-white px-3 py-2 text-sm hover:bg-indigo-700 shadow-sm hover:shadow transition-all disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
+        disabled={!hasSelection || !bulkActionAvailability.finalist}
+      >
+        <Award className="h-4 w-4" /> Finalist
+      </button>
+      <button
         onClick={() => bulkAction('accept')}
         className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm hover:bg-emerald-700 shadow-sm hover:shadow transition-all disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
         disabled={!hasSelection || !bulkActionAvailability.accept}
       >
         <Handshake className="h-4 w-4" /> Accept
       </button>
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-2">
         <button
           onClick={handleBatchAnalyze}
           disabled={analyzingBatch || applications.length === 0}
-          className="inline-flex items-center gap-2 rounded-lg border-2 border-violet-300 bg-gradient-to-r from-violet-50 to-purple-50 px-4 py-2 text-sm font-semibold text-violet-700 hover:border-violet-400 hover:from-violet-100 hover:to-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed border border-indigo-700"
         >
           {analyzingBatch ? (
             <>
-              <RefreshCw className="h-4 w-4 animate-spin" /> Analyzing...
+              <RefreshCw className="h-4 w-4 text-indigo-200 animate-spin" /> Analyzing...
             </>
           ) : (
             <>
-              <Sparkles className="h-4 w-4" /> AI Analyze All
+              <Zap className="h-4 w-4 text-indigo-200" /> AI Analyze All
             </>
           )}
         </button>
-        <button onClick={exportCSV} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 transition-colors">
-          <Download className="h-4 w-4" /> Export CSV
+        <button onClick={exportCSV} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200 shadow-sm transition-colors hover:bg-emerald-100 hover:text-emerald-800">
+          <Download className="h-4 w-4 text-emerald-600" /> Export CSV
         </button>
-        <button onClick={exportPDF} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 transition-colors">
-          <FileText className="h-4 w-4" /> Export PDF
+        <button onClick={exportPDF} className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 ring-1 ring-inset ring-rose-200 shadow-sm transition-colors hover:bg-rose-100 hover:text-rose-800">
+          <FileText className="h-4 w-4 text-rose-600" /> Export PDF
         </button>
       </div>
     </motion.div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-zinc-50 flex flex-col">
       <EmployerHeader
         userName={user?.fullName || employerProfile?.user?.fullName || 'User'}
         companyName={employerProfile?.companyName || 'Company'}
@@ -634,61 +706,87 @@ const JobApplicationsPage = () => {
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8 space-y-6">
         {/* Breadcrumbs & Header */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Link to="/employer/jobs" className="hover:text-blue-600 transition-colors">Jobs</Link>
-            <ChevronRight className="h-4 w-4" />
-            <span className="text-slate-900 font-medium">Applications</span>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm text-zinc-500 px-2">
+            <Link to="/employer/jobs" className="hover:text-zinc-800 transition-colors font-medium">Jobs</Link>
+            <ChevronRight className="h-4 w-4 text-zinc-400" />
+            <span className="text-zinc-900 font-bold">Applications</span>
           </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Job Applications</h1>
-              <p className="text-slate-600">Manage and track candidates for this position.</p>
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between rounded-3xl bg-zinc-900 p-6 md:p-8 shadow-md border border-zinc-800 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-zinc-800/40 to-transparent pointer-events-none" />
+            <div className="relative z-10">
+              <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Job Applications</h1>
+              <p className="mt-1.5 text-sm font-medium text-zinc-400">Manage and track candidates for this position.</p>
             </div>
-            <div className="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 via-orange-50 to-white px-4 py-3 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Current Role Context</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{jobContext.title || `Job #${jobId}`}</p>
-              <p className="text-xs text-slate-600">{jobContext.department || 'Department not specified'}</p>
+            <div className="flex flex-col sm:items-end sm:text-right relative z-10">
+              <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Current Role</p>
+              <p className="mt-1 text-lg font-bold text-white">{jobContext.title || `Job #${jobId}`}</p>
+              <p className="text-sm font-medium text-zinc-400 flex items-center gap-1.5 mt-1 sm:justify-end">
+                <FileText className="h-4 w-4 text-zinc-500" />
+                {jobContext.department || 'Department not specified'}
+              </p>
             </div>
           </div>
         </div>
 
+        {jobContext.status === 'closed' && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 flex items-start gap-2.5">
+            <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
+            <span>
+              This job is currently closed{jobContext.closedAt ? ` (since ${new Date(jobContext.closedAt).toLocaleDateString()})` : ''}. Candidate pipeline statuses remain unchanged.
+            </span>
+          </div>
+        )}
+
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <StatCard
-            title="Total Applications"
+            title="Total"
             value={stats.total}
             icon={Users}
-            color="bg-slate-500"
+            color={{ bg: 'bg-zinc-50', text: 'text-zinc-600', ring: 'ring-zinc-200' }}
             delay={0}
+            isLoading={loading}
           />
           <StatCard
             title="Shortlisted"
             value={stats.shortlisted}
             icon={CheckCircle2}
-            color="bg-blue-500"
+            color={{ bg: 'bg-indigo-50', text: 'text-indigo-600', ring: 'ring-indigo-200' }}
             delay={0.1}
+            isLoading={loading}
           />
           <StatCard
             title="Interviews"
             value={stats.interviewed}
             icon={CalendarClock}
-            color="bg-amber-500"
+            color={{ bg: 'bg-violet-50', text: 'text-violet-600', ring: 'ring-violet-200' }}
             delay={0.2}
+            isLoading={loading}
+          />
+          <StatCard
+            title="Finalist"
+            value={stats.finalist}
+            icon={Award}
+            color={{ bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'ring-emerald-200' }}
+            delay={0.3}
+            isLoading={loading}
           />
           <StatCard
             title="Accepted"
             value={stats.accepted}
             icon={Handshake}
-            color="bg-emerald-500"
-            delay={0.3}
+            color={{ bg: 'bg-teal-50', text: 'text-teal-600', ring: 'ring-teal-200' }}
+            delay={0.4}
+            isLoading={loading}
           />
           <StatCard
             title="Rejected"
             value={stats.rejected}
             icon={XCircle}
-            color="bg-rose-500"
-            delay={0.4}
+            color={{ bg: 'bg-rose-50', text: 'text-rose-600', ring: 'ring-rose-200' }}
+            delay={0.5}
+            isLoading={loading}
           />
         </div>
 
@@ -707,7 +805,6 @@ const JobApplicationsPage = () => {
             setResumeGrade={setResumeGrade}
             sort={sort}
             setSort={setSort}
-            onApply={applyFilters}
           />
 
           <AnimatePresence>
@@ -716,34 +813,34 @@ const JobApplicationsPage = () => {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm"
               >
                 {bulkBar}
                 {bulkDisabledReason && (
-                  <p className="mt-2 text-xs text-slate-500">{bulkDisabledReason}</p>
+                  <p className="mt-3 text-xs font-medium text-amber-600">{bulkDisabledReason}</p>
                 )}
               </motion.div>
             )}
           </AnimatePresence>
 
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-visible">
+          <div className="rounded-3xl border border-zinc-200 bg-white shadow-sm overflow-visible">
             {loading && (
-              <div className="p-12 flex justify-center items-center text-slate-500">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
+              <div className="p-12 flex justify-center items-center text-zinc-500">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mr-3"></div>
                 Loading applications...
               </div>
             )}
 
             {error && (
-              <div className="p-4 bg-amber-50 text-amber-700 border-b border-amber-100 flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-amber-500" />
+              <div className="p-4 bg-rose-50 text-rose-700 border-b border-rose-100 flex items-center gap-2 rounded-t-3xl">
+                <div className="h-2 w-2 rounded-full bg-rose-500" />
                 {error}
               </div>
             )}
 
             {!loading && (
               <ApplicationsTable
-                applications={applications}
+                applications={filteredApplications}
                 selectedIds={selectedIds}
                 setSelectedIds={setSelectedIds}
                 onSingleAction={singleAction}

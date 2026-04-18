@@ -60,7 +60,16 @@ const Header = () => {
     { label: "Get Started", href: "/sign-up" },
   ];
 
-  const closeMobile = () => setMobileOpen(false);
+  const handleLinkClick = (e, href) => {
+    if (href.startsWith('#')) {
+      e.preventDefault();
+      const element = document.querySelector(href);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
+      setMobileOpen(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur shadow-sm supports-backdrop-filter:bg-white/70">
@@ -68,7 +77,7 @@ const Header = () => {
         <a
           href="#top"
           className="flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-          onClick={closeMobile}
+          onClick={(e) => handleLinkClick(e, '#top')}
         >
           <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900">
             <LogoMark className="h-6 w-6" />
@@ -80,6 +89,7 @@ const Header = () => {
             <a
               key={link.label}
               href={link.href}
+              onClick={(e) => handleLinkClick(e, link.href)}
               className="rounded-full px-2 py-1 transition-colors hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
               {link.label}
@@ -135,7 +145,7 @@ const Header = () => {
                   href={link.href}
                   variants={fadeUp}
                   className="rounded-xl border border-transparent px-4 py-2 transition-colors hover:border-slate-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                  onClick={closeMobile}
+                  onClick={(e) => handleLinkClick(e, link.href)}
                 >
                   {link.label}
                 </motion.a>
@@ -144,7 +154,7 @@ const Header = () => {
                 href="/sign-in"
                 variants={fadeUp}
                 className="mt-2 inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                onClick={closeMobile}
+                onClick={() => setMobileOpen(false)}
               >
                 Login
               </motion.a>
@@ -152,7 +162,7 @@ const Header = () => {
                 href="/sign-up"
                 variants={fadeUp}
                 className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                onClick={closeMobile}
+                onClick={() => setMobileOpen(false)}
               >
                 Get Started
               </motion.a>

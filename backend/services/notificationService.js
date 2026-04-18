@@ -57,7 +57,6 @@ function interviewCompletedEmail({ candidateName, jobTitle, applicationLink }) {
 
 function statusUpdatedEmail({ jobTitle, newStatus, applicationLink }) {
   const statusLabels = {
-    'Under Review':        'is now under review',
     'Shortlisted':         'has been shortlisted',
     'Interview Scheduled': 'has been scheduled for an interview',
     'Interview Rescheduled': 'has been rescheduled for an interview',
@@ -249,7 +248,6 @@ async function notifyCandidateStatusUpdate({ candidateUserId, jobTitle, newStatu
   const link = `${APP_URL}/candidate/applications/${applicationId}`;
 
   const statusMessages = {
-    'Under Review':        `Your application for "${jobTitle}" is now under review.`,
     'Shortlisted':         `Great news! You've been shortlisted for "${jobTitle}".`,
     'Interview Scheduled': `An interview has been scheduled for your application to "${jobTitle}".`,
     'Interview Rescheduled': `Your interview for "${jobTitle}" has been rescheduled. Please check the updated schedule.`,
@@ -261,7 +259,6 @@ async function notifyCandidateStatusUpdate({ candidateUserId, jobTitle, newStatu
   const message = statusMessages[newStatus] || `Your application for "${jobTitle}" was updated to "${newStatus}".`;
 
   const statusTitles = {
-    'Under Review':        'Application Under Review',
     'Shortlisted':         'You\'ve Been Shortlisted!',
     'Interview Scheduled': 'Interview Scheduled',
     'Interview Rescheduled': 'Interview Rescheduled',

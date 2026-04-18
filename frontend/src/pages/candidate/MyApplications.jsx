@@ -7,7 +7,6 @@ import {
   MapPin,
   Clock,
   Calendar,
-  Eye,
   AlertCircle,
   CheckCircle,
   XCircle,
@@ -29,6 +28,7 @@ import {
 import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
 import ReInterviewRequestDialog, { ReInterviewStatusBadge } from '../../components/candidate/ReInterviewRequestDialog';
 import { requestReInterview } from '../../services/api/applicationApi';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 const MyApplications = () => {
   const dispatch = useDispatch();
@@ -58,7 +58,6 @@ const MyApplications = () => {
   const statusOptions = [
     { value: 'all', label: 'All Applications', count: 0 },
     { value: 'Applied', label: 'Applied', count: 0 },
-    { value: 'Under Review', label: 'Under Review', count: 0 },
     { value: 'Shortlisted', label: 'Shortlisted', count: 0 },
     { value: 'Interview Scheduled', label: 'Interview Scheduled', count: 0 },
     { value: 'Hired', label: 'Hired', count: 0 },
@@ -160,10 +159,8 @@ const MyApplications = () => {
   const getStatusColor = (status) => {
     const colors = {
       'Applied': 'bg-slate-100 text-slate-700 border-slate-200/80',
-      'Under Review': 'bg-amber-50 text-amber-700 border-amber-200/80',
       'Shortlisted': 'bg-sky-50 text-sky-700 border-sky-200/80',
       'Interview Scheduled': 'bg-cyan-50 text-cyan-700 border-cyan-200/80',
-      'Job Closed': 'bg-zinc-100 text-zinc-600 border-zinc-200/80',
       'Job Deleted': 'bg-zinc-200 text-zinc-700 border-zinc-300',
       'Rejected': 'bg-rose-50 text-rose-700 border-rose-200/80',
       'Hired': 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
@@ -175,10 +172,8 @@ const MyApplications = () => {
   const getStatusIcon = (status) => {
     const icons = {
       'Applied': <Clock className="w-4 h-4" />,
-      'Under Review': <Eye className="w-4 h-4" />,
       'Shortlisted': <CheckCircle className="w-4 h-4" />,
       'Interview Scheduled': <Calendar className="w-4 h-4" />,
-      'Job Closed': <AlertCircle className="w-4 h-4" />,
       'Job Deleted': <AlertCircle className="w-4 h-4" />,
       'Rejected': <XCircle className="w-4 h-4" />,
       'Hired': <CheckCircle className="w-4 h-4" />,
@@ -188,14 +183,7 @@ const MyApplications = () => {
   };
 
   if (loading.fetchingApplications) {
-    return (
-      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-zinc-600 font-medium">Loading your applications...</p>
-        </div>
-      </div>
-    );
+    return <SkeletonLoader type="layout-list" />;
   }
 
   return (
@@ -309,6 +297,14 @@ const MyApplications = () => {
                       : 'border-zinc-200 hover:shadow-xl hover:-translate-y-0.5 hover:border-zinc-300'
                   }`}
                 >
+                  {(() => {
+                    const isJobClosed = application.jobId?.status === 'closed';
+                    const closedAt = application.jobId?.closedAt ? new Date(application.jobId.closedAt) : null;
+                    const closedAtLabel = closedAt && !Number.isNaN(closedAt.getTime())
+                      ? closedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                      : null;
+
+                    return (
                   <div className="p-6 sm:p-8">
                     <div className="flex items-start justify-between mb-6">
                       <div className="flex-1 w-full">
@@ -337,23 +333,20 @@ const MyApplications = () => {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2.5 text-xs font-bold tracking-widest text-zinc-400 uppercase">
-                          <span>ID: {application.applicationId}</span>
+                        <div className="flex items-center gap-2.5 text-xs font-bold text-zinc-400 uppercase">
                           {application.jobId?.salaryRange && (
-                            <>
-                              <span className="w-1 h-1 rounded-full bg-zinc-300"></span>
-                              <span className="text-emerald-600">
-                                ${application.jobId.salaryRange.min?.toLocaleString()} - 
-                                ${application.jobId.salaryRange.max?.toLocaleString()}
-                              </span>
-                            </>
+                            <span className="text-emerald-600 tracking-widest">
+                              Salary: ${application.jobId.salaryRange.min?.toLocaleString()} - ${application.jobId.salaryRange.max?.toLocaleString()}
+                            </span>
                           )}
                         </div>
 
-                        {application.status === 'Job Closed' && (
+                        {isJobClosed && (
                           <div className="mt-4 p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-800">
                             <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
-                            <p className="text-sm font-medium">This role has been closed by the employer. New applications are stopped.</p>
+                            <p className="text-sm font-medium">
+                              This role has been closed by the employer{closedAtLabel ? ` on ${closedAtLabel}` : ''}. New applications are stopped.
+                            </p>
                           </div>
                         )}
 
@@ -364,7 +357,7 @@ const MyApplications = () => {
                           </div>
                         )}
 
-                        {application.status === 'Interview Scheduled' && application.jobId?.status === 'closed' && (
+                        {application.status === 'Interview Scheduled' && isJobClosed && (
                           <div className="mt-4 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex items-start gap-2.5 text-indigo-800">
                             <Calendar className="w-4 h-4 text-indigo-600 mt-0.5" />
                             <p className="text-sm font-medium">The job is closed for new applicants, but your scheduled interview remains valid.</p>
@@ -386,7 +379,7 @@ const MyApplications = () => {
                           onClick={() => navigate(`/candidate/applications/${application.applicationId}`)}
                           className="flex-1 sm:flex-none px-4 py-2 bg-zinc-900 border border-zinc-900 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-zinc-800 hover:shadow-md transition-all flex items-center justify-center gap-1.5 focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900"
                         >
-                          <Eye className="w-4 h-4 text-zinc-400" />
+                          <FileText className="w-4 h-4 text-zinc-400" />
                           View Details
                         </button>
                         
@@ -461,7 +454,7 @@ const MyApplications = () => {
                         const enrollmentFailed = voiceEnrollmentStatus === 'failed' || faceEnrollmentStatus === 'failed';
                         const ctaDisabled = interviewLocked || !active || !enrollmentsReady;
                         const ctaTitle = interviewLocked
-                          ? 'Interview already submitted. Results are under review.'
+                          ? 'Interview already submitted. Results are being evaluated.'
                           : !enrollmentsReady
                             ? 'Interview setup is in progress. Please wait for audio and video verification to complete.'
                             : beforeStart
@@ -486,11 +479,19 @@ const MyApplications = () => {
                         return (
                           <div className="flex w-full flex-col gap-2 md:w-auto md:items-end mt-4 sm:mt-0">
                             {windowLabel && (
-                              <InterviewSlotCard
-                                start={windowLabel.start}
-                                end={windowLabel.end}
-                                className="md:w-[290px]"
-                              />
+                              <div className="flex items-center gap-3 text-sm">
+                                <span className="text-zinc-500 font-medium whitespace-nowrap">Interview Slot</span>
+                                <div className="flex flex-col gap-1.5 text-zinc-900 font-bold bg-zinc-50 border border-zinc-200 px-3 py-2 rounded-lg shadow-sm text-left">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="w-4 h-4 text-zinc-400" />
+                                    <span>{windowLabel.start}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-zinc-500 text-xs">
+                                    <div className="w-4 flex justify-center text-zinc-300">↓</div>
+                                    <span>{windowLabel.end}</span>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                             {interviewLocked && (
                               <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide md:max-w-[290px] md:text-right flex items-center justify-end gap-1.5 pt-1.5">
@@ -533,6 +534,8 @@ const MyApplications = () => {
                       })()}
                     </div>
                   </div>
+                    );
+                  })()}
                 </motion.div>
               ))}
             </AnimatePresence>

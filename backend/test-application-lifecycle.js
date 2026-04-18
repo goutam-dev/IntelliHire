@@ -6,7 +6,7 @@
  *
  * Purpose:
  * - Validate allowed/blocked application status transitions
- * - Validate job close effects on application statuses
+ * - Validate job close does not mutate application statuses
  * - Validate job delete effects on application statuses
  * - Validate close-then-delete override behavior
  * - Validate candidate browse/apply visibility policy
@@ -16,27 +16,25 @@ const assert = require('assert');
 
 const ALLOWED_APPLICATION_STATUSES = [
   'Applied',
-  'Under Review',
   'Shortlisted',
   'Interview Scheduled',
   'Interviewed',
+  'Finalist',
   'Rejected',
   'Hired',
   'Withdrawn',
-  'Job Closed',
   'Job Deleted',
 ];
 
 const APPLICATION_TRANSITIONS = {
-  Applied: ['Under Review', 'Shortlisted', 'Rejected'],
-  'Under Review': ['Shortlisted', 'Rejected'],
+  Applied: ['Shortlisted', 'Rejected'],
   Shortlisted: ['Interview Scheduled', 'Rejected'],
   'Interview Scheduled': ['Interviewed', 'Rejected'],
-  Interviewed: ['Hired', 'Rejected'],
+  Interviewed: ['Finalist', 'Hired', 'Rejected'],
+  Finalist: ['Hired', 'Rejected'],
   Rejected: [],
   Hired: [],
   Withdrawn: [],
-  'Job Closed': [],
   'Job Deleted': [],
 };
 
@@ -57,9 +55,6 @@ function canTransition(fromStatus, toStatus) {
 }
 
 function applyJobCloseToApplicationStatus(status) {
-  if (['Applied', 'Under Review', 'Shortlisted'].includes(status)) {
-    return 'Job Closed';
-  }
   return status;
 }
 
@@ -82,11 +77,8 @@ function canCandidateApply(job) {
 
 function runTransitionMatrixTests() {
   const validTransitions = [
-    ['Applied', 'Under Review'],
     ['Applied', 'Shortlisted'],
     ['Applied', 'Rejected'],
-    ['Under Review', 'Shortlisted'],
-    ['Under Review', 'Rejected'],
     ['Shortlisted', 'Interview Scheduled'],
     ['Shortlisted', 'Rejected'],
     ['Interview Scheduled', 'Interviewed'],
@@ -98,12 +90,10 @@ function runTransitionMatrixTests() {
   const invalidTransitions = [
     ['Applied', 'Hired'],
     ['Applied', 'Interviewed'],
-    ['Under Review', 'Interview Scheduled'],
     ['Shortlisted', 'Hired'],
     ['Rejected', 'Interview Scheduled'],
     ['Hired', 'Rejected'],
     ['Withdrawn', 'Interview Scheduled'],
-    ['Job Closed', 'Shortlisted'],
     ['Job Deleted', 'Applied'],
   ];
 
@@ -125,9 +115,8 @@ function runTransitionMatrixTests() {
 }
 
 function runCloseBehaviorTests() {
-  assert.strictEqual(applyJobCloseToApplicationStatus('Applied'), 'Job Closed');
-  assert.strictEqual(applyJobCloseToApplicationStatus('Under Review'), 'Job Closed');
-  assert.strictEqual(applyJobCloseToApplicationStatus('Shortlisted'), 'Job Closed');
+  assert.strictEqual(applyJobCloseToApplicationStatus('Applied'), 'Applied');
+  assert.strictEqual(applyJobCloseToApplicationStatus('Shortlisted'), 'Shortlisted');
 
   // Scheduled/interviewed/final statuses remain unchanged on close.
   assert.strictEqual(applyJobCloseToApplicationStatus('Interview Scheduled'), 'Interview Scheduled');
@@ -140,7 +129,6 @@ function runDeleteBehaviorTests() {
   assert.strictEqual(applyJobDeleteToApplicationStatus('Applied'), 'Job Deleted');
   assert.strictEqual(applyJobDeleteToApplicationStatus('Interview Scheduled'), 'Job Deleted');
   assert.strictEqual(applyJobDeleteToApplicationStatus('Interviewed'), 'Job Deleted');
-  assert.strictEqual(applyJobDeleteToApplicationStatus('Job Closed'), 'Job Deleted');
 
   // Immutable statuses stay as-is.
   assert.strictEqual(applyJobDeleteToApplicationStatus('Rejected'), 'Rejected');
@@ -151,7 +139,7 @@ function runDeleteBehaviorTests() {
 
 function runCloseThenDeleteOverrideTest() {
   const closed = applyJobCloseToApplicationStatus('Applied');
-  assert.strictEqual(closed, 'Job Closed');
+  assert.strictEqual(closed, 'Applied');
 
   const deletedAfterClose = applyJobDeleteToApplicationStatus(closed);
   assert.strictEqual(

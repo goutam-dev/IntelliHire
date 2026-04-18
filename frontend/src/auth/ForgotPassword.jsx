@@ -222,40 +222,47 @@ export function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 relative overflow-hidden font-sans">
+      {/* Professional Minimalist Background */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+        <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-indigo-500 opacity-[0.06] blur-[100px]"></div>
+      </div>
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md relative z-10"
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 text-xl font-semibold text-slate-900">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900">
-              <LogoMark className="h-6 w-6" />
+          <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold text-zinc-900 group">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-xl shadow-zinc-900/20 group-hover:scale-105 transition-transform duration-300">
+              <LogoMark className="h-7 w-7" />
             </span>
-            <span>IntelliHire</span>
+            <span className="tracking-tight">IntelliHire</span>
           </Link>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-8">
+        <div className="bg-white/80 backdrop-blur-xl rounded-[24px] shadow-2xl shadow-zinc-200/50 border border-zinc-100 p-8 sm:p-10">
           {/* Step 1: Email Entry */}
           {step === 1 && (
             <>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Reset Your Password</h2>
-              <p className="text-slate-600 mb-6">
+              <h2 className="text-2xl font-extrabold text-zinc-900 mb-2 tracking-tight">Reset Your Password</h2>
+              <p className="text-zinc-500 text-sm font-medium mb-6">
                 Enter your email address and we'll send you a code to reset your password
               </p>
 
               {errors.general && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-800 text-sm font-medium flex items-center gap-3 shadow-sm">
+                  <svg className="w-5 h-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   {errors.general}
                 </div>
               )}
 
-              <form onSubmit={handleEmailSubmit} className="space-y-4">
+              <form onSubmit={handleEmailSubmit} className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
                     Email Address
                   </label>
                   <input
@@ -265,18 +272,18 @@ export function ForgotPassword() {
                       setEmail(e.target.value);
                       if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
                     }}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent ${
-                      errors.email ? 'border-red-500' : 'border-slate-300'
+                    className={`w-full px-4 py-3 bg-zinc-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none ${
+                      errors.email ? 'border-rose-300 ring-4 ring-rose-50' : 'border-zinc-200'
                     }`}
                     placeholder="john@example.com"
                   />
-                  {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
+                  {errors.email && <p className="mt-2 text-xs font-semibold text-rose-600">{errors.email}</p>}
                 </div>
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-zinc-900 text-white py-3.5 rounded-xl font-bold hover:bg-zinc-800 focus:ring-4 focus:ring-zinc-900/20 transition-all shadow-xl shadow-zinc-900/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
                 >
                   {loading ? 'Sending Code...' : 'Send Reset Code'}
                 </button>

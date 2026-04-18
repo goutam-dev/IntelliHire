@@ -5,7 +5,7 @@ import Textarea from './forms/Textarea';
 
 const MenuItem = ({ icon: Icon, label, onClick }) => (
   <button
-    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-left hover:bg-slate-50"
+    className="flex w-full items-center gap-2.5 px-3 py-2 text-[13px] font-semibold text-zinc-600 hover:text-zinc-900 transition-colors rounded-xl hover:bg-zinc-50"
     onClick={onClick}
     type="button"
   >
@@ -16,6 +16,37 @@ const MenuItem = ({ icon: Icon, label, onClick }) => (
 const getLocalDateTimeInputValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return localDate.toISOString().slice(0, 16);
+};
+          
+const generateTimeOptions = (selectedDateStr) => {
+  const options = [];
+  
+  // Calculate current date and time in the user's local timezone
+  const now = new Date();
+  const todayStr = getLocalDateTimeInputValue().split('T')[0];
+  const currentHours = now.getHours();
+  const currentMinutes = now.getMinutes();
+
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      // If the selected date is today, disable/filter out times in the past
+      if (selectedDateStr === todayStr) {
+        if (h < currentHours || (h === currentHours && m < currentMinutes)) {
+          continue; // Skip past options for today
+        }
+      }
+
+      const hh = h.toString().padStart(2, '0');
+      const mm = m.toString().padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      options.push({
+        value: `${hh}:${mm}`,
+        label: `${displayH}:${mm} ${ampm}`
+      });
+    }
+  }
+  return options;
 };
 
 const StatusActionsMenu = ({ application, onAction }) => {
@@ -36,7 +67,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
   const status = application?.status;
-  const isTerminal = ['Rejected', 'Hired', 'Withdrawn', 'Job Closed', 'Job Deleted'].includes(status);
+  const isTerminal = ['Rejected', 'Hired', 'Withdrawn', 'Job Deleted'].includes(status);
 
   const canReschedule = (() => {
     if (status !== 'Interview Scheduled') return false;
@@ -49,14 +80,15 @@ const StatusActionsMenu = ({ application, onAction }) => {
   const hasPendingReInterview = application?.reInterviewRequest?.status === 'pending';
 
   const getAllowedActions = () => {
-    if (status === 'Applied' || status === 'Under Review') return ['shortlist', 'reject'];
+    if (status === 'Applied') return ['shortlist', 'reject'];
     if (status === 'Shortlisted') {
       return hasCompletedInterview ? ['accept', 'reject'] : ['interview', 'reject'];
     }
     if (status === 'Interview Scheduled') {
       return canReschedule ? ['reschedule', 'reject'] : ['reject'];
     }
-    if (status === 'Interviewed') return ['accept', 'shortlist', 'reject'];
+    if (status === 'Interviewed') return ['finalist', 'reject'];
+    if (status === 'Finalist') return ['accept', 'reject'];
     return [];
   };
 
@@ -143,7 +175,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-slate-700 hover:bg-slate-50"
+        className="inline-flex items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 py-2 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-colors shadow-sm"
       >
         <MoreHorizontal className="h-4 w-4" />
       </button>
@@ -151,11 +183,14 @@ const StatusActionsMenu = ({ application, onAction }) => {
         createPortal(
           <div
             ref={dropdownRef}
-            className="fixed w-52 rounded-xl border border-slate-200 bg-white shadow-xl z-40 overflow-hidden"
+            className="fixed w-[220px] rounded-2xl border border-zinc-200 bg-white p-1 shadow-lg z-40 flex flex-col gap-0.5"
             style={{ top: menuPosition.top, left: menuPosition.left }}
           >
             {allowedActions.includes('shortlist') && (
               <MenuItem icon={CheckCircle2} label="Shortlist" onClick={() => { setOpen(false); onAction('shortlist'); }} />
+            )}
+            {allowedActions.includes('finalist') && (
+              <MenuItem icon={CheckCircle2} label="Mark as Finalist" onClick={() => { setOpen(false); onAction('finalist'); }} />
             )}
             {allowedActions.includes('accept') && (
               <MenuItem icon={Handshake} label="Accept" onClick={() => { setOpen(false); onAction('accept'); }} />
@@ -170,11 +205,11 @@ const StatusActionsMenu = ({ application, onAction }) => {
               <MenuItem icon={XCircle} label="Reject" onClick={() => { setOpen(false); setRejectOpen(true); }} />
             )}
             {allowedActions.length === 0 && !hasPendingReInterview && (
-              <div className="px-3 py-2 text-xs text-slate-500">No actions available for this status.</div>
+              <div className="px-3 py-3 text-xs text-zinc-500 text-center italic font-medium">No actions available for this status.</div>
             )}
             {hasPendingReInterview && (
               <>
-                <div className="border-t border-slate-100 my-1" />
+                <div className="border-t border-zinc-100 my-0.5 mx-2" />
                 <MenuItem icon={Check} label="Approve Re-Interview" onClick={() => { setOpen(false); setInterviewError(''); setReInterviewApproveOpen(true); }} />
                 <MenuItem icon={XCircle} label="Deny Request" onClick={() => { setOpen(false); setReInterviewDenyOpen(true); }} />
               </>
@@ -187,9 +222,9 @@ const StatusActionsMenu = ({ application, onAction }) => {
       {/* Reject dialog */}
       {rejectOpen && !isTerminal && allowedActions.includes('reject') && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30">
-          <div className="w-full max-w-md rounded-xl bg-white p-4 border border-slate-200">
-            <h3 className="text-base font-semibold text-slate-900 mb-2">Reject application</h3>
-            <p className="text-sm text-slate-600 mb-3">Add optional feedback for the candidate.</p>
+          <div className="w-full max-w-md rounded-xl bg-white p-4 border border-zinc-200">
+            <h3 className="text-base font-semibold text-zinc-900 mb-2">Reject application</h3>
+            <p className="text-sm text-zinc-600 mb-3">Add optional feedback for the candidate.</p>
             <Textarea
               name="feedback"
               label="Feedback"
@@ -199,7 +234,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
             />
             <div className="flex justify-end gap-2 mt-4">
               <button
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                 onClick={() => { setRejectOpen(false); setFeedback(''); }}
               >
                 Cancel
@@ -222,41 +257,79 @@ const StatusActionsMenu = ({ application, onAction }) => {
       {/* Interview dialog */}
       {interviewOpen && !isTerminal && (allowedActions.includes('interview') || allowedActions.includes('reschedule')) && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 border border-slate-200 shadow-xl">
-            <h3 className="text-base font-semibold text-slate-900 mb-1">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 border border-zinc-200 shadow-xl">
+            <h3 className="text-base font-semibold text-zinc-900 mb-1">
               {allowedActions.includes('reschedule') ? 'Reschedule Interview' : 'Schedule Interview'}
             </h3>
-            <p className="text-sm text-slate-500 mb-4">Set interview start and end. Start cannot be in the past and end must be after start.</p>
+            <p className="text-sm text-zinc-500 mb-4">Set interview start and end. Start cannot be in the past and end must be after start.</p>
             <div className="mb-3">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Interview Start <span className="text-rose-500">*</span></label>
-              <input
-                type="datetime-local"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                value={interviewStart}
-                onChange={(e) => {
-                  setInterviewError('');
-                  setInterviewStart(e.target.value);
-                }}
-                min={getLocalDateTimeInputValue()}
-              />
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Interview Start <span className="text-rose-500">*</span></label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  className="w-2/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  value={interviewStart ? interviewStart.split('T')[0] : ''}
+                  onChange={(e) => {
+                    setInterviewError('');
+                    const newDate = e.target.value;
+                    const currentTime = interviewStart ? interviewStart.split('T')[1] : '09:00';
+                    setInterviewStart(newDate ? `${newDate}T${currentTime}` : '');
+                  }}
+                  min={getLocalDateTimeInputValue().split('T')[0]}
+                />
+                <select
+                  className="w-1/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  value={interviewStart ? interviewStart.split('T')[1] : ''}
+                  onChange={(e) => {
+                    setInterviewError('');
+                    const newTime = e.target.value;
+                    const currentDate = (interviewStart && interviewStart.split('T')[0]) || getLocalDateTimeInputValue().split('T')[0];
+                    setInterviewStart(`${currentDate}T${newTime}`);
+                  }}
+                >
+                  <option value="" disabled>Time</option>
+                  {generateTimeOptions(interviewStart ? interviewStart.split('T')[0] : '').map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="mb-3">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Interview End <span className="text-rose-500">*</span></label>
-              <input
-                type="datetime-local"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                value={interviewDeadline}
-                onChange={(e) => {
-                  setInterviewError('');
-                  setInterviewDeadline(e.target.value);
-                }}
-                min={interviewStart || getLocalDateTimeInputValue()}
-              />
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Interview End <span className="text-rose-500">*</span></label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  className="w-2/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  value={interviewDeadline ? interviewDeadline.split('T')[0] : ''}
+                  onChange={(e) => {
+                    setInterviewError('');
+                    const newDate = e.target.value;
+                    const currentTime = interviewDeadline ? interviewDeadline.split('T')[1] : '17:00';
+                    setInterviewDeadline(newDate ? `${newDate}T${currentTime}` : '');
+                  }}
+                  min={interviewStart ? interviewStart.split('T')[0] : getLocalDateTimeInputValue().split('T')[0]}
+                />
+                <select
+                  className="w-1/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  value={interviewDeadline ? interviewDeadline.split('T')[1] : ''}
+                  onChange={(e) => {
+                    setInterviewError('');
+                    const newTime = e.target.value;
+                    const currentDate = (interviewDeadline && interviewDeadline.split('T')[0]) || (interviewStart ? interviewStart.split('T')[0] : getLocalDateTimeInputValue().split('T')[0]);
+                    setInterviewDeadline(`${currentDate}T${newTime}`);
+                  }}
+                >
+                  <option value="" disabled>Time</option>
+                  {generateTimeOptions(interviewDeadline ? interviewDeadline.split('T')[0] : '').map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="mb-1">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Instructions (optional)</label>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Instructions (optional)</label>
               <textarea
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
                 rows={3}
                 value={instructions}
                 onChange={(e) => {
@@ -273,7 +346,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
             )}
             <div className="flex justify-end gap-2 mt-4">
               <button
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
                 onClick={() => {
                   setInterviewOpen(false);
                   setInterviewError('');
@@ -313,38 +386,82 @@ const StatusActionsMenu = ({ application, onAction }) => {
       {/* Re-Interview Approve Dialog */}
       {reInterviewApproveOpen && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 border border-slate-200 shadow-xl">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 border border-zinc-200 shadow-xl">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
                 <Check className="w-4 h-4 text-white" />
               </div>
-              <h3 className="text-base font-semibold text-slate-900">Approve Re-Interview</h3>
+              <h3 className="text-base font-semibold text-zinc-900">Approve Re-Interview</h3>
             </div>
-            <p className="text-sm text-slate-500 mb-4">Set a new interview window. The candidate will be notified and can take the interview again.</p>
+            <p className="text-sm text-zinc-500 mb-4">Set a new interview window. The candidate will be notified and can take the interview again.</p>
             <div className="mb-3">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Interview Start <span className="text-rose-500">*</span></label>
-              <input
-                type="datetime-local"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                value={interviewStart}
-                onChange={(e) => { setInterviewError(''); setInterviewStart(e.target.value); }}
-                min={getLocalDateTimeInputValue()}
-              />
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Interview Start <span className="text-rose-500">*</span></label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  className="w-2/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  value={interviewStart ? interviewStart.split('T')[0] : ''}
+                  onChange={(e) => {
+                    setInterviewError('');
+                    const newDate = e.target.value;
+                    const currentTime = interviewStart ? interviewStart.split('T')[1] : '09:00';
+                    setInterviewStart(newDate ? `${newDate}T${currentTime}` : '');
+                  }}
+                  min={getLocalDateTimeInputValue().split('T')[0]}
+                />
+                <select
+                  className="w-1/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  value={interviewStart ? interviewStart.split('T')[1] : ''}
+                  onChange={(e) => {
+                    setInterviewError('');
+                    const newTime = e.target.value;
+                    const currentDate = (interviewStart && interviewStart.split('T')[0]) || getLocalDateTimeInputValue().split('T')[0];
+                    setInterviewStart(`${currentDate}T${newTime}`);
+                  }}
+                >
+                  <option value="" disabled>Time</option>
+                  {generateTimeOptions(interviewStart ? interviewStart.split('T')[0] : '').map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="mb-3">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Interview End <span className="text-rose-500">*</span></label>
-              <input
-                type="datetime-local"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                value={interviewDeadline}
-                onChange={(e) => { setInterviewError(''); setInterviewDeadline(e.target.value); }}
-                min={interviewStart || getLocalDateTimeInputValue()}
-              />
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Interview End <span className="text-rose-500">*</span></label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  className="w-2/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  value={interviewDeadline ? interviewDeadline.split('T')[0] : ''}
+                  onChange={(e) => {
+                    setInterviewError('');
+                    const newDate = e.target.value;
+                    const currentTime = interviewDeadline ? interviewDeadline.split('T')[1] : '17:00';
+                    setInterviewDeadline(newDate ? `${newDate}T${currentTime}` : '');
+                  }}
+                  min={interviewStart ? interviewStart.split('T')[0] : getLocalDateTimeInputValue().split('T')[0]}
+                />
+                <select
+                  className="w-1/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  value={interviewDeadline ? interviewDeadline.split('T')[1] : ''}
+                  onChange={(e) => {
+                    setInterviewError('');
+                    const newTime = e.target.value;
+                    const currentDate = (interviewDeadline && interviewDeadline.split('T')[0]) || (interviewStart ? interviewStart.split('T')[0] : getLocalDateTimeInputValue().split('T')[0]);
+                    setInterviewDeadline(`${currentDate}T${newTime}`);
+                  }}
+                >
+                  <option value="" disabled>Time</option>
+                  {generateTimeOptions(interviewDeadline ? interviewDeadline.split('T')[0] : '').map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="mb-1">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Instructions (optional)</label>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">Instructions (optional)</label>
               <textarea
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
                 rows={3}
                 value={instructions}
                 onChange={(e) => { setInterviewError(''); setInstructions(e.target.value); }}
@@ -356,7 +473,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
             )}
             <div className="flex justify-end gap-2 mt-4">
               <button
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
                 onClick={() => { setReInterviewApproveOpen(false); setInterviewError(''); setInterviewStart(getLocalDateTimeInputValue()); setInterviewDeadline(''); setInstructions(''); }}
               >
                 Cancel
@@ -385,9 +502,9 @@ const StatusActionsMenu = ({ application, onAction }) => {
       {/* Re-Interview Deny Dialog */}
       {reInterviewDenyOpen && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 border border-slate-200 shadow-xl">
-            <h3 className="text-base font-semibold text-slate-900 mb-2">Deny Re-Interview Request</h3>
-            <p className="text-sm text-slate-500 mb-3">Optionally provide a note explaining your decision.</p>
+          <div className="w-full max-w-md rounded-xl bg-white p-6 border border-zinc-200 shadow-xl">
+            <h3 className="text-base font-semibold text-zinc-900 mb-2">Deny Re-Interview Request</h3>
+            <p className="text-sm text-zinc-500 mb-3">Optionally provide a note explaining your decision.</p>
             <Textarea
               name="denyNote"
               label="Note to candidate (optional)"
@@ -397,7 +514,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
             />
             <div className="flex justify-end gap-2 mt-4">
               <button
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
                 onClick={() => { setReInterviewDenyOpen(false); setDenyNote(''); }}
               >
                 Cancel

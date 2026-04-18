@@ -313,8 +313,8 @@ const JobCard = ({ job, index }) => {
         </div>
 
         {/* Job Description Preview */}
-        <div className="mb-6">
-          <p className="text-sm text-zinc-600 line-clamp-2 leading-relaxed">
+        <div className="mb-6 overflow-hidden">
+          <p className="text-sm text-zinc-600 line-clamp-2 leading-relaxed break-words overflow-wrap-anywhere">
             {job.description}
           </p>
         </div>
@@ -380,8 +380,8 @@ const JobCard = ({ job, index }) => {
                     <FileText className="w-4 h-4 text-zinc-400" />
                     Job Description
                   </h4>
-                  <div className="text-sm text-zinc-700 bg-zinc-50/50 border border-zinc-200/60 p-4 sm:p-5 rounded-xl text-left">
-                    <p className="whitespace-pre-line leading-relaxed">{job.description}</p>
+                  <div className="text-sm text-zinc-700 bg-zinc-50/50 border border-zinc-200/60 p-4 sm:p-5 rounded-xl text-left overflow-hidden">
+                    <p className="whitespace-pre-line leading-relaxed break-words break-all sm:break-words overflow-wrap-anywhere">{job.description}</p>
                   </div>
                 </div>
 

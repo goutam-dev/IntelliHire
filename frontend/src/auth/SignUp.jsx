@@ -373,19 +373,25 @@ export function SignUp() {
   );
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 relative overflow-hidden font-sans">
+      {/* Professional Minimalist Background */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+        <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-indigo-500 opacity-[0.06] blur-[100px]"></div>
+      </div>
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md relative z-10"
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 text-xl font-semibold text-slate-900">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900">
-              <LogoMark className="h-6 w-6" />
+          <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold text-zinc-900 group">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-xl shadow-zinc-900/20 group-hover:scale-105 transition-transform duration-300">
+              <LogoMark className="h-7 w-7" />
             </span>
-            <span>IntelliHire</span>
+            <span className="tracking-tight">IntelliHire</span>
           </Link>
         </div>
 
@@ -394,13 +400,14 @@ export function SignUp() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="bg-white rounded-2xl shadow-lg border border-slate-200 p-8"
+            className="bg-white/80 backdrop-blur-xl rounded-[24px] shadow-2xl shadow-zinc-200/50 border border-zinc-100 p-8 sm:p-10"
           >
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Create Your Account</h2>
-            <p className="text-slate-600 mb-8">Choose your role to get started</p>
+            <h2 className="text-2xl font-extrabold text-zinc-900 mb-2 tracking-tight">Create Your Account</h2>
+            <p className="text-zinc-500 text-sm font-medium mb-8">Choose your role to get started</p>
 
             {errors.general && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-800 text-sm font-medium flex items-center gap-3 shadow-sm">
+                <svg className="w-5 h-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {errors.general}
               </div>
             )}
@@ -408,46 +415,46 @@ export function SignUp() {
             <div className="space-y-4">
               <button
                 onClick={() => handleRoleSelect('employer')}
-                className={`w-full p-6 border-2 rounded-xl hover:border-slate-900 hover:shadow-md transition-all text-left group ${
-                  role === 'employer' ? 'border-slate-900 bg-slate-50' : 'border-slate-200'
+                className={`w-full p-6 border-2 rounded-2xl hover:border-zinc-900 transition-all text-left group ${
+                  role === 'employer' ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 bg-white hover:shadow-lg hover:shadow-zinc-200/50 hover:-translate-y-0.5'
                 }`}
               >
                 <div className="flex items-start gap-4">
-                  <div className={`p-3 rounded-lg transition-colors ${
-                    role === 'employer' 
-                      ? 'bg-slate-900 text-white' 
-                      : 'bg-slate-100 group-hover:bg-slate-900 group-hover:text-white'
+                  <div className={`p-3 rounded-xl transition-all duration-300 ${
+                    role === 'employer'
+                      ? 'bg-zinc-900 text-white shadow-md shadow-zinc-900/20'
+                      : 'bg-zinc-100 text-zinc-600 group-hover:bg-zinc-900 group-hover:text-white'
                   }`}>
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900 mb-1">I'm looking to hire</h3>
-                    <p className="text-sm text-slate-600">Post jobs and find the perfect candidates</p>
+                    <h3 className="font-extrabold text-zinc-900 mb-1">I'm looking to hire</h3>
+                    <p className="text-sm font-medium text-zinc-500">Post jobs and find the perfect candidates</p>
                   </div>
                 </div>
               </button>
 
               <button
                 onClick={() => handleRoleSelect('candidate')}
-                className={`w-full p-6 border-2 rounded-xl hover:border-slate-900 hover:shadow-md transition-all text-left group ${
-                  role === 'candidate' ? 'border-slate-900 bg-slate-50' : 'border-slate-200'
+                className={`w-full p-6 border-2 rounded-2xl hover:border-zinc-900 transition-all text-left group ${
+                  role === 'candidate' ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 bg-white hover:shadow-lg hover:shadow-zinc-200/50 hover:-translate-y-0.5'
                 }`}
               >
                 <div className="flex items-start gap-4">
-                  <div className={`p-3 rounded-lg transition-colors ${
-                    role === 'candidate' 
-                      ? 'bg-slate-900 text-white' 
-                      : 'bg-slate-100 group-hover:bg-slate-900 group-hover:text-white'
+                  <div className={`p-3 rounded-xl transition-all duration-300 ${
+                    role === 'candidate'
+                      ? 'bg-zinc-900 text-white shadow-md shadow-zinc-900/20'
+                      : 'bg-zinc-100 text-zinc-600 group-hover:bg-zinc-900 group-hover:text-white'
                   }`}>
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900 mb-1">I'm looking for a job</h3>
-                    <p className="text-sm text-slate-600">Browse jobs and apply to opportunities</p>
+                    <h3 className="font-extrabold text-zinc-900 mb-1">I'm looking for a job</h3>
+                    <p className="text-sm font-medium text-zinc-500">Browse jobs and apply to opportunities</p>
                   </div>
                 </div>
               </button>
@@ -464,30 +471,28 @@ export function SignUp() {
               <button
                 onClick={handleGoogleSignUp}
                 disabled={!role || loading}
-                className={`w-full flex items-center justify-center gap-3 px-4 py-3 border rounded-lg transition-all ${
-                  !role 
-                    ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' 
-                    : 'border-slate-300 bg-white hover:bg-slate-50 hover:border-slate-400'
+                className={`w-full flex items-center justify-center gap-3 px-4 py-3.5 border rounded-xl font-bold transition-all ${
+                  !role
+                    ? 'border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed'
+                    : 'border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 text-zinc-700 shadow-sm hover:shadow active:scale-[0.98]'
                 } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <svg className={`w-5 h-5 ${role ? 'drop-shadow-sm' : ''}`} viewBox="0 0 24 24">
                   <path fill={!role ? "#CBD5E1" : "#4285F4"} d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                   <path fill={!role ? "#CBD5E1" : "#34A853"} d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                   <path fill={!role ? "#CBD5E1" : "#FBBC05"} d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                   <path fill={!role ? "#CBD5E1" : "#EA4335"} d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
-                <span className={!role ? 'text-slate-400' : 'text-slate-900'}>
-                  {loading ? 'Connecting...' : 'Continue with Google'}
-                </span>
+                <span>{loading ? 'Connecting...' : 'Continue with Google'}</span>
               </button>
 
               {/* Divider */}
-              <div className="relative">
+              <div className="relative my-8">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-300"></div>
+                  <div className="w-full border-t border-zinc-200"></div>
                 </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-slate-500">OR</span>
+                <div className="relative flex justify-center text-[11px] font-extrabold uppercase tracking-widest">
+                  <span className="px-4 bg-white text-zinc-400">OR</span>
                 </div>
               </div>
 
@@ -495,17 +500,17 @@ export function SignUp() {
               <button
                 onClick={() => setStep(2)}
                 disabled={!role || loading}
-                className={`w-full py-3 rounded-lg font-semibold transition-all ${
-                  !role 
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-                    : 'bg-slate-900 text-white hover:bg-slate-800 hover:shadow-lg'
-                } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`w-full py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+                  !role
+                    ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed'
+                    : 'bg-zinc-900 text-white hover:bg-zinc-800 hover:shadow-xl hover:shadow-zinc-900/20 hover:-translate-y-0.5'
+                } ${loading ? 'opacity-50 cursor-not-allowed transform-none shadow-none' : ''}`}
               >
                 Continue with Email
               </button>
 
               {!role && (
-                <p className="text-xs text-center text-slate-500 mt-2">
+                <p className="text-[11px] font-bold text-center text-rose-500 uppercase tracking-wide mt-3 animate-pulse">
                   Please select a role above to continue
                 </p>
               )}
@@ -513,9 +518,9 @@ export function SignUp() {
               {role && <CaptchaMount />}
             </motion.div>
 
-            <div className="mt-6 text-center text-sm text-slate-600">
+            <div className="mt-8 text-center text-sm font-medium text-zinc-500">
               Already have an account?{' '}
-              <Link to="/sign-in" className="font-medium text-slate-900 hover:underline">
+              <Link to="/sign-in" className="font-bold text-zinc-900 hover:text-indigo-600 transition-colors">
                 Sign in
               </Link>
             </div>
@@ -527,100 +532,105 @@ export function SignUp() {
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-2xl shadow-lg border border-slate-200 p-8"
+            className="bg-white/90 backdrop-blur-xl rounded-[24px] shadow-2xl shadow-zinc-200/50 border border-zinc-100 p-8 sm:p-10"
           >
             <button
               onClick={() => setStep(1)}
-              className="mb-4 text-slate-600 hover:text-slate-900 flex items-center gap-2 text-sm"
+              className="mb-6 text-zinc-400 hover:text-zinc-900 flex items-center gap-2 text-sm font-bold transition-colors group"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back
+              <span className="p-1 rounded-md group-hover:bg-zinc-100 transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </span>
+              Back to roles
             </button>
 
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">
-              {role === 'employer' ? 'Employer' : 'Candidate'} Registration
-            </h2>
-            <p className="text-slate-600 mb-6">Fill in your details to continue</p>
+            <div className="mb-8">
+              <span className="inline-block px-3 py-1 mb-2 text-[10px] font-extrabold tracking-widest uppercase rounded-full bg-zinc-100 text-zinc-600">
+                {role === 'employer' ? 'Employer' : 'Candidate'} Registration
+              </span>
+              <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">
+                Complete Profile
+              </h2>
+              <p className="text-zinc-500 text-sm font-medium mt-1">Fill in your details to construct your account</p>
+            </div>
 
             {errors.general && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-800 text-sm font-medium flex items-center gap-3 shadow-sm">
+                <svg className="w-5 h-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {errors.general}
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-5">
               {/* Common Fields */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Full Name <span className="text-red-500">*</span>
+                <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
+                  Full Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   name="fullName"
                   value={formData.fullName}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent ${
-                    errors.fullName ? 'border-red-500' : 'border-slate-300'
+                  className={`w-full px-4 py-3 bg-zinc-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none ${
+                    errors.fullName ? 'border-rose-300 ring-4 ring-rose-50' : 'border-zinc-200'
                   }`}
                   placeholder="John Doe"
                 />
-                {errors.fullName && <p className="mt-1 text-sm text-red-600">{errors.fullName}</p>}
+                {errors.fullName && <p className="mt-2 text-xs font-semibold text-rose-600">{errors.fullName}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Email Address <span className="text-red-500">*</span>
+                <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
+                  Email Address <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="email"
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent ${
-                    errors.email ? 'border-red-500' : 'border-slate-300'
+                  className={`w-full px-4 py-3 bg-zinc-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none ${
+                    errors.email ? 'border-rose-300 ring-4 ring-rose-50' : 'border-zinc-200'
                   }`}
                   placeholder="john@example.com"
                 />
-                {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
+                {errors.email && <p className="mt-2 text-xs font-semibold text-rose-600">{errors.email}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Phone Number <span className="text-red-500">*</span>
+                <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
+                  Phone Number <span className="text-rose-500">*</span>
                 </label>
                 <PhoneInput
                   international
                   defaultCountry="US"
                   value={formData.phoneNumber}
                   onChange={(value) => setFormData(prev => ({ ...prev, phoneNumber: value || '' }))}
-                  className={`w-full px-4 py-2 border rounded-lg focus-within:ring-2 focus-within:ring-slate-900 focus-within:border-transparent [&_input]:!border-none [&_input]:!outline-none [&_input]:!shadow-none ${
-                    errors.phoneNumber ? 'border-red-500' : 'border-slate-300'
+                  className={`w-full px-4 py-3 bg-zinc-50 border rounded-xl focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-all font-medium text-zinc-900 outline-none [&_input]:!bg-transparent [&_input]:!border-none [&_input]:!outline-none [&_input]:!shadow-none ${
+                    errors.phoneNumber ? 'border-rose-300 ring-4 ring-rose-50' : 'border-zinc-200'
                   }`}
                 />
-                {errors.phoneNumber && <p className="mt-1 text-sm text-red-600">{errors.phoneNumber}</p>}
+                {errors.phoneNumber && <p className="mt-2 text-xs font-semibold text-rose-600">{errors.phoneNumber}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Password <span className="text-red-500">*</span>
-                </label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent ${
-                      errors.password ? 'border-red-500' : 'border-slate-300'
+                    className={`w-full px-4 py-3 bg-zinc-50 pr-10 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none ${
+                        errors.password ? 'border-rose-300 ring-4 ring-rose-50' : 'border-zinc-200'
                     }`}
                     placeholder="••••••••"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 transition-colors"
                   >
                     {showPassword ? (
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -634,16 +644,16 @@ export function SignUp() {
                     )}
                   </button>
                 </div>
-                {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
+                {errors.password && <p className="mt-2 text-xs font-semibold text-rose-600">{errors.password}</p>}
 
-                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs font-medium text-slate-700 mb-2">
+                <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-900 mb-3">
                     Password quality: {passedChecks}/{passwordChecks.length} checks passed
                   </p>
-                  <ul className="space-y-1">
+                  <ul className="space-y-2">
                     {passwordChecks.map((check) => (
-                      <li key={check.id} className={`text-xs flex items-center gap-2 ${check.passed ? 'text-emerald-700' : 'text-slate-600'}`}>
-                        <span aria-hidden="true">{check.passed ? '✓' : '○'}</span>
+                      <li key={check.id} className={`text-xs font-bold flex items-center gap-2 transition-colors ${check.passed ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                        <span aria-hidden="true" className={`flex items-center justify-center w-4 h-4 rounded-full ${check.passed ? 'bg-emerald-100 text-emerald-600' : 'bg-zinc-200 text-zinc-400'} text-[10px]`}>{check.passed ? '✓' : ''}</span>
                         <span>{check.label}</span>
                       </li>
                     ))}
@@ -652,8 +662,8 @@ export function SignUp() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Confirm Password <span className="text-red-500">*</span>
+                <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
+                  Confirm Password <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -661,21 +671,21 @@ export function SignUp() {
                     name="confirmPassword"
                     value={formData.confirmPassword}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent ${
-                      errors.confirmPassword
-                        ? 'border-red-500'
+                    className={`w-full px-4 py-3 bg-zinc-50 pr-10 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none ${
+                        errors.confirmPassword
+                        ? 'border-rose-300 ring-4 ring-rose-50'
                         : confirmPasswordStatus === 'match'
-                          ? 'border-emerald-500'
+                          ? 'border-emerald-300 ring-2 ring-emerald-50 focus:border-emerald-500 focus:ring-emerald-500'
                           : confirmPasswordStatus === 'mismatch'
-                            ? 'border-amber-500'
-                            : 'border-slate-300'
-                    } transition-colors duration-200`}
+                            ? 'border-amber-300 ring-2 ring-amber-50 focus:border-amber-500 focus:ring-amber-500'
+                            : 'border-zinc-200'
+                    }`}
                     placeholder="••••••••"
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 transition-colors"
                   >
                     {showConfirmPassword ? (
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -689,7 +699,7 @@ export function SignUp() {
                     )}
                   </button>
                 </div>
-                {errors.confirmPassword && <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>}
+                {errors.confirmPassword && <p className="mt-2 text-xs font-semibold text-rose-600">{errors.confirmPassword}</p>}
 
                 <AnimatePresence mode="wait" initial={false}>
                   {confirmPasswordStatus === 'match' && (
@@ -699,9 +709,9 @@ export function SignUp() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 4 }}
                       transition={{ duration: 0.18 }}
-                      className="mt-2 text-xs text-emerald-700 flex items-center gap-2"
+                      className="mt-3 text-xs font-bold text-emerald-600 flex items-center gap-2 bg-emerald-50 w-fit px-3 py-1.5 rounded-full"
                     >
-                      <span aria-hidden="true">✓</span>
+                      <span aria-hidden="true" className="flex items-center justify-center w-3 h-3 bg-emerald-200 rounded-full text-[8px] text-emerald-800">✓</span>
                       Passwords match.
                     </motion.p>
                   )}
@@ -712,9 +722,9 @@ export function SignUp() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 4 }}
                       transition={{ duration: 0.18 }}
-                      className="mt-2 text-xs text-amber-700 flex items-center gap-2"
+                      className="mt-3 text-xs font-bold text-amber-600 flex items-center gap-2 bg-amber-50 w-fit px-3 py-1.5 rounded-full"
                     >
-                      <span aria-hidden="true">!</span>
+                      <span aria-hidden="true" className="flex items-center justify-center w-3 h-3 bg-amber-200 rounded-full text-[8px] text-amber-800">!</span>
                       Passwords do not match yet.
                     </motion.p>
                   )}
@@ -725,9 +735,9 @@ export function SignUp() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 4 }}
                       transition={{ duration: 0.18 }}
-                      className="mt-2 text-xs text-slate-500 flex items-center gap-2"
+                      className="mt-3 text-xs font-bold text-zinc-500 flex items-center gap-2"
                     >
-                      <span aria-hidden="true">i</span>
+                      <span aria-hidden="true" className="flex items-center justify-center w-4 h-4 bg-zinc-200 rounded-full text-[10px] text-zinc-600">i</span>
                       Enter the password above first, then confirm it.
                     </motion.p>
                   )}
@@ -738,41 +748,41 @@ export function SignUp() {
               {role === 'employer' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Company Name <span className="text-red-500">*</span>
+                    <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
+                      Company Name <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
                       name="companyName"
                       value={formData.companyName}
                       onChange={handleInputChange}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent ${
-                        errors.companyName ? 'border-red-500' : 'border-slate-300'
+                      className={`w-full px-4 py-3 bg-zinc-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none ${
+                        errors.companyName ? 'border-rose-300 ring-4 ring-rose-50' : 'border-zinc-200'
                       }`}
                       placeholder="Acme Inc"
                     />
-                    {errors.companyName && <p className="mt-1 text-sm text-red-600">{errors.companyName}</p>}
+                    {errors.companyName && <p className="mt-2 text-xs font-semibold text-rose-600">{errors.companyName}</p>}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Industry/Sector <span className="text-red-500">*</span>
+                    <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
+                      Industry/Sector <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
                       name="industry"
                       value={formData.industry}
                       onChange={handleInputChange}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent ${
-                        errors.industry ? 'border-red-500' : 'border-slate-300'
+                      className={`w-full px-4 py-3 bg-zinc-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none ${
+                        errors.industry ? 'border-rose-300 ring-4 ring-rose-50' : 'border-zinc-200'
                       }`}
                       placeholder="Technology"
                     />
-                    {errors.industry && <p className="mt-1 text-sm text-red-600">{errors.industry}</p>}
+                    {errors.industry && <p className="mt-2 text-xs font-semibold text-rose-600">{errors.industry}</p>}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
                       Company Website
                     </label>
                     <input
@@ -780,7 +790,7 @@ export function SignUp() {
                       name="companyWebsite"
                       value={formData.companyWebsite}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                      className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none"
                       placeholder="https://example.com"
                     />
                   </div>
@@ -790,7 +800,7 @@ export function SignUp() {
               {/* Candidate-specific fields */}
               {role === 'candidate' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-2">
                     Professional Headline
                   </label>
                   <input
@@ -798,7 +808,7 @@ export function SignUp() {
                     name="professionalHeadline"
                     value={formData.professionalHeadline}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900 outline-none"
                     placeholder="e.g., Software Engineer"
                   />
                 </div>
@@ -807,7 +817,7 @@ export function SignUp() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-zinc-900 text-white py-3.5 rounded-xl font-bold hover:bg-zinc-800 focus:ring-4 focus:ring-zinc-900/20 transition-all shadow-xl shadow-zinc-900/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none mt-2"
               >
                 {loading ? 'Creating Account...' : 'Create Account'}
               </button>
@@ -822,37 +832,38 @@ export function SignUp() {
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-2xl shadow-lg border border-slate-200 p-8"
+            className="bg-white/90 backdrop-blur-xl rounded-[24px] shadow-2xl shadow-zinc-200/50 border border-zinc-100 p-8 sm:p-10"
           >
-            <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-100 rounded-full mb-4">
-                <svg className="w-8 h-8 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-50 rounded-2xl mb-6 shadow-inner border border-indigo-100">
+                <svg className="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Verify Your Email</h2>
-              <p className="text-slate-600">
+              <h2 className="text-2xl font-extrabold text-zinc-900 mb-2 tracking-tight">Verify Your Email</h2>
+              <p className="text-zinc-500 text-sm font-medium">
                 We've sent a verification code to<br />
-                <span className="font-medium text-slate-900">{formData.email}</span>
+                <span className="font-bold text-zinc-900 block mt-1">{formData.email}</span>
               </p>
             </div>
 
             {errors.verification && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-800 text-sm font-medium flex items-center gap-3 shadow-sm">
+                <svg className="w-5 h-5 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {errors.verification}
               </div>
             )}
 
-            <form onSubmit={handleVerification} className="space-y-4">
+            <form onSubmit={handleVerification} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label className="block text-[11px] font-extrabold text-zinc-900 uppercase tracking-widest mb-3 text-center">
                   Verification Code
                 </label>
                 <input
                   type="text"
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent text-center text-2xl tracking-widest"
+                  className="w-full px-4 py-4 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-center text-3xl font-black tracking-[0.5em] text-zinc-900 outline-none shadow-inner"
                   placeholder="000000"
                   maxLength={6}
                 />
@@ -861,13 +872,13 @@ export function SignUp() {
               <button
                 type="submit"
                 disabled={loading || verificationCode.length !== 6}
-                className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-zinc-900 text-white py-3.5 rounded-xl font-bold hover:bg-zinc-800 focus:ring-4 focus:ring-zinc-900/20 transition-all shadow-xl shadow-zinc-900/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {loading ? 'Verifying...' : 'Verify Email'}
               </button>
             </form>
 
-            <div className="mt-4 text-center text-sm text-slate-600">
+            <div className="mt-8 text-center text-sm font-medium text-zinc-500 pt-6 border-t border-zinc-100">
               Didn't receive the code?{' '}
               <button
                 onClick={async () => {
@@ -883,10 +894,10 @@ export function SignUp() {
                     setLoading(false);
                   }
                 }}
-                className="font-medium text-slate-900 hover:underline disabled:opacity-50"
+                className="font-bold text-indigo-600 hover:text-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={loading || resendCooldown > 0}
               >
-                {resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend'}
+                {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend'}
               </button>
             </div>
           </motion.div>
