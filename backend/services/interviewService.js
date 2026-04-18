@@ -451,13 +451,29 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
   if (!turn) throw new Error(`Turn ${turnIndex} not found`);
 
   const isUnanswered = !answerText || answerText.startsWith('(no response');
-  const isNonScoringMetaTurn = isClarificationOrCorrection(answerText || '');
+  const answerClassification = isUnanswered
+    ? {
+      label: 'unanswered',
+      isMeta: false,
+      source: 'fallback',
+      reason: 'Empty answer or explicit no-response marker.',
+    }
+    : await classifyAnswerWithLLM({
+      answerText: answerText || '',
+      questionText: turn.question || '',
+      jobTitle: session.jobTitle || '',
+    });
+  const isNonScoringMetaTurn = !!answerClassification.isMeta;
   const shouldReask = isNonScoringMetaTurn && canIssueReaskForTurn(session, turnIndex);
 
   // Update turn with answer
   turn.answer = answerText || '(no response)';
   turn.answerDurationMs = answerDurationMs;
   turn.isUnanswered = isUnanswered;
+  turn.answerClassification = answerClassification.label;
+  turn.isClarificationOrCorrection = isNonScoringMetaTurn;
+  turn.answerClassificationSource = answerClassification.source;
+  turn.answerClassificationReason = answerClassification.reason;
   turn.answeredAt = new Date();
 
   // Update conversation history
@@ -609,7 +625,7 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
         const byIndex = perAnswer.find((item) => Number(item?.turnIndex) === idx);
         const byOrder = perAnswer[idx];
         const source = byIndex || byOrder;
-        const nonScoringMetaTurn = isClarificationOrCorrection(turn.answer || '');
+        const nonScoringMetaTurn = isTurnNonScoringMeta(turn);
 
         if (source) {
           turn.evaluation = {
@@ -805,6 +821,103 @@ function normalizeQuestionOutput(rawText) {
   return withoutPrefix;
 }
 
+async function classifyAnswerWithLLM({ answerText, questionText = '', jobTitle = '' } = {}) {
+  const value = String(answerText || '').trim();
+  const question = String(questionText || '').trim();
+  const role = String(jobTitle || '').trim();
+  if (!value) {
+    return {
+      label: 'unanswered',
+      isMeta: false,
+      source: 'fallback',
+      reason: 'Empty answer text.',
+    };
+  }
+
+  const prompt =
+    `You are classifying a candidate's interview reply into one of four labels:\n` +
+    `- normal: substantive attempt to answer the interview question\n` +
+    `- clarification: asks to repeat/rephrase/clarify the question\n` +
+    `- correction: explicitly corrects transcription/wording (for example: \"I meant X, not Y\")\n` +
+    `- unanswered: no meaningful answer\n\n` +
+    `Important decision rule:\n` +
+    `Use the interview question context to judge whether the reply is a substantive attempt at answering.\n` +
+    `If the reply addresses the asked topic with technical detail, classify as normal.\n` +
+    `Do NOT mark a substantive technical answer as correction just because it contains words like \"not\".\n` +
+    `If the reply includes concrete technical content, classify it as normal unless it is clearly meta-only.\n\n` +
+    `Return only valid JSON with this exact schema:\n` +
+    `{\"label\":\"normal|clarification|correction|unanswered\",\"reason\":\"short reason\"}\n\n` +
+    `Role: ${role || 'Not provided'}\n` +
+    `Interview question:\n${question || 'Not available'}\n\n` +
+    `Candidate reply:\n${value}`;
+
+  try {
+    const text = await callGroqChat([
+      { role: 'system', content: prompt },
+    ], { maxTokens: 120, temperature: 0.0 });
+
+    const parsed = parseJsonObject(text);
+    const label = normalizeAnswerClassificationLabel(parsed?.label);
+    const reason = typeof parsed?.reason === 'string' ? parsed.reason.trim().slice(0, 220) : '';
+
+    return {
+      label,
+      isMeta: label === 'clarification' || label === 'correction',
+      source: 'llm',
+      reason: reason || 'LLM classification.',
+    };
+  } catch (err) {
+    logger.warn(`[Interview] LLM answer classification failed, using fallback: ${err.message}`);
+    const fallbackMeta = isClarificationOrCorrection(value);
+    return {
+      label: fallbackMeta ? 'clarification' : 'normal',
+      isMeta: fallbackMeta,
+      source: 'fallback',
+      reason: fallbackMeta
+        ? 'Regex fallback detected clarification/correction signal.'
+        : 'Fallback defaulted to normal answer.',
+    };
+  }
+}
+
+function normalizeAnswerClassificationLabel(value) {
+  const label = String(value || '').trim().toLowerCase();
+  if (label === 'clarification') return 'clarification';
+  if (label === 'correction') return 'correction';
+  if (label === 'unanswered') return 'unanswered';
+  return 'normal';
+}
+
+function isTurnNonScoringMeta(turn) {
+  if (!turn || typeof turn !== 'object') return false;
+
+  if (typeof turn.isClarificationOrCorrection === 'boolean') {
+    return turn.isClarificationOrCorrection;
+  }
+
+  const label = normalizeAnswerClassificationLabel(turn.answerClassification);
+  if (label === 'clarification' || label === 'correction') return true;
+
+  return isClarificationOrCorrection(turn.answer || '');
+}
+
+function parseJsonObject(text) {
+  const value = String(text || '').trim();
+  if (!value) return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    const match = value.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
 function isClarificationRequest(text) {
   const value = String(text || '').trim();
   if (!value) return false;
@@ -825,7 +938,6 @@ function isCorrectionStatement(text) {
 
   const patterns = [
     /\b(i\s*(mean|meant))\b/i,
-    /\b(not\s+\w+)\b/i,
     /\b(to\s+clarify|let\s+me\s+clarify|correction)\b/i,
     /\b(stt|speech\s*to\s*text|transcription)\s*(is|was)?\s*(wrong|incorrect|mistaken|misheard)\b/i,
     /\b(mern|mean|react|angular|node|mongo(db)?)\b.*\b(not|instead|actually)\b.*\b(mern|mean|react|angular|node|mongo(db)?)\b/i,
@@ -957,7 +1069,7 @@ function buildBatchEvaluationPrompt(session, batchTurns, offset) {
       `Phase: ${t.phase || 'main'}\n` +
       `Question: ${smartTruncate(t.question || '', 280)}\n` +
       `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
-      `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isClarificationOrCorrection(t.answer || '') ? 'true' : 'false'}`
+      `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isTurnNonScoringMeta(t) ? 'true' : 'false'}, classification=${normalizeAnswerClassificationLabel(t.answerClassification)}`
     );
   }).join('\n\n');
 
@@ -987,7 +1099,7 @@ function normalizeBatchEvaluations(parsed, batchTurns, offset) {
     const fromIndex = raw.find((item) => Number(item?.turnIndex) === turnIndex);
     const fromOrder = raw[idx];
     const source = fromIndex || fromOrder || {};
-    const metaTurn = isClarificationOrCorrection(turn.answer || '');
+    const metaTurn = isTurnNonScoringMeta(turn);
     const unanswered = !!turn.isUnanswered;
     const parsedScore = Number(source.score);
 
@@ -1028,7 +1140,7 @@ function buildFinalCalibrationPrompt(session, provisionalEvaluations) {
     `Phase: ${t.phase || 'main'}\n` +
     `Question: ${smartTruncate(t.question || '', 260)}\n` +
     `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
-    `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isClarificationOrCorrection(t.answer || '') ? 'true' : 'false'}`
+    `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isTurnNonScoringMeta(t) ? 'true' : 'false'}, classification=${normalizeAnswerClassificationLabel(t.answerClassification)}`
   )).join('\n\n');
 
   const provisional = (provisionalEvaluations || []).map((item) => (
@@ -1097,7 +1209,7 @@ function normalizeFinalSummary(summary, turns = []) {
     const source = byIndex || byOrder || {};
 
     const isUnanswered = turns[idx]?.isUnanswered;
-    const nonScoringMetaTurn = isClarificationOrCorrection(turns[idx]?.answer || '');
+    const nonScoringMetaTurn = isTurnNonScoringMeta(turns[idx]);
     const parsedScore = Number(source.score);
     const boundedScore = nonScoringMetaTurn
       ? null

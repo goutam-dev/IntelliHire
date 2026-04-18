@@ -25,6 +25,18 @@ const turnSchema = new mongoose.Schema({
   answer: { type: String, default: '' },
   answerDurationMs: { type: Number, default: 0 },
   isUnanswered: { type: Boolean, default: false },
+  answerClassification: {
+    type: String,
+    enum: ['normal', 'clarification', 'correction', 'unanswered'],
+    default: 'normal',
+  },
+  isClarificationOrCorrection: { type: Boolean, default: false },
+  answerClassificationSource: {
+    type: String,
+    enum: ['llm', 'fallback'],
+    default: 'fallback',
+  },
+  answerClassificationReason: { type: String, default: '' },
   evaluation: {
     score: { type: Number, min: 0, max: 10, default: null },
     feedback: { type: String, default: '' },
