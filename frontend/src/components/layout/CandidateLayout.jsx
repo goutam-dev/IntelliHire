@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import CandidateHeader from "../candidate/CandidateHeader";
@@ -9,16 +9,17 @@ const CandidateLayout = () => {
   const dispatch = useDispatch();
   const location = useLocation();
   const { profile, loading, error } = useSelector((state) => state.candidate);
+  const [hasStartedInitialFetch, setHasStartedInitialFetch] = useState(false);
 
   useEffect(() => {
+    setHasStartedInitialFetch(true);
     dispatch(fetchCandidateProfile());
   }, [dispatch]);
 
-  // Show loading state for initial profile load
-  if (loading && !profile) {
+  const getSkeletonType = () => {
     let skeletonType = 'dashboard-layout';
     const path = location.pathname;
-    
+
     if (path.includes('/profile') || path.match(/\/jobs\/[\w-]+$/) || path.match(/\/applications\/[\w-]+$/)) {
       skeletonType = 'layout-profile';
     } else if (path.includes('/jobs') && !path.includes('/dashboard')) {
@@ -29,7 +30,17 @@ const CandidateLayout = () => {
       skeletonType = 'layout-form';
     }
 
-    return <SkeletonLoader type={skeletonType} />;
+    return skeletonType;
+  };
+
+  // Prevent transient fallback UI before the initial fetch starts.
+  if (!hasStartedInitialFetch && !profile) {
+    return <SkeletonLoader type={getSkeletonType()} />;
+  }
+
+  // Show loading state for initial profile load
+  if (loading && !profile) {
+    return <SkeletonLoader type={getSkeletonType()} />;
   }
 
   // Show error state
