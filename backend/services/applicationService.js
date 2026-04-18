@@ -687,6 +687,10 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
     throw new ValidationError('This status is system-managed and cannot be set manually.');
   }
 
+  if (status === 'Interview Scheduled') {
+    throw new ValidationError('Use the schedule interview action to set interview timing before notifying candidates.');
+  }
+
   application.status = status;
   if (status === 'Interview Scheduled' && oldStatus !== status) {
     application.interviewNotificationSentAt = null;
@@ -781,6 +785,10 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
 
   if (status === 'Withdrawn' || status === 'Job Closed' || status === 'Job Deleted') {
     throw new ValidationError('This status is system-managed and cannot be set manually.');
+  }
+
+  if (status === 'Interview Scheduled') {
+    throw new ValidationError('Use the schedule interview action to set interview timing before notifying candidates.');
   }
 
   // Verify ownership for ALL applications
@@ -955,36 +963,14 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
 
   await application.save();
 
-  let immediateNotificationSent = false;
   setImmediate(async () => {
     try {
-      await notificationService.notifyCandidateStatusUpdate({
-        candidateUserId: application.candidateId,
-        jobTitle: application.jobId?.title || 'the job',
-        newStatus: interviewNotificationStatus,
+      await notificationService.notifyInterviewScheduledWhenEnrollmentReady({
         applicationId: application.applicationId,
-        notifType: interviewNotificationStatus === 'Interview Rescheduled' ? 'interview_rescheduled' : 'interview_scheduled',
+        notificationStatus: interviewNotificationStatus,
       });
-
-      immediateNotificationSent = true;
-      await JobApplication.updateOne(
-        { _id: application._id, interviewNotificationSentAt: null },
-        { $set: { interviewNotificationSentAt: new Date() } }
-      ).catch(() => {});
     } catch (notifErr) {
-      logger.error(`[applicationService] Immediate interview notification failed: ${notifErr.message}`);
-
-      // Fallback for initial schedule: send once enrollments are ready.
-      if (!isReschedule && !immediateNotificationSent) {
-        try {
-          await notificationService.notifyInterviewScheduledWhenEnrollmentReady({
-            applicationId: application.applicationId,
-            notificationStatus: interviewNotificationStatus,
-          });
-        } catch (deferredNotifErr) {
-          logger.error(`[applicationService] Deferred interview scheduled notification failed: ${deferredNotifErr.message}`);
-        }
-      }
+      logger.error(`[applicationService] Deferred interview notification failed: ${notifErr.message}`);
     }
   });
 
@@ -1740,18 +1726,15 @@ const approveReInterview = async (applicationId, interviewData, userId) => {
 
   await application.save();
 
-  // Notify candidate
+  // Notify candidate only when enrollment is fully ready.
   setImmediate(async () => {
     try {
-      await notificationService.notifyCandidateStatusUpdate({
-        candidateUserId: application.candidateId,
-        jobTitle: application.jobId?.title || 'the job',
-        newStatus: 'Interview Rescheduled',
+      await notificationService.notifyInterviewScheduledWhenEnrollmentReady({
         applicationId: application.applicationId,
-        notifType: 'reinterview_approved',
+        notificationStatus: 'Interview Rescheduled',
       });
     } catch (err) {
-      logger.error(`[approveReInterview] Candidate notification failed: ${err.message}`);
+      logger.error(`[approveReInterview] Deferred interview notification failed: ${err.message}`);
     }
   });
 
