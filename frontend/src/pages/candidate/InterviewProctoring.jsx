@@ -58,8 +58,6 @@ const getResumeConditions = () => ({
   windowActive: document.hasFocus(),
 });
 
-const INTERVIEW_MAX_SECONDS = 30 * 60;
-const INTERVIEW_MIN_SECONDS = 20 * 60;
 const FACE_PROCTORING_FRAME_INTERVAL_MS = 2000;
 const FACE_PROCTORING_MAX_WIDTH = 640;
 const FACE_PROCTORING_JPEG_QUALITY = 0.85;
@@ -414,7 +412,7 @@ function TermsModal({ onAccept }) {
                 { icon: '👁', text: 'Eye-contact tracking is active — look at the screen only.' },
                 { icon: '🧍', text: 'Only you may be present — background movement is monitored.' },
                 { icon: '📊', text: 'Respond in clear spoken English only.' },
-                { icon: '⏱️', text: 'Interview duration: 20–30 minutes of adaptive questions.' },
+                { icon: '⏱️', text: 'Interview flow is adaptive; question sequence and completion are decided by the interviewer AI.' },
               ].map(item => (
                 <li key={item.text} className="flex items-start gap-2 text-sm text-slate-300">
                   <span className="text-base leading-5 flex-shrink-0">{item.icon}</span>
@@ -1341,11 +1339,6 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     return `${m}:${s}`;
   }, [engine.elapsedSeconds]);
 
-  const progressPct = useMemo(
-    () => Math.min(100, Math.round((engine.elapsedSeconds / INTERVIEW_MAX_SECONDS) * 100)),
-    [engine.elapsedSeconds]
-  );
-
   const avgScore = useMemo(() => {
     const scored = engine.evaluations.filter(e => e.score != null);
     if (!scored.length) return null;
@@ -1369,7 +1362,6 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     }
   }, [engine.engineState]);
 
-  const timeWarning = engine.elapsedSeconds >= INTERVIEW_MIN_SECONDS - 5 * 60 && engine.elapsedSeconds < INTERVIEW_MAX_SECONDS;
   const isNoFacePause = pauseMode === 'no_face';
   const listeningActive = vadSpeaking || energyLevel > 0.02;
 
@@ -1417,17 +1409,8 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       </header>
 
       <div className="h-0.5 bg-slate-800">
-        <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${progressPct}%` }} />
+        <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: '100%' }} />
       </div>
-
-      <AnimatePresence>
-        {timeWarning && (
-          <motion.div key="tw" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-            className="bg-amber-900/60 border-b border-amber-700/40 text-amber-300 text-xs font-medium px-6 py-2 flex items-center gap-2">
-            <Clock size={13} /> 5 minutes remaining - the interview will conclude soon.
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <div className="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
         <section className="relative lg:w-1/2 min-h-[45vh] lg:min-h-full border-r border-[#12335f]/40 overflow-hidden">

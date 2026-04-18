@@ -50,31 +50,19 @@ function buildInterviewerPersona(jobTitle = '') {
   );
 }
 
-function getInterviewPhaseHint(elapsedSeconds, config) {
-  const minSec = config?.minDurationSec || 20 * 60;
-  const maxSec = config?.maxDurationSec || 30 * 60;
-
-  if (elapsedSeconds < 5 * 60) {
-    return 'OPENING: You have just started. Warm up the candidate with a brief welcome and an introduction question.';
+function getInterviewPhaseHint(questionCount) {
+  if (questionCount <= 1) {
+    return 'OPENING: Start with a brief welcome and one role-relevant opener.';
   }
-  if (elapsedSeconds < minSec) {
-    const remaining = Math.round((minSec - elapsedSeconds) / 60);
-    return `MAIN BODY: ${remaining} minutes remain in the core session. Probe deeply and vary topics — technical, behavioural, situational.`;
-  }
-  if (elapsedSeconds < maxSec) {
-    return 'CLOSING: Interview is in the final window. Ask 1-2 high-level, motivational, or culture-fit questions before wrapping up.';
-  }
-  return 'WRAP_UP: Time is up. Give a brief warm closing statement and end the session.';
+  return 'ACTIVE INTERVIEW: Keep probing for concrete evidence, depth, and role fit.';
 }
 
 function buildSystemPrompt(session, lastEval = null) {
   const { jobTitle, context, interviewState, config } = session;
-  const elapsedSeconds = session.totalDurationSec || 0;
   const persona = buildInterviewerPersona(jobTitle);
-  const phaseHint = getInterviewPhaseHint(elapsedSeconds, config);
   const qCount = interviewState.questionCount || 0;
+  const phaseHint = getInterviewPhaseHint(qCount);
   const unanswered = interviewState.totalUnanswered || 0;
-  const minQuestionsBeforeEnd = Math.max(6, config?.minQuestionsBeforeEnd || 8);
   const candidateName = context.candidateName?.trim() || 'the candidate';
 
   let prompt = `${persona}\n\n`;
@@ -147,11 +135,9 @@ function buildSystemPrompt(session, lastEval = null) {
       `what tradeoffs they made, and what they would do differently now. If an earlier answer was vague or unconvincing, ` +
       `challenge it directly with a targeted follow-up.\n\n` +
       `## When to End the Interview\n` +
-      `You have asked ${qCount} question(s) so far. The candidate has left ${unanswered} question(s) unanswered. ` +
-      `You MAY decide to end the interview when BOTH conditions are true: ` +
-      `(a) you have asked at least ${minQuestionsBeforeEnd} questions, AND ` +
-      `(b) you feel confident in your overall assessment — ` +
-      `whether positive (thoroughly impressed) or negative (consistently poor or evasive answers). ` +
+        `You have asked ${qCount} question(s) so far. The candidate has left ${unanswered} question(s) unanswered. ` +
+        `You may decide to end the interview whenever you are confident in your overall assessment — ` +
+        `whether positive (thoroughly impressed) or negative (consistently poor or evasive answers). ` +
       `To signal that the interview should end, output ONLY this exact token on its own: [END_INTERVIEW]\n\n` +
       `Otherwise, ask the NEXT interview question. Output ONLY the question — ` +
       `no preamble, no "Great answer", no pleasantries, no numbering. One concise, focused question.`;
@@ -511,10 +497,6 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
   let endReasonCode = '';
   let endReasonSource = '';
   let endReasonDetail = '';
-  const maxDurationSec = session.config?.maxDurationSec || 30 * 60;
-  const hardQuestionCap = 12;
-  const reachedMaxDuration = session.totalDurationSec >= maxDurationSec;
-  const reachedHardQuestionCap = (session.interviewState.questionCount || 0) >= hardQuestionCap;
 
   // Auto-end conditions
   if (session.interviewState.consecutiveSilent >= 3) {
@@ -522,16 +504,6 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
     endReasonCode = 'consecutive_silence_threshold';
     endReasonSource = 'engine';
     endReasonDetail = 'Interview ended after 3 consecutive unanswered turns.';
-  } else if (reachedMaxDuration) {
-    shouldEnd = true;
-    endReasonCode = 'max_duration_reached';
-    endReasonSource = 'timer';
-    endReasonDetail = `Interview reached configured max duration (${maxDurationSec}s).`;
-  } else if (reachedHardQuestionCap) {
-    shouldEnd = true;
-    endReasonCode = 'hard_question_cap_reached';
-    endReasonSource = 'engine';
-    endReasonDetail = `Interview reached hard question cap (${hardQuestionCap}).`;
   } else if (nextQuestionResult.status === 'fulfilled') {
     const q = nextQuestionResult.value;
     if (q.endInterview) {
@@ -546,7 +518,7 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
       session.conversationHistory.push({ role: 'assistant', content: nextQuestion });
       const newPhase = q.reask
         ? 'follow_up'
-        : getPhaseForElapsed(session.totalDurationSec, session.config);
+        : getPhaseForProgress(session.interviewState.questionCount);
       session.turns.push({
         index: session.turns.length,
         phase: newPhase,
@@ -1037,14 +1009,9 @@ function canIssueReaskForTurn(session, turnIndex) {
   return currentDepth < maxAttempts;
 }
 
-function getPhaseForElapsed(elapsedSec, config) {
-  const minSec = config?.minDurationSec || 20 * 60;
-  const maxSec = config?.maxDurationSec || 30 * 60;
-
-  if (elapsedSec < 5 * 60) return 'opening';
-  if (elapsedSec < minSec) return 'main';
-  if (elapsedSec < maxSec) return 'closing';
-  return 'wrap_up';
+function getPhaseForProgress(questionCount = 0) {
+  if (questionCount <= 1) return 'opening';
+  return 'main';
 }
 
 function assertInterviewWindowOpen(application) {
