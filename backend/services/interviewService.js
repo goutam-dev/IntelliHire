@@ -118,10 +118,40 @@ function buildSystemPrompt(session, lastEval = null) {
   }
 
   prompt +=
-    `## Coverage Strategy\n` +
-    `- Do not over-focus on one topic early.\n` +
-    `- Prefer moving across topics before going deep.\n` +
-    `- Ensure balanced evaluation.\n\n`;
+    `## Coverage Strategy (CRITICAL)
+- Cover all key topics from the job description
+- BUT for each topic:
+  → Ask ONE main question
+  → THEN ask ONE follow-up to validate depth
+- Do NOT switch topics without attempting depth validation
+- Avoid staying too long (max 2 questions per topic)
+
+Goal:
+Balanced evaluation = breadth (topics covered) + depth (validated understanding)
+\n\n`;
+  prompt +=
+    `## Depth Control Rule (VERY IMPORTANT)
+For each topic:
+
+Step 1: Ask a main question  
+Step 2: Evaluate answer  
+Step 3:
+
+IF answer is strong:
+→ Ask ONE follow-up (example, trade-off, real scenario)
+
+IF answer is weak:
+→ Ask ONE simpler clarification OR move to next topic
+
+Never leave a topic without at least attempting depth validation.
+\n\n`;
+
+  prompt +=
+    `## Topic Discipline Rule
+- Each question must target ONE specific topic
+- Do NOT mix multiple topics in one question
+- Track which topics are covered vs not covered
+\n\n`;
 
   prompt +=
     `## Question Design Rules\n` +
@@ -134,16 +164,15 @@ function buildSystemPrompt(session, lastEval = null) {
   if (lastEval?.score != null) {
     if (lastEval.score >= 7) {
       prompt +=
-        `Previous answer strong → either validate briefly or move to a new topic.\n\n`;
+        `Previous answer strong → ask ONE follow-up to validate real-world depth, then move topic.\n\n`;
     } else if (lastEval.score <= 4) {
       prompt +=
-        `Previous answer weak → ask a clearer follow-up before switching.\n\n`;
+        `Previous answer weak → ask ONE simpler or clearer follow-up before switching topic.\n\n`;
     } else {
       prompt +=
-        `Previous answer partial → deepen slightly or move to another topic.\n\n`;
+        `Previous answer partial → ask ONE follow-up to deepen understanding.\n\n`;
     }
   }
-
   if (unanswered > 0) {
     prompt +=
       `Candidate has ${unanswered} unanswered responses → simplify next question if needed.\n\n`;
@@ -285,13 +314,13 @@ async function createSession(applicationId, candidateId) {
         status: 'abandoned',
         completedAt: attemptedSession.completedAt || new Date(),
         'integrity.terminationReason': attemptedSession.integrity?.terminationReason || 'Interview session ended unexpectedly',
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     await JobApplication.findOneAndUpdate(
       { applicationId, status: 'Interview Scheduled' },
       { status: 'Interviewed' }
-    ).catch(() => {});
+    ).catch(() => { });
 
     throw new AppError('Interview has already been attempted for this application. Retakes are not allowed.', 409);
   }
@@ -1073,6 +1102,7 @@ async function generateFinalEvaluationWithCalibration(session) {
 
   let parsed = parseFinalSummary(primaryText);
   if (!parsed) {
+    logger.error("❌ FINAL EVAL PARSE FAILED:", primaryText);
     const retryPrompt = `${calibrationPrompt}\n\nIMPORTANT: Return strictly valid JSON only. Do not include markdown, comments, or extra text.`;
     const retryText = await callGroqChat([
       { role: 'system', content: retryPrompt },
@@ -1114,48 +1144,42 @@ function buildBatchEvaluationPrompt(session, batchTurns, offset) {
   const turnsText = batchTurns.map((t, idx) => {
     const turnIndex = offset + idx;
     return (
-      `TurnIndex: ${turnIndex}\n` +
-      `Question: ${smartTruncate(t.question || '', 260)}\n` +
-      `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
-      `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, meta=${isTurnNonScoringMeta(t) ? 'true' : 'false'}`
+      `TurnIndex: ${turnIndex}
+Question: ${smartTruncate(t.question || '', 260)}
+Answer: ${smartTruncate(t.answer || '(no response)', 420)}
+Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, meta=${isTurnNonScoringMeta(t) ? 'true' : 'false'}`
     );
   }).join('\n\n');
 
-  return (
-    `You are evaluating interview answers for a ${session.jobTitle} role.\n\n` +
+  return `
+You are evaluating interview answers for a ${session.jobTitle} role.
 
-    `## Job Description\n${jobDescription}\n\n` +
+## Job Description
+${jobDescription}
 
-    // 🔥 KEY: topic extraction again
-    `## Step 1: Infer Topics\n` +
-    `From the job description, identify 4–6 key evaluation topics.\n\n` +
+## Task
+For EACH turn:
+- assign ONE topic
+- assign a score
 
-    `## Step 2: Evaluate Each Turn\n` +
-    `For each turn:\n` +
-    `- Identify which topic it relates to\n` +
-    `- Evaluate how well the answer provides evidence for that topic\n\n` +
+## STRICT RULES
+- meta=true → score = null
+- unanswered=true → score = 0
+- otherwise → MUST be 1–10 (never null)
 
-    `## Scoring Rules\n` +
-    `- If meta=true → score = null\n` +
-    `- If unanswered=true → score = 0\n` +
-    `- Otherwise:\n` +
-    `  0–3 → weak or irrelevant\n` +
-    `  4–6 → partial understanding\n` +
-    `  7–8 → solid understanding\n` +
-    `  9–10 → strong, detailed, confident\n\n` +
-
-    `## Feedback Rules\n` +
-    `- Be specific: mention what was missing\n` +
-    `- Reference the topic\n` +
-    `- Avoid generic phrases\n\n` +
-
-    `Turns:\n${turnsText}\n\n` +
-
-    `Return JSON:\n` +
-    `{ "batchEvaluations": [{ "turnIndex": <number>, "topic": "<topic>", "score": <0-10|null>, "feedback": "<specific feedback>" }] }`
-  );
+## Output format (STRICT JSON ONLY):
+{
+  "batchEvaluations": [
+    {
+      "turnIndex": 0,
+      "topic": "API Design",
+      "score": 7,
+      "feedback": "Good explanation but lacked real example"
+    }
+  ]
 }
-
+`;
+}
 function normalizeBatchEvaluations(parsed, batchTurns, offset) {
   const raw = Array.isArray(parsed?.batchEvaluations)
     ? parsed.batchEvaluations
@@ -1166,93 +1190,104 @@ function normalizeBatchEvaluations(parsed, batchTurns, offset) {
     const fromIndex = raw.find((item) => Number(item?.turnIndex) === turnIndex);
     const fromOrder = raw[idx];
     const source = fromIndex || fromOrder || {};
+
     const metaTurn = isTurnNonScoringMeta(turn);
     const unanswered = !!turn.isUnanswered;
-    const parsedScore = Number(source.score);
 
-    let score = null;
+    let score;
+
     if (metaTurn) {
       score = null;
     } else if (unanswered) {
       score = 0;
-    } else if (Number.isFinite(parsedScore)) {
-      score = Math.max(0, Math.min(10, parsedScore));
+    } else {
+      const parsedScore = Number(source.score);
+      score = Number.isFinite(parsedScore)
+        ? Math.max(0, Math.min(10, parsedScore))
+        : 5; // 🔥 fallback instead of null
     }
 
     return {
       turnIndex,
       score,
       feedback: metaTurn
-        ? 'Candidate requested clarification or corrected speech-to-text interpretation. This turn is excluded from scoring impact.'
+        ? 'Clarification/correction turn (not scored)'
         : (typeof source.feedback === 'string' && source.feedback.trim()
           ? source.feedback.trim()
-          : (unanswered ? 'No response given.' : '')),
-      topics: Array.isArray(source.topics) ? source.topics.filter(Boolean).slice(0, 5) : [],
-      strengths: Array.isArray(source.strengths) ? source.strengths.filter(Boolean).slice(0, 5) : [],
-      weaknesses: metaTurn ? [] : (Array.isArray(source.weaknesses) ? source.weaknesses.filter(Boolean).slice(0, 5) : []),
+          : (unanswered ? 'No response given.' : 'Answer lacked clear evidence.')),
+      topics: source.topic
+        ? [source.topic]
+        : (Array.isArray(source.topics) ? source.topics.slice(0, 3) : []),
+      strengths: Array.isArray(source.strengths) ? source.strengths.slice(0, 3) : [],
+      weaknesses: metaTurn ? [] : (Array.isArray(source.weaknesses) ? source.weaknesses.slice(0, 3) : []),
     };
   });
 }
-
 function buildFinalCalibrationPrompt(session, provisionalEvaluations) {
   const jobDescription = session.context?.jobDescription || '';
 
-  const transcript = (session.turns || []).map((t, i) => (
-    `TurnIndex: ${i}\n` +
-    `Question: ${smartTruncate(t.question || '', 200)}\n` +
-    `Answer: ${smartTruncate(t.answer || '(no response)', 350)}`
+  const transcript = session.turns.map((t, i) => (
+    `TurnIndex: ${i}
+Question: ${smartTruncate(t.question || '', 200)}
+Answer: ${smartTruncate(t.answer || '(no response)', 350)}`
   )).join('\n\n');
 
-  return (
-    `You are performing a FINAL evaluation for a ${session.jobTitle} interview.\n\n` +
+  const provisional = provisionalEvaluations.map(e => (
+    `TurnIndex: ${e.turnIndex}, Score: ${e.score}, Feedback: ${e.feedback}`
+  )).join('\n');
 
-    `## Job Description\n${jobDescription}\n\n` +
+  return `
+You are performing a FINAL evaluation for a ${session.jobTitle} interview.
 
-    // 🔥 KEY: same topic system
-    `## Step 1: Infer Topics\n` +
-    `Identify the 4–6 most important evaluation topics from the job description.\n\n` +
+## Job Description
+${jobDescription}
 
-    `## Step 2: Analyze Full Interview\n` +
-    `For each topic:\n` +
-    `- Check how many answers provided evidence\n` +
-    `- Evaluate depth and consistency\n\n` +
+## Instructions
+- You MUST evaluate EVERY turn
+- You MUST return perAnswerEvaluations
+- Use provisional scores but refine them
 
-    `## Step 3: Coverage Judgment\n` +
-    `- Identify which topics were well covered\n` +
-    `- Identify which topics were weak or missing\n\n` +
+## Rules
+- meta turns → score = null
+- unanswered → score = 0
+- others → MUST be 1–10
 
-    `## Scoring Guidelines\n` +
-    `technicalScore:\n` +
-    `- High → strong coverage + depth\n` +
-    `- Medium → partial coverage\n` +
-    `- Low → major gaps\n\n` +
+## Evidence Rule
+- Listing concepts only → max 6
+- Real example/trade-off → 7+
 
-    `communicationScore:\n` +
-    `- clarity, structure, coherence\n\n` +
+## Transcript
+${transcript}
 
-    `problemSolvingScore:\n` +
-    `- reasoning, trade-offs, decision making\n\n` +
+## Provisional Scores
+${provisional}
 
-    `## IMPORTANT\n` +
-    `- Do NOT expect all topics to be deeply covered\n` +
-    `- Evaluate based on overall evidence, not perfection\n` +
-    `- Be fair to the candidate level\n\n` +
-
-    `## Transcript\n${transcript}\n\n` +
-
-    `Return JSON:\n` +
-    `{\n` +
-    `  "technicalScore": <1-10>,\n` +
-    `  "communicationScore": <1-10>,\n` +
-    `  "problemSolvingScore": <1-10>,\n` +
-    `  "overallVerdict": "<Strong|Moderate|Weak>",\n` +
-    `  "strengths": ["..."],\n` +
-    `  "weaknesses": ["..."],\n` +
-    `  "recommendations": ["..."]\n` +
-    `}`
-  );
+## OUTPUT (STRICT JSON ONLY)
+{
+  "perAnswerEvaluations": [
+    {
+      "turnIndex": 0,
+      "score": 7,
+      "feedback": "Clear but lacked real example",
+      "topics": ["API Design"],
+      "strengths": ["Structured thinking"],
+      "weaknesses": ["No real scenario"]
+    }
+  ],
+  "technicalScore": 1-10,
+  "communicationScore": 1-10,
+  "problemSolvingScore": 1-10,
+  "overallVerdict": "Strong|Moderate|Weak",
+  "strengths": [],
+  "weaknesses": [],
+  "recommendations": []
 }
-function smartTruncate(text, maxLen = 300) {
+
+CRITICAL:
+- Do NOT skip perAnswerEvaluations
+- Return ONLY JSON
+`;
+} function smartTruncate(text, maxLen = 300) {
   const value = String(text || '').trim();
   if (value.length <= maxLen) return value;
   const head = Math.max(80, Math.floor(maxLen * 0.7));
@@ -1261,16 +1296,31 @@ function smartTruncate(text, maxLen = 300) {
 }
 
 function parseFinalSummary(text) {
-  try {
-    // Try to extract JSON from the response  
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    return null;
-  } catch {
-    return null;
-  }
-}
+  if (!text) return null;
 
+  // 1. Direct parse
+  try {
+    return JSON.parse(text);
+  } catch { }
+
+  // 2. ```json block
+  const block = text.match(/```json\s*([\s\S]*?)```/i);
+  if (block) {
+    try {
+      return JSON.parse(block[1]);
+    } catch { }
+  }
+
+  // 3. Fallback extraction
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch { }
+  }
+
+  return null;
+}
 function normalizeFinalSummary(summary, turns = []) {
   if (!summary || typeof summary !== 'object') return null;
 
