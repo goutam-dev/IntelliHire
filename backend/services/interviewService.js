@@ -58,7 +58,7 @@ function getInterviewPhaseHint(questionCount) {
 }
 
 function buildSystemPrompt(session, lastEval = null) {
-  const { jobTitle, context, interviewState, config } = session;
+  const { jobTitle, context, interviewState } = session;
   const persona = buildInterviewerPersona(jobTitle);
   const qCount = interviewState.questionCount || 0;
   const phaseHint = getInterviewPhaseHint(qCount);
@@ -67,87 +67,112 @@ function buildSystemPrompt(session, lastEval = null) {
 
   let prompt = `${persona}\n\n`;
 
-  if (context.jobDescription) prompt += `## Job Description\n${context.jobDescription}\n\n`;
-  if (context.requirements?.length > 0) {
-    prompt += `## Key Requirements\n${context.requirements.map(r => `- ${r}`).join('\n')}\n\n`;
+  if (context.jobDescription) {
+    prompt += `## Job Description\n${context.jobDescription}\n\n`;
   }
-  if (context.candidateInfo) prompt += `## Candidate Background\n${context.candidateInfo}\n\n`;
+
+  if (context.candidateInfo) {
+    prompt += `## Candidate Background\n${context.candidateInfo}\n\n`;
+  }
+
   if (context.skills?.length > 0) {
-    prompt += `## Candidate Skills\n${context.skills.join(', ')}\n\n`;
+    prompt += `## Candidate Skills (Secondary Reference)\n${context.skills.join(', ')}\n\n`;
   }
 
   prompt += `## Interview Phase\n${phaseHint}\n\n`;
+
+  // 🔥 KEY CHANGE: dynamic topic extraction
   prompt +=
-    `## Interview Objective\n` +
-    `Assess technical depth, practical execution ability, communication clarity, and ownership for this ${jobTitle} role. ` +
-    `Every question must produce high-signal evidence that helps hiring decisions.\n\n`;
+    `## Topic Extraction (CRITICAL)\n` +
+    `From the job description above, infer the 4–6 most important evaluation topics for this role.\n` +
+    `These may include skills, responsibilities, or capabilities depending on the domain.\n` +
+    `You must internally track these topics and ensure they are covered during the interview.\n\n`;
 
   prompt +=
-    `## Question Design Rules\n` +
-    `- Ask exactly ONE question per turn.\n` +
-    `- Keep questions concise (max 35 words), specific, and role-relevant.\n` +
-    `- Prefer evidence-seeking prompts: ask for concrete examples, decisions, trade-offs, metrics, and outcomes.\n` +
-    `- Avoid generic fillers (e.g., "Tell me about yourself" after opening, "Any final thoughts").\n` +
-    `- Avoid repeating covered topics unless a deeper follow-up is clearly justified.\n` +
-    `- Do not include commentary, praise, scoring, or explanations in output.\n\n`;
+    `## Interview Objective\n` +
+    `Evaluate the candidate by covering the most important topics derived from the job description. ` +
+    `Balance breadth (coverage of topics) and depth (understanding).\n\n`;
+
+  // 🔥 PRIORITY FIX
+  prompt +=
+    `## Priority Rule (CRITICAL)\n` +
+    `1. Topics derived from the job description are the PRIMARY driver.\n` +
+    `2. Candidate background is SECONDARY and only used to validate those topics.\n` +
+    `3. Do NOT let an interesting project override missing topic coverage.\n\n`;
+
+  // 🔥 PHASE CONTROL
+  prompt +=
+    `## Interview Structure\n` +
+    `PHASE 1: Topic Validation (MANDATORY)\n` +
+    `- Systematically cover the inferred topics from the job description.\n` +
+    `- Ask at least one strong question per topic.\n` +
+    `- Do NOT stay too long on one topic early.\n\n` +
+    `PHASE 2: Deep Exploration (CONDITIONAL)\n` +
+    `- After reasonable coverage, explore strong areas more deeply.\n\n`;
+
+  // topic awareness (still useful if you populate it later)
+  if (interviewState.topicsCovered?.length > 0) {
+    prompt +=
+      `## Topics Already Covered\n${interviewState.topicsCovered.join(', ')}\n` +
+      `Avoid repeating unless needed.\n\n`;
+  }
 
   prompt +=
     `## Coverage Strategy\n` +
-    `- Prioritize collecting enough evidence across core requirements before deciding to end.\n` +
-    `- Depth is adaptive: ask as many follow-ups as needed on a topic when evidence is incomplete.\n` +
-    `- Move to another requirement only after the current one is sufficiently validated or clearly weak.\n` +
-    `- Prefer unresolved evidence gaps over rigid sequencing by question number.\n\n`;
+    `- Do not over-focus on one topic early.\n` +
+    `- Prefer moving across topics before going deep.\n` +
+    `- Ensure balanced evaluation.\n\n`;
 
-  // Adaptive guidance based on evidence quality from the previous answer
+  prompt +=
+    `## Question Design Rules\n` +
+    `- Ask exactly ONE question.\n` +
+    `- Max 35 words.\n` +
+    `- Ask for examples, decisions, trade-offs, or outcomes.\n` +
+    `- No explanations or commentary.\n\n`;
+
+  // adaptive behavior
   if (lastEval?.score != null) {
     if (lastEval.score >= 7) {
-      prompt += `The previous answer provided relatively strong evidence (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
-        `Either (a) ask one deeper validation follow-up to confirm consistency, or (b) move to an uncovered requirement.\n\n`;
+      prompt +=
+        `Previous answer strong → either validate briefly or move to a new topic.\n\n`;
     } else if (lastEval.score <= 4) {
-      prompt += `The previous answer left important evidence gaps (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
-        `Ask a clearer, targeted follow-up first; only pivot topics if the gap cannot be resolved.\n\n`;
+      prompt +=
+        `Previous answer weak → ask a clearer follow-up before switching.\n\n`;
     } else {
-      prompt += `The previous answer gave partial evidence (score ${lastEval.score}/10). ` +
-        `Choose the next question to maximize assessment confidence: deepen the same area or probe a closely related uncovered requirement.\n\n`;
+      prompt +=
+        `Previous answer partial → deepen slightly or move to another topic.\n\n`;
     }
   }
 
   if (unanswered > 0) {
     prompt +=
-      `The candidate has ${unanswered} unanswered question(s). If they were recently silent, ` +
-      `use a simpler, direct prompt that is easier to answer while still evaluating a core requirement.\n\n`;
+      `Candidate has ${unanswered} unanswered responses → simplify next question if needed.\n\n`;
   }
 
-  // Topic awareness — avoid repetition
-  if (interviewState.topicsCovered?.length > 0) {
-    prompt += `## Topics Already Covered\n${interviewState.topicsCovered.join(', ')}\n` +
-      `Avoid repeating these topics unless you need a deeper follow-up.\n\n`;
+  // 🔥 CONTROLLED RESUME USAGE
+  if (qCount > 0) {
+    prompt +=
+      `## Controlled Cross-Reference\n` +
+      `- You MAY use candidate experience.\n` +
+      `- ONLY to validate job-relevant topics.\n` +
+      `- Do NOT shift focus away from required topics.\n\n`;
   }
 
   if (qCount === 0) {
     prompt +=
-      `This is the FIRST question. Begin with one short welcome sentence, mention ${candidateName}, and ask for ` +
-      `their most relevant recent experience for this ${jobTitle} role with one concrete project example.`;
+      `This is the FIRST question. Welcome ${candidateName} and ask for one recent relevant experience.\n`;
   } else {
     prompt +=
-      `## Cross-Examination Strategy\n` +
-      `You MUST actively reference specifics from the candidate's resume (projects, technologies, past roles, achievements) ` +
-      `when formulating questions. Cross-examine their claims — if they mentioned a project or technology in their resume ` +
-      `or an earlier answer, dig deeper: ask HOW they implemented it, what technical challenges they faced, ` +
-      `what tradeoffs they made, and what they would do differently now. If an earlier answer was vague or unconvincing, ` +
-      `challenge it directly with a targeted follow-up.\n\n` +
-      `## When to End the Interview\n` +
-        `You have asked ${qCount} question(s) so far. The candidate has left ${unanswered} question(s) unanswered. ` +
-        `You may decide to end the interview whenever you are confident in your overall assessment — ` +
-        `whether positive (thoroughly impressed) or negative (consistently poor or evasive answers). ` +
-      `To signal that the interview should end, output ONLY this exact token on its own: [END_INTERVIEW]\n\n` +
-      `Otherwise, ask the NEXT interview question. Output ONLY the question — ` +
-      `no preamble, no "Great answer", no pleasantries, no numbering. One concise, focused question.`;
+      `## When to End\n` +
+      `Only end when:\n` +
+      `- most important topics have been reasonably covered\n` +
+      `- you have enough confidence in evaluation\n\n` +
+      `To end: output [END_INTERVIEW]\n\n` +
+      `Otherwise ask the next question.\n`;
   }
 
   return prompt;
 }
-
 // ═════════════════════════════════════════════════════════════════════════════
 //  GROQ LLM API
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1084,37 +1109,50 @@ async function generateBatchEvaluations(session) {
 }
 
 function buildBatchEvaluationPrompt(session, batchTurns, offset) {
-  const requirements = Array.isArray(session.context?.requirements)
-    ? session.context.requirements.filter(Boolean)
-    : [];
-  const skills = Array.isArray(session.context?.skills)
-    ? session.context.skills.filter(Boolean)
-    : [];
+  const jobDescription = session.context?.jobDescription || '';
 
   const turnsText = batchTurns.map((t, idx) => {
     const turnIndex = offset + idx;
     return (
       `TurnIndex: ${turnIndex}\n` +
-      `Phase: ${t.phase || 'main'}\n` +
-      `Question: ${smartTruncate(t.question || '', 280)}\n` +
+      `Question: ${smartTruncate(t.question || '', 260)}\n` +
       `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
-      `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isTurnNonScoringMeta(t) ? 'true' : 'false'}, classification=${normalizeAnswerClassificationLabel(t.answerClassification)}`
+      `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, meta=${isTurnNonScoringMeta(t) ? 'true' : 'false'}`
     );
   }).join('\n\n');
 
   return (
-    `You are evaluating a subset of interview turns for a ${session.jobTitle} role.\n\n` +
-    `Job Requirements: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
-    `Candidate Skills: ${skills.length ? skills.join(', ') : 'Not provided'}\n\n` +
-    `Evaluate each listed turn and return JSON only.\n` +
-    `Rules:\n` +
-    `- If clarification_or_correction=true, set score to null and do not penalize.\n` +
-    `- If unanswered=true and not clarification/correction, set score to 0.\n` +
-    `- Otherwise score 0-10 based on technical correctness, depth, and specificity.\n` +
-    `- Keep feedback short and evidence-based.\n\n` +
+    `You are evaluating interview answers for a ${session.jobTitle} role.\n\n` +
+
+    `## Job Description\n${jobDescription}\n\n` +
+
+    // 🔥 KEY: topic extraction again
+    `## Step 1: Infer Topics\n` +
+    `From the job description, identify 4–6 key evaluation topics.\n\n` +
+
+    `## Step 2: Evaluate Each Turn\n` +
+    `For each turn:\n` +
+    `- Identify which topic it relates to\n` +
+    `- Evaluate how well the answer provides evidence for that topic\n\n` +
+
+    `## Scoring Rules\n` +
+    `- If meta=true → score = null\n` +
+    `- If unanswered=true → score = 0\n` +
+    `- Otherwise:\n` +
+    `  0–3 → weak or irrelevant\n` +
+    `  4–6 → partial understanding\n` +
+    `  7–8 → solid understanding\n` +
+    `  9–10 → strong, detailed, confident\n\n` +
+
+    `## Feedback Rules\n` +
+    `- Be specific: mention what was missing\n` +
+    `- Reference the topic\n` +
+    `- Avoid generic phrases\n\n` +
+
     `Turns:\n${turnsText}\n\n` +
-    `Return schema:\n` +
-    `{ "batchEvaluations": [{ "turnIndex": <number>, "score": <0-10|null>, "feedback": "<string>", "topics": ["..."], "strengths": ["..."], "weaknesses": ["..."] }] }`
+
+    `Return JSON:\n` +
+    `{ "batchEvaluations": [{ "turnIndex": <number>, "topic": "<topic>", "score": <0-10|null>, "feedback": "<specific feedback>" }] }`
   );
 }
 
@@ -1157,54 +1195,63 @@ function normalizeBatchEvaluations(parsed, batchTurns, offset) {
 }
 
 function buildFinalCalibrationPrompt(session, provisionalEvaluations) {
-  const requirements = Array.isArray(session.context?.requirements)
-    ? session.context.requirements.filter(Boolean)
-    : [];
-  const skills = Array.isArray(session.context?.skills)
-    ? session.context.skills.filter(Boolean)
-    : [];
+  const jobDescription = session.context?.jobDescription || '';
 
   const transcript = (session.turns || []).map((t, i) => (
     `TurnIndex: ${i}\n` +
-    `Phase: ${t.phase || 'main'}\n` +
-    `Question: ${smartTruncate(t.question || '', 260)}\n` +
-    `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
-    `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isTurnNonScoringMeta(t) ? 'true' : 'false'}, classification=${normalizeAnswerClassificationLabel(t.answerClassification)}`
+    `Question: ${smartTruncate(t.question || '', 200)}\n` +
+    `Answer: ${smartTruncate(t.answer || '(no response)', 350)}`
   )).join('\n\n');
 
-  const provisional = (provisionalEvaluations || []).map((item) => (
-    `TurnIndex ${item.turnIndex}: score=${item.score == null ? 'null' : item.score}, feedback=${smartTruncate(item.feedback || '', 200)}`
-  )).join('\n');
-
   return (
-    `You are a principal hiring evaluator conducting final calibration for a ${session.jobTitle} interview.\n\n` +
-    `Goal: Evaluate each turn using complete context of the whole interview transcript, then return final scores per turn.\n\n` +
-    `Role Context\n` +
-    `Job Requirements: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
-    `Candidate Skills: ${skills.length ? skills.join(', ') : 'Not provided'}\n\n` +
-    `Complete Interview Transcript (compact, full-turn coverage)\n${transcript}\n\n` +
-    `Provisional Batch Evaluations\n${provisional || 'Not available'}\n\n` +
-    `Rules\n` +
-    `- Evaluate ALL turns from TurnIndex 0 to TurnIndex ${Math.max((session.turns?.length || 1) - 1, 0)}.\n` +
-    `- Return EXACTLY ${session.turns?.length || 0} objects in perAnswerEvaluations.\n` +
-    `- If clarification_or_correction=true, set score to null and do not penalize aggregate scoring.\n` +
-    `- If unanswered=true and not clarification/correction, set score to 0.\n` +
-    `- feedback must be concise and evidence-based.\n` +
-    `- Keep overall scores consistent with per-turn evidence.\n\n` +
-    `Respond ONLY with valid JSON in this schema:\n` +
+    `You are performing a FINAL evaluation for a ${session.jobTitle} interview.\n\n` +
+
+    `## Job Description\n${jobDescription}\n\n` +
+
+    // 🔥 KEY: same topic system
+    `## Step 1: Infer Topics\n` +
+    `Identify the 4–6 most important evaluation topics from the job description.\n\n` +
+
+    `## Step 2: Analyze Full Interview\n` +
+    `For each topic:\n` +
+    `- Check how many answers provided evidence\n` +
+    `- Evaluate depth and consistency\n\n` +
+
+    `## Step 3: Coverage Judgment\n` +
+    `- Identify which topics were well covered\n` +
+    `- Identify which topics were weak or missing\n\n` +
+
+    `## Scoring Guidelines\n` +
+    `technicalScore:\n` +
+    `- High → strong coverage + depth\n` +
+    `- Medium → partial coverage\n` +
+    `- Low → major gaps\n\n` +
+
+    `communicationScore:\n` +
+    `- clarity, structure, coherence\n\n` +
+
+    `problemSolvingScore:\n` +
+    `- reasoning, trade-offs, decision making\n\n` +
+
+    `## IMPORTANT\n` +
+    `- Do NOT expect all topics to be deeply covered\n` +
+    `- Evaluate based on overall evidence, not perfection\n` +
+    `- Be fair to the candidate level\n\n` +
+
+    `## Transcript\n${transcript}\n\n` +
+
+    `Return JSON:\n` +
     `{\n` +
-    `  "perAnswerEvaluations": [{ "turnIndex": <number>, "score": <0-10|null>, "feedback": "<1-2 sentence rationale>", "topics": ["<topic>"], "strengths": ["<strength>"], "weaknesses": ["<weakness>"] }],\n` +
     `  "technicalScore": <1-10>,\n` +
     `  "communicationScore": <1-10>,\n` +
     `  "problemSolvingScore": <1-10>,\n` +
-    `  "overallVerdict": "<Strong Performance|Moderate Performance|Needs Improvement>",\n` +
+    `  "overallVerdict": "<Strong|Moderate|Weak>",\n` +
     `  "strengths": ["..."],\n` +
     `  "weaknesses": ["..."],\n` +
     `  "recommendations": ["..."]\n` +
     `}`
   );
 }
-
 function smartTruncate(text, maxLen = 300) {
   const value = String(text || '').trim();
   if (value.length <= maxLen) return value;
