@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FileDown, Mail, Phone, Sparkles, Award, Zap, Loader2, RotateCcw, Eye } from 'lucide-react';
 import StatusActionsMenu from './StatusActionsMenu';
+import { resolveUploadUrl } from '../utils/mediaUrl';
 
 const statusColors = {
   'Applied': 'bg-zinc-100 text-zinc-700',
@@ -99,6 +100,11 @@ const InterviewScoreBadge = ({ score, verdict }) => {
 
 const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds, onSingleAction, onCandidateClick, onDetailsClick, onAnalyze, analyzingIds = new Set() }) => {
   const allSelected = useMemo(() => applications.length > 0 && selectedIds.length === applications.length, [applications, selectedIds]);
+  const [avatarLoadFailedById, setAvatarLoadFailedById] = useState({});
+
+  useEffect(() => {
+    setAvatarLoadFailedById({});
+  }, [applications]);
 
   const toggleAll = (e) => {
     if (e.target.checked) setSelectedIds(applications.map((a) => a._id));
@@ -157,8 +163,10 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
             const appliedDate = app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '—';
             const resumeName = app?.resume?.fileName || app?.resume?.originalName || app?.candidate?.resume?.fileName || 'Resume';
             const resumePath = app?.resume?.filePath || app?.resume?.fileUrl || app?.candidate?.resume?.filePath || app?.candidate?.resume?.fileUrl;
-            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-            const resumeUrl = resumePath ? (resumePath.startsWith('http') ? resumePath : `${API_BASE_URL}${resumePath.startsWith('/') ? '' : '/'}${resumePath}`) : '#';
+            const resumeUrl = resolveUploadUrl(resumePath) || '#';
+            const candidatePhotoUrl = resolveUploadUrl(app?.candidate?.profilePhotoUrl || null);
+            const showAvatarFallback = !candidatePhotoUrl || avatarLoadFailedById[app._id];
+            const initials = name !== '—' ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '?';
 
             return (
               <tr key={app._id} className="even:bg-zinc-50/50 hover:bg-zinc-50 transition-colors group">
@@ -175,9 +183,16 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                       onClick={() => onCandidateClick && onCandidateClick(app)}
                       className="flex items-center gap-3 w-full text-left hover:bg-zinc-100/80 rounded-xl p-2 -ml-2 transition-all group"
                     >
-                      <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full font-bold border transition-colors ${getAvatarColor(name)}`}>
-                        {name !== '—' && name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                        {name === '—' && '?'}
+                      <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full font-bold border transition-colors overflow-hidden ${showAvatarFallback ? getAvatarColor(name) : 'bg-white border-zinc-200'}`}>
+                        {!showAvatarFallback && (
+                          <img
+                            src={candidatePhotoUrl}
+                            alt={name}
+                            className="h-full w-full object-cover"
+                            onError={() => setAvatarLoadFailedById((prev) => ({ ...prev, [app._id]: true }))}
+                          />
+                        )}
+                        {showAvatarFallback && initials}
                       </div>
                       <div className="flex-1 min-w-0">
                         <span className="text-sm font-bold text-zinc-900 group-hover:text-zinc-600 transition-colors block truncate">

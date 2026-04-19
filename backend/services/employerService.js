@@ -1,7 +1,32 @@
 const User = require('../models/User');
+const { clerkClient } = require('@clerk/clerk-sdk-node');
 const EmployerProfile = require('../models/EmployerProfile');
+const CandidateProfile = require('../models/CandidateProfile');
 const { NotFoundError } = require('../utils/errorHandler');
 const logger = require('../utils/logger');
+
+const resolveCandidateClerkImageMap = async (candidateUsers = []) => {
+  const clerkUserIds = [...new Set(
+    candidateUsers
+      .map((user) => user?.clerkUserId)
+      .filter(Boolean)
+  )];
+
+  if (!clerkUserIds.length) return new Map();
+
+  const settled = await Promise.allSettled(
+    clerkUserIds.map((clerkUserId) => clerkClient.users.getUser(clerkUserId))
+  );
+
+  const imageMap = new Map();
+  settled.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      imageMap.set(clerkUserIds[index], result.value?.imageUrl || result.value?.profileImageUrl || null);
+    }
+  });
+
+  return imageMap;
+};
 
 /**
  * Employer service - handles all employer-related business logic
@@ -158,7 +183,7 @@ const getDashboardStats = async (clerkUserId) => {
     .limit(5)
     .populate({
       path: 'candidateId',
-      select: 'fullName email'
+      select: 'fullName email metadata clerkUserId'
     })
     .populate('jobId', 'title')
     .lean();
@@ -173,19 +198,45 @@ const getDashboardStats = async (clerkUserId) => {
     .limit(5)
     .populate({
       path: 'candidateId',
-      select: 'fullName email'
+      select: 'fullName email metadata clerkUserId'
     })
     .populate('jobId', 'title')
     .lean();
 
+  const candidateUserIds = [
+    ...recentApplications.map((app) => app.candidateId?._id || app.candidateId).filter(Boolean),
+    ...upcomingApplications.map((app) => app.candidateId?._id || app.candidateId).filter(Boolean),
+  ];
+
+  const candidateProfiles = candidateUserIds.length
+    ? await CandidateProfile.find({ user: { $in: candidateUserIds } })
+      .select('user profilePhotoUrl')
+      .lean()
+    : [];
+
+  const candidatePhotoByUserId = new Map(
+    candidateProfiles.map((profile) => [profile.user.toString(), profile.profilePhotoUrl || null])
+  );
+
+  const candidateClerkImageById = await resolveCandidateClerkImageMap([
+    ...recentApplications.map((app) => app.candidateId),
+    ...upcomingApplications.map((app) => app.candidateId),
+  ]);
+
   // Transform to match frontend expectations
   const formattedApplications = recentApplications.map(app => ({
+    ...app,
+    candidateProfilePhotoUrl: (app.candidateId?._id || app.candidateId)
+      ? candidatePhotoByUserId.get((app.candidateId?._id || app.candidateId).toString()) || app.candidateId?.metadata?.imageUrl || app.candidateId?.metadata?.profileImageUrl || (app.candidateId?.clerkUserId ? candidateClerkImageById.get(app.candidateId.clerkUserId) || null : null)
+      : null,
+  })).map(app => ({
     ...app,
     candidate: {
       user: {
         fullName: app.candidateId?.fullName || app.applicationProfile?.personalInfo?.name || 'Candidate',
         email: app.candidateId?.email || app.applicationProfile?.personalInfo?.email
-      }
+      },
+      profilePhotoUrl: app.candidateProfilePhotoUrl || null,
     },
     job: {
       _id: app.jobId?._id,
@@ -196,11 +247,17 @@ const getDashboardStats = async (clerkUserId) => {
 
   const formattedUpcoming = upcomingApplications.map(app => ({
     ...app,
+    candidateProfilePhotoUrl: (app.candidateId?._id || app.candidateId)
+      ? candidatePhotoByUserId.get((app.candidateId?._id || app.candidateId).toString()) || app.candidateId?.metadata?.imageUrl || app.candidateId?.metadata?.profileImageUrl || (app.candidateId?.clerkUserId ? candidateClerkImageById.get(app.candidateId.clerkUserId) || null : null)
+      : null,
+  })).map(app => ({
+    ...app,
     candidate: {
       user: {
         fullName: app.candidateId?.fullName || app.applicationProfile?.personalInfo?.name || 'Candidate',
         email: app.candidateId?.email || app.applicationProfile?.personalInfo?.email
-      }
+      },
+      profilePhotoUrl: app.candidateProfilePhotoUrl || null,
     },
     job: {
       _id: app.jobId?._id,

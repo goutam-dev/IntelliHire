@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import api from '../../lib/api';
 import { getCurrencySymbol } from '../../constants/jobConstants';
+import { resolveUploadUrl } from '../../utils/mediaUrl';
 
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 
@@ -32,11 +33,16 @@ const JobDetails = () => {
   const [error, setError] = useState(null);
   const [applicationStatus, setApplicationStatus] = useState(null);
   const [checkingApplication, setCheckingApplication] = useState(false);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 
   useEffect(() => {
     fetchJobDetails();
     checkApplicationStatus();
   }, [jobId]);
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [job?.companyLogoUrl]);
 
   const fetchJobDetails = async () => {
     try {
@@ -105,6 +111,9 @@ const JobDetails = () => {
 
   const hasSalaryRange = Boolean(job?.salaryRange && (job.salaryRange.min || job.salaryRange.max));
   const salarySymbol = hasSalaryRange ? getCurrencySymbol(job.salaryRange.currency || 'USD') : null;
+  const companyName = job?.company || 'Company Name';
+  const companyInitial = (companyName[0] || 'C').toUpperCase();
+  const companyLogoUrl = resolveUploadUrl(job?.companyLogoUrl || job?.employer?.logoUrl || null);
 
   if (loading) {
     return <SkeletonLoader type="layout-profile" />;
@@ -170,10 +179,21 @@ const JobDetails = () => {
             </button>
             <div className="flex-1">
               <h1 className="text-3xl sm:text-4xl font-extrabold text-zinc-900 tracking-tight mb-2">{job.title}</h1>
-              <p className="text-zinc-600 font-medium text-lg flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-zinc-400" />
-                {job.company}
-              </p>
+              <div className="text-zinc-600 font-medium text-lg flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-zinc-200 overflow-hidden flex items-center justify-center text-[11px] font-extrabold text-zinc-700 border border-zinc-300">
+                  {companyLogoUrl && !logoLoadFailed ? (
+                    <img
+                      src={companyLogoUrl}
+                      alt={`${companyName} logo`}
+                      className="w-full h-full object-cover"
+                      onError={() => setLogoLoadFailed(true)}
+                    />
+                  ) : (
+                    companyInitial
+                  )}
+                </div>
+                <span>{companyName}</span>
+              </div>
             </div>
           </div>
           

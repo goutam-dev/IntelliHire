@@ -5,9 +5,11 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { fetchMyApplications, clearApplicationsCache } from '../../../store/slices/jobApplicationsSlice';
 import { ChevronRight, Building2, MapPin } from 'lucide-react';
+import { resolveUploadUrl } from '../../../utils/mediaUrl';
 
 const ApplicationCard = ({ application, index }) => {
   const navigate = useNavigate();
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
   const getStatusConfig = (status) => {
     const statusLower = status?.toLowerCase();
     const dots = {
@@ -36,11 +38,21 @@ const ApplicationCard = ({ application, index }) => {
                   application.jobId?.employer?.name || 
                   application.company || 
                   'Unknown Company';
+  const companyLogoUrl =
+    application.jobId?.companyLogoUrl ||
+    application.jobId?.employer?.logoUrl ||
+    application.companyLogoUrl ||
+    null;
   const location = application.jobId?.location || application.location || 'Remote / Hybrid';
   const status = application.status || 'Applied';
   
   const companyInitial = company.charAt(0).toUpperCase();
+  const resolvedCompanyLogoUrl = resolveUploadUrl(companyLogoUrl);
   const statusConfig = getStatusConfig(status);
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [companyLogoUrl]);
 
   return (
     <motion.div 
@@ -53,8 +65,19 @@ const ApplicationCard = ({ application, index }) => {
       {/* Left: Job Details */}
       <div className="flex items-center gap-4 flex-1 min-w-0">
         {/* Company Icon Placeholder */}
-        <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-lg bg-zinc-100 border border-zinc-200 shadow-sm text-zinc-900 font-bold text-lg">
-          {companyInitial}
+        <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-zinc-100 border border-zinc-200 shadow-sm overflow-hidden">
+          {resolvedCompanyLogoUrl && !logoLoadFailed ? (
+            <img
+              src={resolvedCompanyLogoUrl}
+              alt={`${company} logo`}
+              className="w-full h-full object-cover"
+              onError={() => setLogoLoadFailed(true)}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-900 font-bold text-lg">
+              {companyInitial}
+            </div>
+          )}
         </div>
         
         <div className="flex flex-col min-w-0">

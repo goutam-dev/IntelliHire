@@ -21,6 +21,7 @@ import { motion } from 'framer-motion';
 import EmployerHeader from '../../components/layout/EmployerHeader';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
+import { resolveUploadUrl } from '../../utils/mediaUrl';
 import { fetchEmployerJobs } from '../../store/slices/jobSlice';
 import { fetchEmployerProfile } from '../../store/slices/employerSlice';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
@@ -117,6 +118,8 @@ const Dashboard = () => {
   const [recentApplications, setRecentApplications] = useState([]);
   const [upcomingInterviews, setUpcomingInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [recentPhotoLoadFailed, setRecentPhotoLoadFailed] = useState({});
+  const [upcomingPhotoLoadFailed, setUpcomingPhotoLoadFailed] = useState({});
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -159,6 +162,14 @@ const Dashboard = () => {
 
     loadDashboardData();
   }, [dispatch, getToken]);
+
+  useEffect(() => {
+    setRecentPhotoLoadFailed({});
+  }, [recentApplications]);
+
+  useEffect(() => {
+    setUpcomingPhotoLoadFailed({});
+  }, [upcomingInterviews]);
 
   const recentJobs = useMemo(() => {
     return [...jobs]
@@ -394,36 +405,50 @@ const Dashboard = () => {
                     <div className="py-16 text-center text-sm font-medium text-zinc-500">No recent applications found.</div>
                   ) : (
                     <div className="divide-y divide-zinc-100">
-                      {recentApplications.slice(0, 5).map((app) => (
-                        <div
-                          key={app._id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between p-6 transition-all hover:bg-zinc-50/80 group gap-4"
-                        >
-                          <div className="flex items-start sm:items-center gap-4">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 text-lg font-bold text-zinc-900 shadow-sm">
-                              {app?.candidate?.user?.fullName?.charAt(0) || 'C'}
+                      {recentApplications.slice(0, 5).map((app) => {
+                        const candidateName = app?.candidate?.user?.fullName || 'Candidate';
+                        const candidatePhotoUrl = resolveUploadUrl(app?.candidate?.profilePhotoUrl || null);
+                        const showAvatarFallback = !candidatePhotoUrl || recentPhotoLoadFailed[app._id];
+
+                        return (
+                          <div
+                            key={app._id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between p-6 transition-all hover:bg-zinc-50/80 group gap-4"
+                          >
+                            <div className="flex items-start sm:items-center gap-4">
+                              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 text-lg font-bold text-zinc-900 shadow-sm overflow-hidden">
+                                {!showAvatarFallback && (
+                                  <img
+                                    src={candidatePhotoUrl}
+                                    alt={candidateName}
+                                    className="h-full w-full object-cover"
+                                    onError={() => setRecentPhotoLoadFailed((prev) => ({ ...prev, [app._id]: true }))}
+                                  />
+                                )}
+                                {showAvatarFallback && (candidateName.charAt(0) || 'C')}
+                              </div>
+                              <div>
+                                <h3 className="text-base font-extrabold text-zinc-900 group-hover:text-zinc-700 transition-colors">{candidateName}</h3>
+                                <p className="text-sm font-medium text-zinc-500 mt-1">
+                                  Applied for <span className="text-zinc-800 font-bold bg-zinc-100/80 px-1.5 py-0.5 rounded-md">{app?.job?.title}</span>
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="text-base font-extrabold text-zinc-900 group-hover:text-zinc-700 transition-colors">{app?.candidate?.user?.fullName || 'Candidate'}</h3>
-                              <p className="text-sm font-medium text-zinc-500 mt-1">
-                                Applied for <span className="text-zinc-800 font-bold bg-zinc-100/80 px-1.5 py-0.5 rounded-md">{app?.job?.title}</span>
-                              </p>
+                            <div className="flex items-center justify-between sm:justify-end gap-5">
+                              <span className="text-sm font-bold text-zinc-400">
+                                {getApplicationDate(app)}
+                              </span>
+                              <button
+                                onClick={() => app?.job?._id && navigate(`/employer/jobs/${app.job._id}/applications`)}
+                                disabled={!app?.job?._id}
+                                className="bg-white border border-zinc-200 text-zinc-900 font-bold text-xs px-4 py-2 hover:bg-zinc-50 hover:border-zinc-300 rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-zinc-200"
+                              >
+                                Review
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center justify-between sm:justify-end gap-5">
-                            <span className="text-sm font-bold text-zinc-400">
-                              {getApplicationDate(app)}
-                            </span>
-                            <button
-                              onClick={() => app?.job?._id && navigate(`/employer/jobs/${app.job._id}/applications`)}
-                              disabled={!app?.job?._id}
-                              className="bg-white border border-zinc-200 text-zinc-900 font-bold text-xs px-4 py-2 hover:bg-zinc-50 hover:border-zinc-300 rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-zinc-200"
-                            >
-                              Review
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -510,6 +535,8 @@ const Dashboard = () => {
                           upcomingInterviews.slice(0, 3).map((interview, index) => {
                             const name = interview.candidate?.user?.fullName || 'Candidate';
                             const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                            const candidatePhotoUrl = resolveUploadUrl(interview.candidate?.profilePhotoUrl || null);
+                            const showAvatarFallback = !candidatePhotoUrl || upcomingPhotoLoadFailed[interview._id];
                             
                             // Colors map to break up the monochrome
                             const colors = [
@@ -544,9 +571,20 @@ const Dashboard = () => {
                                 className={`group flex items-center justify-between p-3 -mx-3 rounded-xl transition-colors border ${interview?.job?._id ? 'hover:bg-zinc-50 cursor-pointer border-transparent hover:border-zinc-100' : 'border-transparent opacity-60 cursor-not-allowed'}`}
                               >
                                 <div className="flex items-center gap-4">
-                                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-extrabold text-sm border shadow-sm ${colorClass.split('group-hover')[0]}`}>
-                                    {initials}
-                                  </div>
+                                  {showAvatarFallback ? (
+                                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-extrabold text-sm border shadow-sm ${colorClass.split('group-hover')[0]}`}>
+                                      {initials}
+                                    </div>
+                                  ) : (
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-200 shadow-sm overflow-hidden bg-white">
+                                      <img
+                                        src={candidatePhotoUrl}
+                                        alt={name}
+                                        className="h-full w-full object-cover"
+                                        onError={() => setUpcomingPhotoLoadFailed((prev) => ({ ...prev, [interview._id]: true }))}
+                                      />
+                                    </div>
+                                  )}
                                   <div>
                                     <p className={`text-sm font-extrabold text-zinc-900 transition-colors line-clamp-1 ${colorClass.split(' ').pop()}`}>{name}</p>
                                     <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mt-0.5 line-clamp-1">{interview.job?.title || 'General'}</p>

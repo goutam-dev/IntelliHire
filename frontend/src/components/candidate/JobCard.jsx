@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { getCurrencySymbol } from '../../constants/jobConstants';
 import jobApi from '../../services/api/jobApi';
+import { resolveUploadUrl } from '../../utils/mediaUrl';
 
 const scaleIn = {
   hidden: { opacity: 0, scale: 0.9 },
@@ -54,6 +55,7 @@ const JobCard = ({ job, index }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [viewCount, setViewCount] = useState(job.viewsCount || job.metadata?.views || 0);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 
   // Get profile completion data from Redux store
   const { completion, incompleteSections, isComplete } = useSelector(state => state.profileCompletion);
@@ -65,6 +67,10 @@ const JobCard = ({ job, index }) => {
   useEffect(() => {
     setViewCount(job.viewsCount || job.metadata?.views || 0);
   }, [job._id, job.viewsCount, job.metadata?.views]);
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [job?.companyLogoUrl]);
 
   const trackViewIfNeeded = async () => {
     const viewSessionKey = `job-view-tracked-${job._id}`;
@@ -235,6 +241,9 @@ const JobCard = ({ job, index }) => {
   const deadlineStatus = getDeadlineStatus();
   const jobStatus = getJobStatus();
   const isJobClosed = job.status === 'closed';
+  const companyName = job.company || job.employer?.companyName || job.employer?.name || 'Company Name';
+  const companyInitial = (companyName[0] || 'C').toUpperCase();
+  const companyLogoUrl = resolveUploadUrl(job.companyLogoUrl || job.employer?.logoUrl || null);
   const applicationDetailId =
     applicationStatus?.application?.applicationId ||
     applicationStatus?.applicationId ||
@@ -255,8 +264,17 @@ const JobCard = ({ job, index }) => {
         {/* Header Section */}
         <div className="flex items-start gap-5 mb-6">
           {/* Company Initial/Logo Placeholder */}
-          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-900 text-white flex items-center justify-center flex-shrink-0 shadow-lg shadow-zinc-900/20 font-bold text-xl uppercase tracking-wider">
-            {(job.company || job.employer?.companyName || job.employer?.name || 'C')[0]}
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-900 text-white flex items-center justify-center flex-shrink-0 shadow-lg shadow-zinc-900/20 font-bold text-xl uppercase tracking-wider overflow-hidden">
+            {companyLogoUrl && !logoLoadFailed ? (
+              <img
+                src={companyLogoUrl}
+                alt={`${companyName} logo`}
+                className="w-full h-full object-cover"
+                onError={() => setLogoLoadFailed(true)}
+              />
+            ) : (
+              companyInitial
+            )}
           </div>
           
           <div className="flex-1 min-w-0">
@@ -268,7 +286,7 @@ const JobCard = ({ job, index }) => {
                 <div className="flex flex-wrap items-center gap-3 text-sm font-medium">
                   <div className="flex items-center gap-1.5 text-zinc-700">
                     <Building2 className="w-4 h-4 text-zinc-400" />
-                    <span>{job.company || job.employer?.companyName || job.employer?.name || 'Company Name'}</span>
+                    <span>{companyName}</span>
                   </div>
                   <span className="w-1 h-1 rounded-full bg-zinc-300"></span>
                   <div className="flex items-center gap-1.5 text-zinc-600">

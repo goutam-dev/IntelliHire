@@ -181,7 +181,8 @@ export const deleteVideo = createAsyncThunk(
 const initialState = {
   profile: null,
   loading: false,
-  error: null
+  error: null,
+  fetchProfileRequestId: null,
 };
 
 const candidateSlice = createSlice({
@@ -201,17 +202,27 @@ const candidateSlice = createSlice({
   extraReducers: (builder) => {
     builder
       // Fetch profile
-      .addCase(fetchCandidateProfile.pending, (state) => {
+      .addCase(fetchCandidateProfile.pending, (state, action) => {
         state.loading = true;
         state.error = null;
+        state.fetchProfileRequestId = action.meta.requestId;
       })
       .addCase(fetchCandidateProfile.fulfilled, (state, action) => {
+        if (state.fetchProfileRequestId && state.fetchProfileRequestId !== action.meta.requestId) {
+          return;
+        }
         state.loading = false;
         state.profile = action.payload;
+        state.error = null;
+        state.fetchProfileRequestId = null;
       })
       .addCase(fetchCandidateProfile.rejected, (state, action) => {
+        if (state.fetchProfileRequestId && state.fetchProfileRequestId !== action.meta.requestId) {
+          return;
+        }
         state.loading = false;
         state.error = action.payload;
+        state.fetchProfileRequestId = null;
       })
       // Update operations
       .addCase(updateBasicInfo.fulfilled, (state, action) => {
@@ -261,7 +272,7 @@ const candidateSlice = createSlice({
       })
       // Error handling for all async actions
       .addMatcher(
-        (action) => action.type.endsWith('/rejected'),
+        (action) => action.type.endsWith('/rejected') && action.type !== fetchCandidateProfile.rejected.type,
         (state, action) => {
           state.error = action.payload;
         }

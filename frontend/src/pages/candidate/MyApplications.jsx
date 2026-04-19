@@ -3,7 +3,6 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Building2,
   MapPin,
   Clock,
   Calendar,
@@ -29,6 +28,7 @@ import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
 import ReInterviewRequestDialog, { ReInterviewStatusBadge } from '../../components/candidate/ReInterviewRequestDialog';
 import { requestReInterview } from '../../services/api/applicationApi';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
+import { resolveUploadUrl } from '../../utils/mediaUrl';
 
 const MyApplications = () => {
   const dispatch = useDispatch();
@@ -54,12 +54,14 @@ const MyApplications = () => {
   const [reInterviewDialogApp, setReInterviewDialogApp] = useState(null);
   const [reInterviewLoading, setReInterviewLoading] = useState(false);
 
-  // Status options for filter - simplified to only important ones
+  // Status options for filter
   const statusOptions = [
     { value: 'all', label: 'All Applications', count: 0 },
     { value: 'Applied', label: 'Applied', count: 0 },
     { value: 'Shortlisted', label: 'Shortlisted', count: 0 },
     { value: 'Interview Scheduled', label: 'Interview Scheduled', count: 0 },
+    { value: 'Interviewed', label: 'Interviewed', count: 0 },
+    { value: 'Finalist', label: 'Finalist', count: 0 },
     { value: 'Hired', label: 'Hired', count: 0 },
     { value: 'Rejected', label: 'Rejected', count: 0 }
   ];
@@ -161,6 +163,8 @@ const MyApplications = () => {
       'Applied': 'bg-slate-100 text-slate-700 border-slate-200/80',
       'Shortlisted': 'bg-sky-50 text-sky-700 border-sky-200/80',
       'Interview Scheduled': 'bg-cyan-50 text-cyan-700 border-cyan-200/80',
+      'Interviewed': 'bg-teal-50 text-teal-700 border-teal-200/80',
+      'Finalist': 'bg-indigo-50 text-indigo-700 border-indigo-200/80',
       'Job Deleted': 'bg-zinc-200 text-zinc-700 border-zinc-300',
       'Rejected': 'bg-rose-50 text-rose-700 border-rose-200/80',
       'Hired': 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
@@ -174,6 +178,8 @@ const MyApplications = () => {
       'Applied': <Clock className="w-4 h-4" />,
       'Shortlisted': <CheckCircle className="w-4 h-4" />,
       'Interview Scheduled': <Calendar className="w-4 h-4" />,
+      'Interviewed': <Video className="w-4 h-4" />,
+      'Finalist': <CheckCircle className="w-4 h-4" />,
       'Job Deleted': <AlertCircle className="w-4 h-4" />,
       'Rejected': <XCircle className="w-4 h-4" />,
       'Hired': <CheckCircle className="w-4 h-4" />,
@@ -182,7 +188,52 @@ const MyApplications = () => {
     return icons[status] || <Clock className="w-4 h-4" />;
   };
 
-  if (loading.fetchingApplications) {
+  const listTransitionKey = `${filters.status}-${currentPage}`;
+
+  const listVariants = {
+    hidden: { opacity: 0, y: 12 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.32,
+        ease: [0.22, 1, 0.36, 1],
+        when: 'beforeChildren',
+        staggerChildren: 0.06,
+        delayChildren: 0.04,
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: -8,
+      transition: { duration: 0.2, ease: 'easeIn' },
+    },
+  };
+
+  const cardVariants = {
+    hidden: { opacity: 0, y: 18, scale: 0.992 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: 'spring',
+        stiffness: 260,
+        damping: 24,
+        mass: 0.85,
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: 10,
+      scale: 0.995,
+      transition: { duration: 0.16, ease: 'easeIn' },
+    },
+  };
+
+  const isInitialLoading = loading.fetchingApplications && myApplications.length === 0;
+
+  if (isInitialLoading) {
     return <SkeletonLoader type="layout-list" />;
   }
 
@@ -233,9 +284,16 @@ const MyApplications = () => {
 
         {/* Filters */}
         <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
-          <div className="flex items-center gap-2.5 mb-5">
-            <Filter className="w-4 h-4 text-zinc-400" />
-            <h2 className="text-sm font-bold text-zinc-900 tracking-wide uppercase">Filter Applications</h2>
+          <div className="flex items-center justify-between gap-2.5 mb-5">
+            <div className="flex items-center gap-2.5">
+              <Filter className="w-4 h-4 text-zinc-400" />
+              <h2 className="text-sm font-bold text-zinc-900 tracking-wide uppercase">Filter Applications</h2>
+            </div>
+            {loading.fetchingApplications && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Updating...
+              </span>
+            )}
           </div>
           
           <div className="flex flex-wrap gap-2.5">
@@ -243,11 +301,12 @@ const MyApplications = () => {
               <button
                 key={option.value}
                 onClick={() => handleStatusFilter(option.value)}
+                disabled={loading.fetchingApplications}
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${
                   filters.status === option.value
                     ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
                     : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-900'
-                }`}
+                } ${loading.fetchingApplications ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
                 {option.label}
                 {option.value === 'all' && applicationsPagination.totalApplications > 0 && (
@@ -283,14 +342,21 @@ const MyApplications = () => {
             </button>
           </div>
         ) : (
-          <div className="space-y-5">
-            <AnimatePresence>
+          <div className={`transition-opacity duration-200 ${loading.fetchingApplications ? 'opacity-85' : 'opacity-100'}`}>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={listTransitionKey}
+                variants={listVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="space-y-5"
+              >
               {myApplications.map((application) => (
                 <motion.div
                   key={application.applicationId}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
+                  layout
+                  variants={cardVariants}
                   className={`bg-white rounded-2xl shadow-sm border transition-all duration-300 group overflow-hidden ${
                     highlightedApplication === application.applicationId
                       ? 'border-zinc-900 shadow-lg ring-1 ring-zinc-900'
@@ -303,6 +369,11 @@ const MyApplications = () => {
                     const closedAtLabel = closedAt && !Number.isNaN(closedAt.getTime())
                       ? closedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
                       : null;
+                    const companyName = application.jobId?.company || 'Company';
+                    const companyInitial = (companyName[0] || 'C').toUpperCase();
+                    const companyLogoUrl = resolveUploadUrl(
+                      application.jobId?.companyLogoUrl || application.companyLogoUrl || null
+                    );
 
                     return (
                   <div className="p-6 sm:p-8">
@@ -320,8 +391,27 @@ const MyApplications = () => {
                         
                         <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-zinc-600 mb-4">
                           <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
-                            <Building2 className="w-4 h-4 text-zinc-400" />
-                            <span>{application.jobId?.company || 'Company'}</span>
+                            <div className="w-5 h-5 rounded-full bg-zinc-200 overflow-hidden flex items-center justify-center text-[10px] font-extrabold text-zinc-700 border border-zinc-300">
+                              {companyLogoUrl ? (
+                                <>
+                                  <img
+                                    src={companyLogoUrl}
+                                    alt={`${companyName} logo`}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      if (e.currentTarget.nextElementSibling) {
+                                        e.currentTarget.nextElementSibling.style.display = 'flex';
+                                      }
+                                    }}
+                                  />
+                                  <span className="hidden w-full h-full items-center justify-center">{companyInitial}</span>
+                                </>
+                              ) : (
+                                <span className="w-full h-full flex items-center justify-center">{companyInitial}</span>
+                              )}
+                            </div>
+                            <span>{companyName}</span>
                           </div>
                           <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
                             <MapPin className="w-4 h-4 text-zinc-400" />
@@ -538,6 +628,7 @@ const MyApplications = () => {
                   })()}
                 </motion.div>
               ))}
+              </motion.div>
             </AnimatePresence>
           </div>
         )}

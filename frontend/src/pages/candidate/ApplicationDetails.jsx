@@ -24,6 +24,7 @@ import api from '../../lib/api';
 import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
 import ReInterviewRequestDialog, { ReInterviewStatusBadge } from '../../components/candidate/ReInterviewRequestDialog';
 import { requestReInterview } from '../../services/api/applicationApi';
+import { resolveUploadUrl } from '../../utils/mediaUrl';
 
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 
@@ -35,10 +36,15 @@ const ApplicationDetails = () => {
   const [error, setError] = useState(null);
   const [reInterviewDialogOpen, setReInterviewDialogOpen] = useState(false);
   const [reInterviewLoading, setReInterviewLoading] = useState(false);
+  const [companyLogoLoadFailed, setCompanyLogoLoadFailed] = useState(false);
 
   useEffect(() => {
     fetchApplicationDetails();
   }, [applicationId]);
+
+  useEffect(() => {
+    setCompanyLogoLoadFailed(false);
+  }, [application?.jobId?.companyLogoUrl]);
 
   const fetchApplicationDetails = async () => {
     try {
@@ -97,6 +103,11 @@ const ApplicationDetails = () => {
   const closedAtLabel = closedAt && !Number.isNaN(closedAt.getTime())
     ? closedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
+  const companyName = application?.jobId?.company || 'Unknown Company';
+  const companyInitial = (companyName[0] || 'C').toUpperCase();
+  const companyLogoUrl = resolveUploadUrl(
+    application?.jobId?.companyLogoUrl || application?.companyLogoUrl || null
+  );
 
   const handleRequestReInterview = async (reason) => {
     setReInterviewLoading(true);
@@ -335,7 +346,21 @@ const ApplicationDetails = () => {
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-xl sm:text-2xl font-extrabold text-zinc-900 tracking-tight mb-1">{application.jobId.title}</h3>
-                    <p className="text-zinc-600 font-medium">{application.jobId.company}</p>
+                    <div className="text-zinc-600 font-medium flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-zinc-200 overflow-hidden flex items-center justify-center text-[11px] font-extrabold text-zinc-700 border border-zinc-300">
+                        {companyLogoUrl && !companyLogoLoadFailed ? (
+                          <img
+                            src={companyLogoUrl}
+                            alt={`${companyName} logo`}
+                            className="w-full h-full object-cover"
+                            onError={() => setCompanyLogoLoadFailed(true)}
+                          />
+                        ) : (
+                          companyInitial
+                        )}
+                      </div>
+                      <span>{companyName}</span>
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-zinc-500 uppercase tracking-wider">

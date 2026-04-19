@@ -17,6 +17,20 @@ const getLocalDateTimeInputValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return localDate.toISOString().slice(0, 16);
 };
+
+const INTERVIEW_START_GRACE_MS = 60 * 1000;
+
+const toServerDateTime = (value) => {
+  if (!value) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString();
+};
+
+const parseInputDateTime = (value) => {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
           
 const generateTimeOptions = (selectedDateStr) => {
   const options = [];
@@ -99,14 +113,14 @@ const StatusActionsMenu = ({ application, onAction }) => {
       return 'Interview start and end date/time are required.';
     }
 
-    const startDate = new Date(interviewStart);
-    const endDate = new Date(interviewDeadline);
+    const startDate = parseInputDateTime(interviewStart);
+    const endDate = parseInputDateTime(interviewDeadline);
 
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    if (!startDate || !endDate) {
       return 'Please provide valid interview date/time values.';
     }
 
-    if (startDate < new Date()) {
+    if (startDate.getTime() < Date.now() - INTERVIEW_START_GRACE_MS) {
       return 'Interview start date/time cannot be in the past.';
     }
 
@@ -368,7 +382,11 @@ const StatusActionsMenu = ({ application, onAction }) => {
                   }
 
                   const actionType = allowedActions.includes('reschedule') ? 'reschedule' : 'interview';
-                  onAction(actionType, { interviewWindowStart: interviewStart, interviewWindowEnd: interviewDeadline, instructions });
+                  onAction(actionType, {
+                    interviewWindowStart: toServerDateTime(interviewStart),
+                    interviewWindowEnd: toServerDateTime(interviewDeadline),
+                    instructions,
+                  });
                   setInterviewOpen(false);
                   setInterviewError('');
                   setInterviewStart(getLocalDateTimeInputValue());
@@ -484,7 +502,11 @@ const StatusActionsMenu = ({ application, onAction }) => {
                 onClick={() => {
                   const validationError = validateInterviewWindow();
                   if (validationError) { setInterviewError(validationError); return; }
-                  onAction('approve-reinterview', { interviewWindowStart: interviewStart, interviewWindowEnd: interviewDeadline, instructions });
+                  onAction('approve-reinterview', {
+                    interviewWindowStart: toServerDateTime(interviewStart),
+                    interviewWindowEnd: toServerDateTime(interviewDeadline),
+                    instructions,
+                  });
                   setReInterviewApproveOpen(false);
                   setInterviewError('');
                   setInterviewStart(getLocalDateTimeInputValue());

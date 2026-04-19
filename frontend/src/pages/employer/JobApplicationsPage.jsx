@@ -45,6 +45,21 @@ const getLocalDateTimeInputValue = (date = new Date()) => {
   return localDate.toISOString().slice(0, 16);
 };
 
+const INTERVIEW_START_GRACE_MS = 60 * 1000;
+
+const normalizeInterviewDateTime = (value) => {
+  if (!value) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString();
+};
+
+const normalizeInterviewPayload = (payload = {}) => ({
+  ...payload,
+  interviewWindowStart: normalizeInterviewDateTime(payload.interviewWindowStart),
+  interviewWindowEnd: normalizeInterviewDateTime(payload.interviewWindowEnd),
+});
+
 const StatCard = ({ title, value, icon: Icon, color, delay, isLoading }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
@@ -211,10 +226,15 @@ const JobApplicationsPage = () => {
   }, [jobId]);
 
   const fetchIdRef = useRef(0);
+  const foregroundFetchCountRef = useRef(0);
+
   const hasInitializedFiltersRef = useRef(false);
 
   const fetchApplications = async (silent = false) => {
-    if (!silent) setLoading(true);
+    if (!silent) {
+      foregroundFetchCountRef.current += 1;
+      setLoading(true);
+    }
     setError('');
     
     // Increment to track the latest request
@@ -239,8 +259,9 @@ const JobApplicationsPage = () => {
       setError('Failed to load applications. Please try again.');
       return [];
     } finally {
-      if (fetchIdRef.current === currentFetchId && !silent) {
-        setLoading(false);
+      if (!silent) {
+        foregroundFetchCountRef.current = Math.max(0, foregroundFetchCountRef.current - 1);
+        setLoading(foregroundFetchCountRef.current > 0);
       }
     }
   };
@@ -299,7 +320,7 @@ const JobApplicationsPage = () => {
       return 'Please provide valid interview date/time values.';
     }
 
-    if (startDate < new Date()) {
+    if (startDate.getTime() < Date.now() - INTERVIEW_START_GRACE_MS) {
       return 'Interview start date/time cannot be in the past.';
     }
 
@@ -324,16 +345,18 @@ const JobApplicationsPage = () => {
       };
 
       if (type === 'interview' || type === 'reschedule') {
+        const interviewPayload = normalizeInterviewPayload(payload);
         await applicationApi.scheduleInterview(id, {
-          interviewWindowStart: payload.interviewWindowStart,
-          interviewWindowEnd: payload.interviewWindowEnd,
-          instructions: payload.instructions
+          interviewWindowStart: interviewPayload.interviewWindowStart,
+          interviewWindowEnd: interviewPayload.interviewWindowEnd,
+          instructions: interviewPayload.instructions
         });
       } else if (type === 'approve-reinterview') {
+        const interviewPayload = normalizeInterviewPayload(payload);
         await applicationApi.approveReInterview(id, {
-          interviewWindowStart: payload.interviewWindowStart,
-          interviewWindowEnd: payload.interviewWindowEnd,
-          instructions: payload.instructions,
+          interviewWindowStart: interviewPayload.interviewWindowStart,
+          interviewWindowEnd: interviewPayload.interviewWindowEnd,
+          instructions: interviewPayload.instructions,
         });
       } else if (type === 'deny-reinterview') {
         await applicationApi.denyReInterview(id, {
@@ -386,7 +409,8 @@ const JobApplicationsPage = () => {
       }
 
       if (type === 'interview') {
-        const validationError = validateInterviewWindow(payload);
+        const interviewPayload = normalizeInterviewPayload(payload);
+        const validationError = validateInterviewWindow(interviewPayload);
         if (validationError) {
           setInterviewFormError(validationError);
           return false;
@@ -396,9 +420,9 @@ const JobApplicationsPage = () => {
           eligibleApplications.map(async (app) => {
             try {
               await applicationApi.scheduleInterview(app._id, {
-                interviewWindowStart: payload.interviewWindowStart,
-                interviewWindowEnd: payload.interviewWindowEnd,
-                instructions: payload.instructions || ''
+                interviewWindowStart: interviewPayload.interviewWindowStart,
+                interviewWindowEnd: interviewPayload.interviewWindowEnd,
+                instructions: interviewPayload.instructions || ''
               });
               return { ok: true };
             } catch (err) {

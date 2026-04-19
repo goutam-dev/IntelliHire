@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { clerkClient } = require('@clerk/clerk-sdk-node');
 const JobApplication = require('../models/JobApplication');
 const Job = require('../models/Job');
 const CandidateProfile = require('../models/CandidateProfile');
@@ -17,6 +18,7 @@ const notificationService = require('./notificationService');
 
 const ENROLLMENT_RECOVERY_COOLDOWN_MS = Number(process.env.ENROLLMENT_RECOVERY_COOLDOWN_MS || 5 * 60 * 1000);
 const enrollmentRecoveryState = new Map();
+const INTERVIEW_START_GRACE_MS = Number(process.env.INTERVIEW_START_GRACE_MS || 60 * 1000);
 
 /**
  * Application service - handles all application-related business logic
@@ -242,6 +244,29 @@ const parseInterviewDateTime = (value, fieldName) => {
   }
 
   return parsed;
+};
+
+const resolveCandidateClerkImageMap = async (candidateUsers = []) => {
+  const clerkUserIds = [...new Set(
+    candidateUsers
+      .map((user) => user?.clerkUserId)
+      .filter(Boolean)
+  )];
+
+  if (!clerkUserIds.length) return new Map();
+
+  const settled = await Promise.allSettled(
+    clerkUserIds.map((clerkUserId) => clerkClient.users.getUser(clerkUserId))
+  );
+
+  const imageMap = new Map();
+  settled.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      imageMap.set(clerkUserIds[index], result.value?.imageUrl || result.value?.profileImageUrl || null);
+    }
+  });
+
+  return imageMap;
 };
 
 const assertApplicationMutableForEmployer = (application) => {
@@ -619,7 +644,7 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
   let applications = await JobApplication.find(query)
     .populate({
       path: 'candidateId',
-      select: 'fullName email phoneNumber'
+      select: 'fullName email phoneNumber metadata clerkUserId'
     })
     .populate({ path: 'jobId', select: 'title department status closedAt isDeleted' })
     .lean();
@@ -634,13 +659,40 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
     }
   });
 
+  const candidateIds = applications
+    .map((app) => app.candidateId?._id || app.candidateId)
+    .filter(Boolean);
+
+  const candidateProfiles = candidateIds.length
+    ? await CandidateProfile.find({ user: { $in: candidateIds } })
+      .select('user profilePhotoUrl')
+      .lean()
+    : [];
+
+  const candidatePhotoByUserId = new Map(
+    candidateProfiles.map((profile) => [profile.user.toString(), profile.profilePhotoUrl || null])
+  );
+
+  const candidateClerkImageById = await resolveCandidateClerkImageMap(
+    applications.map((app) => app.candidateId)
+  );
+
   // Map to expected structure
   applications = applications.map(app => {
+    const candidateUserId = (app.candidateId?._id || app.candidateId)?.toString?.();
+    const userImageUrl =
+      app.candidateId?.metadata?.imageUrl ||
+      app.candidateId?.metadata?.profileImageUrl ||
+      (app.candidateId?.clerkUserId ? candidateClerkImageById.get(app.candidateId.clerkUserId) || null : null);
+
     return {
       ...app,
       candidate: {
         user: app.candidateId,
-        ...app.applicationProfile
+        ...app.applicationProfile,
+        profilePhotoUrl: candidateUserId
+          ? candidatePhotoByUserId.get(candidateUserId) || userImageUrl || app.applicationProfile?.profilePhotoUrl || null
+          : userImageUrl || app.applicationProfile?.profilePhotoUrl || null,
       },
       job: app.jobId
     };
@@ -953,7 +1005,7 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   const endDate = parseInterviewDateTime(interviewWindowEnd, 'Interview end date/time');
 
   const now = new Date();
-  if (startDate < now) {
+  if (startDate.getTime() < now.getTime() - INTERVIEW_START_GRACE_MS) {
     throw new ValidationError('Interview start date/time cannot be in the past.');
   }
 
@@ -1449,7 +1501,7 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
       select: 'title location salaryRange employmentType employer status closedAt isDeleted',
       populate: {
         path: 'employer',
-        select: 'companyName'
+        select: 'companyName logoUrl'
       }
     })
     .sort({ appliedAt: -1 })
@@ -1461,6 +1513,7 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
   applications.forEach(app => {
     if (app.jobId && app.jobId.employer) {
       app.jobId.company = app.jobId.employer.companyName;
+      app.jobId.companyLogoUrl = app.jobId.employer.logoUrl || null;
       delete app.jobId.employer;
     }
   });
@@ -1505,7 +1558,7 @@ const getApplicationById = async (candidateId, applicationId) => {
       select: 'title location salaryRange employmentType description requirements benefits employer status closedAt isDeleted',
       populate: {
         path: 'employer',
-        select: 'companyName'
+        select: 'companyName logoUrl'
       }
     })
     .populate('candidateId', 'fullName email phoneNumber')
@@ -1513,6 +1566,7 @@ const getApplicationById = async (candidateId, applicationId) => {
 
   if (application && application.jobId && application.jobId.employer) {
     application.jobId.company = application.jobId.employer.companyName;
+    application.jobId.companyLogoUrl = application.jobId.employer.logoUrl || null;
     delete application.jobId.employer;
   }
 
@@ -1549,7 +1603,7 @@ const withdrawApplication = async (candidateId, applicationId) => {
       select: 'title employer',
       populate: {
         path: 'employer',
-        select: 'companyName'
+        select: 'companyName logoUrl'
       }
     });
 
@@ -1567,6 +1621,7 @@ const withdrawApplication = async (candidateId, applicationId) => {
 
     if (application.jobId && application.jobId.employer) {
       application.jobId.company = application.jobId.employer.companyName;
+      application.jobId.companyLogoUrl = application.jobId.employer.logoUrl || null;
       delete application.jobId.employer;
     }
 
@@ -1749,7 +1804,8 @@ const approveReInterview = async (applicationId, interviewData, userId) => {
   const startDate = parseInterviewDateTime(interviewWindowStart, 'Interview start date/time');
   const endDate = parseInterviewDateTime(interviewWindowEnd, 'Interview end date/time');
 
-  if (startDate < new Date()) {
+  const now = new Date();
+  if (startDate.getTime() < now.getTime() - INTERVIEW_START_GRACE_MS) {
     throw new ValidationError('Interview start date/time cannot be in the past.');
   }
   if (endDate <= startDate) {

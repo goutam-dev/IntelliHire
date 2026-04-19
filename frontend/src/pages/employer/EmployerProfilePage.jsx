@@ -10,6 +10,7 @@ import {
 } from "../../store/slices/employerSlice";
 import EmployerHeader from "../../components/layout/EmployerHeader";
 import EmployerAccountSettings from "../../components/employer/EmployerAccountSettings";
+import { resolveUploadUrl } from "../../utils/mediaUrl";
 import {
   Building2,
   Globe,
@@ -25,9 +26,6 @@ import {
   User,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
 const EmployerProfilePage = () => {
   const dispatch = useAppDispatch();
@@ -134,14 +132,6 @@ const EmployerProfilePage = () => {
 
     return Math.round((filledFields.length / fields.length) * 100);
   }, [profile]);
-
-  const getLogoUrl = (url) => {
-    if (!url) return null;
-    if (url.startsWith("http")) return url;
-    // Remove /api from the end of API_BASE_URL if present to get server root
-    const serverRoot = API_BASE_URL.replace(/\/api\/?$/, "");
-    return `${serverRoot}${url}`;
-  };
 
   const COMPANY_SIZES = [
     "1-10",
@@ -345,7 +335,7 @@ const EmployerProfilePage = () => {
                             <div className="h-full w-full rounded-xl bg-zinc-50 flex items-center justify-center overflow-hidden border border-zinc-100">
                               {profile?.logoUrl ? (
                                 <img
-                                  src={getLogoUrl(profile.logoUrl)}
+                                  src={resolveUploadUrl(profile.logoUrl)}
                                   alt="Logo"
                                   className="h-full w-full object-cover"
                                 />
