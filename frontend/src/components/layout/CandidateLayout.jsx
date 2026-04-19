@@ -33,10 +33,12 @@ const CandidateLayout = () => {
   const dispatch = useDispatch();
   const location = useLocation();
   const { profile, loading, error } = useSelector((state) => state.candidate);
+  const [hasStartedInitialFetch, setHasStartedInitialFetch] = useState(false);
   const [showErrorFallback, setShowErrorFallback] = useState(false);
   const skeletonType = getSkeletonType(location.pathname);
 
   useEffect(() => {
+    setHasStartedInitialFetch(true);
     dispatch(fetchCandidateProfile());
   }, [dispatch]);
 
@@ -57,6 +59,11 @@ const CandidateLayout = () => {
       }
     };
   }, [error, profile, loading]);
+
+  // Prevent transient fallback UI before the initial fetch starts.
+  if (!hasStartedInitialFetch && !profile) {
+    return <SkeletonLoader type={skeletonType} />;
+  }
 
   // Show loading state for initial profile load
   if (loading && !profile) {
