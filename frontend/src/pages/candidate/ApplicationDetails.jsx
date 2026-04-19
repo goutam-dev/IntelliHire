@@ -18,7 +18,8 @@ import {
   CheckCircle,
   XCircle,
   RefreshCw,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 import api from '../../lib/api';
 import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
@@ -193,10 +194,20 @@ const ApplicationDetails = () => {
           </div>
           
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center w-fit gap-1.5 ${getStatusColor(application.status)}`}>
-              {getStatusIcon(application.status)}
-              {application.status}
-            </div>
+            {(() => {
+              let displayStatus = application.status;
+              if (displayStatus === 'Interview Scheduled') {
+                const isMissed = !application.interviewCompletedAt && application.interviewWindowEnd && new Date(application.interviewWindowEnd) < new Date();
+                if (isMissed) displayStatus = 'Interview Missed';
+              }
+              const isMissedView = displayStatus === 'Interview Missed';
+              return (
+                <div className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center w-fit gap-1.5 ${isMissedView ? 'bg-amber-50 text-amber-700 border-amber-200' : getStatusColor(displayStatus)}`}>
+                  {getStatusIcon(isMissedView ? 'Interview Scheduled' : displayStatus)}
+                  {displayStatus}
+                </div>
+              );
+            })()}
             
             <div className="flex w-full flex-col gap-16 md:w-auto md:flex-row md:items-center">
               {applicationJobId && !application.jobId?.isDeleted && (
@@ -269,14 +280,25 @@ const ApplicationDetails = () => {
                         Starts at {formatDateTime(start)}
                       </span>
                     )}
-                    {!enrollmentsReady && !interviewLocked && (
+                    {!interviewLocked && afterDeadline && (
+                      <div className="flex flex-col gap-2 mt-1 w-full md:w-auto items-end">
+                        <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200/60 px-3 py-2 rounded-lg text-center md:max-w-[320px] md:text-right tracking-wide">
+                          You missed this interview. The employer will decide the next steps.
+                        </span>
+                        <button disabled className="inline-flex justify-center items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-zinc-400 bg-zinc-100 border border-zinc-200/60 cursor-not-allowed shadow-none transition-all">
+                          <Lock className="w-4 h-4" />
+                          Window Closed
+                        </button>
+                      </div>
+                    )}
+                    {!enrollmentsReady && !interviewLocked && !afterDeadline && (
                       <span className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 uppercase tracking-wide md:max-w-[320px] md:text-right flex items-start gap-1.5 mt-1">
                         {enrollmentFailed
                           ? <span className="flex text-rose-600 gap-1.5"><AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" /> Setup Failed. Contact support.</span>
                           : <span className="flex text-zinc-500 gap-1.5"><RefreshCw className="w-3.5 h-3.5 flex-shrink-0 mt-px animate-spin" /> Setup in progress...</span>}
                       </span>
                     )}
-                    {enrollmentsReady && (
+                    {enrollmentsReady && !afterDeadline && (
                       <button
                         disabled={ctaDisabled}
                         onClick={() =>

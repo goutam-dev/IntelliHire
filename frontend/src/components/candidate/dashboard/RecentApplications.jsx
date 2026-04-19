@@ -18,6 +18,7 @@ const ApplicationCard = ({ application, index }) => {
       shortlisted: 'bg-emerald-500 shadow-emerald-500/40',
       interview: 'bg-purple-500 shadow-purple-500/40',
       'interview scheduled': 'bg-purple-500 shadow-purple-500/40',
+      'interview missed': 'bg-orange-500 shadow-orange-500/40',
       accepted: 'bg-green-500 shadow-green-500/40',
       hired: 'bg-green-500 shadow-green-500/40',
       rejected: 'bg-rose-500 shadow-rose-500/40',
@@ -25,9 +26,9 @@ const ApplicationCard = ({ application, index }) => {
     };
     
     return {
-      bg: 'bg-zinc-50',
-      text: 'text-zinc-700',
-      border: 'border-zinc-200',
+      bg: statusLower === 'interview missed' ? 'bg-orange-50' : 'bg-zinc-50',
+      text: statusLower === 'interview missed' ? 'text-orange-700' : 'text-zinc-700',
+      border: statusLower === 'interview missed' ? 'border-orange-200' : 'border-zinc-200',
       dot: dots[statusLower] || 'bg-zinc-400 shadow-zinc-400/40'
     };
   };
@@ -44,7 +45,12 @@ const ApplicationCard = ({ application, index }) => {
     application.companyLogoUrl ||
     null;
   const location = application.jobId?.location || application.location || 'Remote / Hybrid';
-  const status = application.status || 'Applied';
+  
+  let status = application.status || 'Applied';
+  if (status === 'Interview Scheduled') {
+    const isMissed = !application.interviewCompletedAt && application.interviewWindowEnd && new Date(application.interviewWindowEnd) < new Date();
+    if (isMissed) status = 'Interview Missed';
+  }
   
   const companyInitial = company.charAt(0).toUpperCase();
   const resolvedCompanyLogoUrl = resolveUploadUrl(companyLogoUrl);

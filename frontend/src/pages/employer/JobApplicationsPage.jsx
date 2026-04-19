@@ -25,8 +25,7 @@ const getLifecycleActions = (application) => {
   const canReschedule =
     status === 'Interview Scheduled' &&
     !application?.interviewLocked &&
-    Boolean(application?.interviewWindowEnd) &&
-    new Date(application.interviewWindowEnd) > new Date();
+    Boolean(application?.interviewWindowEnd);
 
   if (status === 'Applied') return ['shortlist', 'reject'];
   if (status === 'Shortlisted') {
@@ -45,10 +44,28 @@ const getLocalDateTimeInputValue = (date = new Date()) => {
   return localDate.toISOString().slice(0, 16);
 };
 
-const INTERVIEW_START_GRACE_MS = 60 * 1000;
+const getInitialInterviewStart = () => {
+  const d = new Date();
+  d.setMinutes(Math.ceil(d.getMinutes() / 30) * 30);
+  d.setSeconds(0);
+  d.setMilliseconds(0);
+  const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+};
+
+const INTERVIEW_START_GRACE_MS = 5 * 60 * 1000;
 
 const normalizeInterviewDateTime = (value) => {
   if (!value) return value;
+  const parts = value.split('T');
+  if (parts.length === 2 && parts[1].indexOf('Z') === -1) {
+    const [y, m, d] = parts[0].split('-').map(Number);
+    const [h, min] = parts[1].split(':').map(Number);
+    if (!Number.isNaN(y) && !Number.isNaN(h)) {
+      const parsed = new Date(y, m - 1, d, h, min);
+      return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+    }
+  }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toISOString();
@@ -128,7 +145,7 @@ const JobApplicationsPage = () => {
   const [rejectDialog, setRejectDialog] = useState(false);
   const [rejectFeedback, setRejectFeedback] = useState('');
   const [interviewDialog, setInterviewDialog] = useState(false);
-  const [interviewData, setInterviewData] = useState({ startDate: getLocalDateTimeInputValue(), endDate: '', instructions: '' });
+  const [interviewData, setInterviewData] = useState({ startDate: getInitialInterviewStart(), endDate: '', instructions: '' });
   const [interviewFormError, setInterviewFormError] = useState('');
 
   // Re-interview dialog states
@@ -539,7 +556,7 @@ const JobApplicationsPage = () => {
   const stats = useMemo(() => {
     const total = applications.length;
     const shortlisted = applications.filter(a => a.status === 'Shortlisted').length;
-    const interviewed = applications.filter(a => a.status === 'Interview Scheduled').length;
+    const interviewed = applications.filter(a => ['Interview Scheduled', 'Interviewed'].includes(a.status)).length;
     const finalist = applications.filter(a => a.status === 'Finalist').length;
     const accepted = applications.filter(a => a.status === 'Hired').length;
     const rejected = applications.filter(a => a.status === 'Rejected').length;
@@ -1080,13 +1097,13 @@ const JobApplicationsPage = () => {
             if (success) {
               setInterviewDialog(false);
               setInterviewFormError('');
-              setInterviewData({ startDate: getLocalDateTimeInputValue(), endDate: '', instructions: '' });
+              setInterviewData({ startDate: getInitialInterviewStart(), endDate: '', instructions: '' });
             }
           }}
           onCancel={() => {
             setInterviewDialog(false);
             setInterviewFormError('');
-            setInterviewData({ startDate: getLocalDateTimeInputValue(), endDate: '', instructions: '' });
+            setInterviewData({ startDate: getInitialInterviewStart(), endDate: '', instructions: '' });
           }}
         >
           <div className="space-y-3">

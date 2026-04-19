@@ -365,10 +365,6 @@ const JobCard = ({ job, index }) => {
               <Calendar className="w-4 h-4 text-zinc-400" />
               <span>{getTimeAgo(job.publishedAt || job.createdAt)}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-zinc-400" />
-              <span>{job.applicationsCount || job.metadata?.applicants || 0} applicants</span>
-            </div>
           </div>
           
           {job.applicationDeadline && (

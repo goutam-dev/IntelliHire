@@ -211,10 +211,6 @@ const JobDetails = () => {
                 <Calendar className="w-4 h-4" />
                 <span>Posted {job.postedAgo}</span>
               </div>
-              <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
-                <Users className="w-4 h-4" />
-                <span>{job.applicationsCount || 0} applicants</span>
-              </div>
             </div>
             
             <div className="flex items-center gap-3">
@@ -451,10 +447,6 @@ const JobDetails = () => {
                     <div className="flex items-center gap-1">
                       <Eye className="w-4 h-4" />
                       <span>{job.viewsCount || 0} views</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Users className="w-4 h-4" />
-                      <span>{job.applicationsCount || 0} applicants</span>
                     </div>
                   </div>
                 </div>

@@ -18,18 +18,37 @@ const getLocalDateTimeInputValue = (date = new Date()) => {
   return localDate.toISOString().slice(0, 16);
 };
 
-const INTERVIEW_START_GRACE_MS = 60 * 1000;
+const getInitialInterviewStart = () => {
+  const d = new Date();
+  d.setMinutes(Math.ceil(d.getMinutes() / 30) * 30);
+  d.setSeconds(0);
+  d.setMilliseconds(0);
+  const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+};
+
+const INTERVIEW_START_GRACE_MS = 5 * 60 * 1000;
+
+const parseInputDateTime = (value) => {
+  if (!value) return null;
+  const parts = value.split('T');
+  if (parts.length === 2) {
+    const [y, m, d] = parts[0].split('-').map(Number);
+    const [h, min] = parts[1].split(':').map(Number);
+    if (!Number.isNaN(y) && !Number.isNaN(h)) {
+      const parsed = new Date(y, m - 1, d, h, min);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
 
 const toServerDateTime = (value) => {
   if (!value) return value;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
+  const parsed = parseInputDateTime(value);
+  if (!parsed) return value;
   return parsed.toISOString();
-};
-
-const parseInputDateTime = (value) => {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
           
 const generateTimeOptions = (selectedDateStr) => {
@@ -68,7 +87,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
-  const [interviewStart, setInterviewStart] = useState(getLocalDateTimeInputValue());
+  const [interviewStart, setInterviewStart] = useState(getInitialInterviewStart());
   const [interviewDeadline, setInterviewDeadline] = useState('');
   const [instructions, setInstructions] = useState('');
   const [interviewError, setInterviewError] = useState('');
@@ -87,7 +106,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
     if (status !== 'Interview Scheduled') return false;
     if (application?.interviewLocked) return false;
     if (!application?.interviewWindowEnd) return false;
-    return new Date(application.interviewWindowEnd) > new Date();
+    return true;
   })();
 
   const hasCompletedInterview = Boolean(application?.interviewCompletedAt || status === 'Interviewed');
@@ -364,7 +383,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
                 onClick={() => {
                   setInterviewOpen(false);
                   setInterviewError('');
-                  setInterviewStart(getLocalDateTimeInputValue());
+                  setInterviewStart(getInitialInterviewStart());
                   setInterviewDeadline('');
                   setInstructions('');
                 }}
@@ -389,7 +408,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
                   });
                   setInterviewOpen(false);
                   setInterviewError('');
-                  setInterviewStart(getLocalDateTimeInputValue());
+                  setInterviewStart(getInitialInterviewStart());
                   setInterviewDeadline('');
                   setInstructions('');
                 }}
@@ -492,7 +511,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
             <div className="flex justify-end gap-2 mt-4">
               <button
                 className="rounded-lg border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
-                onClick={() => { setReInterviewApproveOpen(false); setInterviewError(''); setInterviewStart(getLocalDateTimeInputValue()); setInterviewDeadline(''); setInstructions(''); }}
+                onClick={() => { setReInterviewApproveOpen(false); setInterviewError(''); setInterviewStart(getInitialInterviewStart()); setInterviewDeadline(''); setInstructions(''); }}
               >
                 Cancel
               </button>
@@ -509,7 +528,7 @@ const StatusActionsMenu = ({ application, onAction }) => {
                   });
                   setReInterviewApproveOpen(false);
                   setInterviewError('');
-                  setInterviewStart(getLocalDateTimeInputValue());
+                  setInterviewStart(getInitialInterviewStart());
                   setInterviewDeadline('');
                   setInstructions('');
                 }}

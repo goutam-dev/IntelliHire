@@ -18,7 +18,7 @@ const notificationService = require('./notificationService');
 
 const ENROLLMENT_RECOVERY_COOLDOWN_MS = Number(process.env.ENROLLMENT_RECOVERY_COOLDOWN_MS || 5 * 60 * 1000);
 const enrollmentRecoveryState = new Map();
-const INTERVIEW_START_GRACE_MS = Number(process.env.INTERVIEW_START_GRACE_MS || 60 * 1000);
+const INTERVIEW_START_GRACE_MS = Number(process.env.INTERVIEW_START_GRACE_MS || 5 * 60 * 1000);
 
 /**
  * Application service - handles all application-related business logic
@@ -1042,10 +1042,6 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   }
 
   if (isReschedule) {
-    if (hasInterviewWindowExpired(application, now)) {
-      throw new ValidationError('Interview can no longer be rescheduled because the current interview window has already ended.');
-    }
-
     const interviewTaken = await hasInterviewBeenTaken(application);
     if (interviewTaken) {
       throw new ValidationError('Interview cannot be rescheduled because the candidate has already started or completed the interview.');

@@ -7,6 +7,7 @@ const statusColors = {
   'Applied': 'bg-zinc-100 text-zinc-700',
   'Shortlisted': 'bg-indigo-100 text-indigo-700',
   'Interview Scheduled': 'bg-violet-100 text-violet-700',
+  'Interview Missed': 'bg-amber-100 text-amber-700',
   'Interviewed': 'bg-teal-100 text-teal-700',
   'Finalist': 'bg-indigo-100 text-indigo-700',
   'Job Deleted': 'bg-zinc-200 text-zinc-800',
@@ -37,11 +38,19 @@ const getAvatarColor = (name) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
-const StatusBadge = ({ status }) => (
-  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${statusColors[status] || 'bg-zinc-100 text-zinc-700'}`}>
-    {status}
-  </span>
-);
+const StatusBadge = ({ application }) => {
+  let displayStatus = application.status;
+  if (displayStatus === 'Interview Scheduled') {
+    const isMissed = !application.interviewCompletedAt && application.interviewWindowEnd && new Date(application.interviewWindowEnd) < new Date();
+    if (isMissed) displayStatus = 'Interview Missed';
+  }
+
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${statusColors[displayStatus] || 'bg-zinc-100 text-zinc-700'}`}>
+      {displayStatus === 'Interview Missed' ? 'Missed Interview' : displayStatus}
+    </span>
+  );
+};
 
 const AIScoreBadge = ({ score, verdict }) => {
   const getScoreStyle = (score) => {
@@ -256,7 +265,7 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                 </td>
                 <td className="p-3 whitespace-nowrap">
                   <div className="flex flex-col gap-1.5 items-start">
-                    <StatusBadge status={app.status} />
+                    <StatusBadge application={app} />
                     {app.job?.status === 'closed' && (
                       <span className="text-[11px] font-medium text-orange-700">Job is closed for new applications.</span>
                     )}
