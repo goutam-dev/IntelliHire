@@ -599,13 +599,17 @@ function PermissionsScreen({ onGranted, onDenied }) {
 
 function InterviewInterface({ streams, applicationId, onComplete }) {
   const { camera: cameraStream } = streams;
+  const [sessionVADConfig, setSessionVADConfig] = useState({
+    silenceTimeoutMs: 12000,
+    initialWaitMs: 35000,
+  });
 
   // ── Hooks setup ────────────────────────────────────────────────────────────
   const { isRecording: isAudioRecording, startRecording, stopRecording } = useAudioRecorder(cameraStream);
   const {
     isListening: vadListening, isSpeaking: vadSpeaking, energyLevel,
     startListening: startVAD, stopListening: stopVAD, analyser: vadAnalyser,
-  } = useVAD(cameraStream);
+  } = useVAD(cameraStream, sessionVADConfig);
 
   const engine = useInterviewEngine({
     applicationId,
@@ -615,6 +619,22 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     startVAD: startVAD,
     stopVAD: stopVAD,
   });
+
+  useEffect(() => {
+    const cfg = engine?.sessionConfig || {};
+    const silenceTimeoutMs = Number(cfg.silenceTimeoutMs);
+    const initialWaitMs = Number(cfg.initialWaitMs);
+
+    setSessionVADConfig(prev => ({
+      ...prev,
+      silenceTimeoutMs: Number.isFinite(silenceTimeoutMs) && silenceTimeoutMs >= 6000
+        ? silenceTimeoutMs
+        : 12000,
+      initialWaitMs: Number.isFinite(initialWaitMs) && initialWaitMs >= 15000
+        ? initialWaitMs
+        : 35000,
+    }));
+  }, [engine.sessionConfig]);
 
   // Voice Proctoring — runs in parallel with the interview, non-blocking
   const {

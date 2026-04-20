@@ -97,6 +97,8 @@ const interviewSessionSchema = new mongoose.Schema({
     maxDurationSec: { type: Number, default: 30 * 60 },
     cheatingThreshold: { type: Number, default: 10 },
     minQuestionsBeforeEnd: { type: Number, default: 8 },
+    silenceTimeoutMs: { type: Number, default: 12000 },
+    initialWaitMs: { type: Number, default: 35000 },
     llmModel: { type: String, default: 'llama-3.3-70b-versatile' },
   },
 

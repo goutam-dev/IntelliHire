@@ -67,6 +67,9 @@ function buildSystemPrompt(session, lastEval = null) {
 
   let prompt = `${persona}\n\n`;
 
+  // ─────────────────────────────────────────────
+  // CONTEXT
+  // ─────────────────────────────────────────────
   if (context.jobDescription) {
     prompt += `## Job Description\n${context.jobDescription}\n\n`;
   }
@@ -81,123 +84,141 @@ function buildSystemPrompt(session, lastEval = null) {
 
   prompt += `## Interview Phase\n${phaseHint}\n\n`;
 
-  // 🔥 KEY CHANGE: dynamic topic extraction
+  // ─────────────────────────────────────────────
+  // TOPIC EXTRACTION
+  // ─────────────────────────────────────────────
   prompt +=
-    `## Topic Extraction (CRITICAL)\n` +
-    `From the job description above, infer the 4–6 most important evaluation topics for this role.\n` +
-    `These may include skills, responsibilities, or capabilities depending on the domain.\n` +
-    `You must internally track these topics and ensure they are covered during the interview.\n\n`;
+    `## Topic Extraction (MANDATORY)\n` +
+    `From the job description, infer 4–6 key evaluation topics.\n` +
+    `These can be skills, responsibilities, or capabilities.\n\n`;
 
+  // ─────────────────────────────────────────────
+  // INTERNAL TRACKING (CRITICAL)
+  // ─────────────────────────────────────────────
   prompt +=
-    `## Interview Objective\n` +
-    `Evaluate the candidate by covering the most important topics derived from the job description. ` +
-    `Balance breadth (coverage of topics) and depth (understanding).\n\n`;
+    `## Internal Tracking (MANDATORY)\n` +
+    `You must internally track:\n` +
+    `- Topics identified\n` +
+    `- Topics already covered\n` +
+    `- Topics not yet covered\n` +
+    `- Topics that have been explored with depth\n\n` +
+    `Before asking each question:\n` +
+    `→ Decide which topic to focus on\n` +
+    `→ Prefer uncovered OR shallow topics\n\n`;
 
-  // 🔥 PRIORITY FIX
+  // ─────────────────────────────────────────────
+  // PRIORITY CONTROL
+  // ─────────────────────────────────────────────
   prompt +=
     `## Priority Rule (CRITICAL)\n` +
-    `1. Topics derived from the job description are the PRIMARY driver.\n` +
-    `2. Candidate background is SECONDARY and only used to validate those topics.\n` +
-    `3. Do NOT let an interesting project override missing topic coverage.\n\n`;
+    `1. Job description topics are PRIMARY\n` +
+    `2. Candidate background is SECONDARY\n` +
+    `3. Do NOT let interesting projects override missing topic coverage\n\n`;
 
-  // 🔥 PHASE CONTROL
+  // ─────────────────────────────────────────────
+  // STRUCTURE
+  // ─────────────────────────────────────────────
   prompt +=
     `## Interview Structure\n` +
-    `PHASE 1: Topic Validation (MANDATORY)\n` +
-    `- Systematically cover the inferred topics from the job description.\n` +
-    `- Ask at least one strong question per topic.\n` +
-    `- Do NOT stay too long on one topic early.\n\n` +
-    `PHASE 2: Deep Exploration (CONDITIONAL)\n` +
-    `- After reasonable coverage, explore strong areas more deeply.\n\n`;
+    `PHASE 1: Coverage\n` +
+    `- Cover all key topics\n` +
+    `- Ask one main question per topic\n\n` +
+    `PHASE 2: Depth\n` +
+    `- Ask follow-ups for strong signals\n` +
+    `- Validate real understanding\n\n`;
 
-  // topic awareness (still useful if you populate it later)
-  if (interviewState.topicsCovered?.length > 0) {
-    prompt +=
-      `## Topics Already Covered\n${interviewState.topicsCovered.join(', ')}\n` +
-      `Avoid repeating unless needed.\n\n`;
-  }
-
+  // ─────────────────────────────────────────────
+  // DEPTH CONTROL (CRITICAL FIX)
+  // ─────────────────────────────────────────────
   prompt +=
-    `## Coverage Strategy (CRITICAL)
-- Cover all key topics from the job description
-- BUT for each topic:
-  → Ask ONE main question
-  → THEN ask ONE follow-up to validate depth
-- Do NOT switch topics without attempting depth validation
-- Avoid staying too long (max 2 questions per topic)
+    `## Depth Control Rule (CRITICAL)\n` +
+    `For EACH topic:\n\n` +
+    `Step 1: Ask a main question\n` +
+    `Step 2: Evaluate the answer\n\n` +
+    `IF answer is strong:\n` +
+    `→ Ask ONE follow-up (example, trade-off, real scenario)\n\n` +
+    `IF answer is weak:\n` +
+    `→ Ask ONE clarification OR move on\n\n` +
+    `You MUST NOT leave a topic without attempting depth validation.\n\n`;
 
-Goal:
-Balanced evaluation = breadth (topics covered) + depth (validated understanding)
-\n\n`;
+  // ─────────────────────────────────────────────
+  // COVERAGE STRATEGY (FIXED BFS)
+  // ─────────────────────────────────────────────
   prompt +=
-    `## Depth Control Rule (VERY IMPORTANT)
-For each topic:
+    `## Coverage Strategy\n` +
+    `- Balance breadth AND depth\n` +
+    `- Do NOT jump topics too quickly\n` +
+    `- Validate understanding before moving on\n` +
+    `- Maximum ~2 questions per topic\n\n`;
 
-Step 1: Ask a main question  
-Step 2: Evaluate answer  
-Step 3:
-
-IF answer is strong:
-→ Ask ONE follow-up (example, trade-off, real scenario)
-
-IF answer is weak:
-→ Ask ONE simpler clarification OR move to next topic
-
-Never leave a topic without at least attempting depth validation.
-\n\n`;
-
+  // ─────────────────────────────────────────────
+  // ANTI-CHECKLIST RULE (IMPORTANT)
+  // ─────────────────────────────────────────────
   prompt +=
-    `## Topic Discipline Rule
-- Each question must target ONE specific topic
-- Do NOT mix multiple topics in one question
-- Track which topics are covered vs not covered
-\n\n`;
+    `## Anti-Checklist Rule\n` +
+    `Do NOT behave like a checklist interviewer.\n` +
+    `Do NOT ask one question per topic and move on.\n\n` +
+    `Your goal is to VERIFY understanding, not just ask.\n\n`;
 
+  // ─────────────────────────────────────────────
+  // DEFINITION OF "COVERED"
+  // ─────────────────────────────────────────────
   prompt +=
-    `## Question Design Rules\n` +
-    `- Ask exactly ONE question.\n` +
-    `- Max 35 words.\n` +
-    `- Ask for examples, decisions, trade-offs, or outcomes.\n` +
-    `- No explanations or commentary.\n\n`;
+    `## Coverage Definition (CRITICAL)\n` +
+    `A topic is ONLY considered covered if:\n` +
+    `- Candidate gave a meaningful answer\n` +
+    `- AND at least one follow-up or validation was done\n\n` +
+    `Superficial coverage does NOT count.\n\n`;
 
-  // adaptive behavior
+  // ─────────────────────────────────────────────
+  // ADAPTIVE FOLLOW-UP LOGIC
+  // ─────────────────────────────────────────────
   if (lastEval?.score != null) {
     if (lastEval.score >= 7) {
       prompt +=
         `Previous answer strong → ask ONE follow-up to validate real-world depth, then move topic.\n\n`;
     } else if (lastEval.score <= 4) {
       prompt +=
-        `Previous answer weak → ask ONE simpler or clearer follow-up before switching topic.\n\n`;
+        `Previous answer weak → ask ONE clearer follow-up or simplify question.\n\n`;
     } else {
       prompt +=
         `Previous answer partial → ask ONE follow-up to deepen understanding.\n\n`;
     }
   }
+
   if (unanswered > 0) {
     prompt +=
-      `Candidate has ${unanswered} unanswered responses → simplify next question if needed.\n\n`;
+      `Candidate has ${unanswered} unanswered responses → simplify next question.\n\n`;
   }
 
-  // 🔥 CONTROLLED RESUME USAGE
-  if (qCount > 0) {
-    prompt +=
-      `## Controlled Cross-Reference\n` +
-      `- You MAY use candidate experience.\n` +
-      `- ONLY to validate job-relevant topics.\n` +
-      `- Do NOT shift focus away from required topics.\n\n`;
-  }
+  // ─────────────────────────────────────────────
+  // QUESTION RULES
+  // ─────────────────────────────────────────────
+  prompt +=
+    `## Question Rules\n` +
+    `- Ask exactly ONE question\n` +
+    `- Max 35 words\n` +
+    `- Focus on examples, decisions, or outcomes\n` +
+    `- No explanation or feedback\n\n`;
 
+  // ─────────────────────────────────────────────
+  // ENDING CONTROL (FIXES EARLY STOP)
+  // ─────────────────────────────────────────────
   if (qCount === 0) {
     prompt +=
-      `This is the FIRST question. Welcome ${candidateName} and ask for one recent relevant experience.\n`;
+      `This is the FIRST question. Welcome ${candidateName} and ask for one relevant experience.\n`;
   } else {
     prompt +=
-      `## When to End\n` +
-      `Only end when:\n` +
-      `- most important topics have been reasonably covered\n` +
-      `- you have enough confidence in evaluation\n\n` +
-      `To end: output [END_INTERVIEW]\n\n` +
-      `Otherwise ask the next question.\n`;
+      `## Strict Ending Rule (MANDATORY)\n` +
+      `You MUST NOT end the interview early.\n\n` +
+      `Minimum requirements before ending:\n` +
+      `- At least 8–12 questions asked\n` +
+      `- At least 4 topics covered\n` +
+      `- At least 2 topics explored with follow-up depth\n\n` +
+      `If these are NOT met:\n` +
+      `→ DO NOT end\n` +
+      `→ Continue asking\n\n` +
+      `Only output: [END_INTERVIEW]\n\n`;
   }
 
   return prompt;

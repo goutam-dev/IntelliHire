@@ -19,9 +19,9 @@ const DEFAULT_CONFIG = {
   /** Energy threshold above noise floor to detect speech (0–1 scale after normalization) */
   speechThreshold: 0.015,
   /** How many consecutive silence frames before firing onSilenceTimeout */
-  silenceTimeoutMs: 6000,
+  silenceTimeoutMs: 12000,
   /** Initial wait — if no speech at all within this time, fire silence timeout */
-  initialWaitMs: 25000,
+  initialWaitMs: 35000,
   /** Noise floor calibration duration */
   calibrationMs: 500,
   /** Analysis frame interval */
