@@ -6,6 +6,7 @@ import { useAuth } from '@clerk/clerk-react';
 import {
   fetchJobById,
   updateJob,
+  updateJobStatus,
   clearJobData,
   setValidationErrors,
 } from '../store/slices/jobSlice';
@@ -60,6 +61,7 @@ const EditJobPage = () => {
 
   const { getToken } = useAuth();
   const { profile: employerProfile } = useAppSelector((state) => state.employer);
+  const isDraftJob = currentJob?.status === 'draft';
 
   useEffect(() => {
     const loadJob = async () => {
@@ -314,7 +316,7 @@ const EditJobPage = () => {
     }
   };
 
-  const validateForm = () => {
+  const validateForm = (forPublish = true) => {
     const requiredFields = [
       'title',
       'description',
@@ -327,21 +329,23 @@ const EditJobPage = () => {
     const errors = {};
     let isValid = true;
 
-    requiredFields.forEach((field) => {
-      const value = formData[field];
-      if (
-        !value ||
-        (Array.isArray(value) && value.length === 0) ||
-        value === ''
-      ) {
-        errors[field] = `${
-          field === 'requiredSkills'
-            ? 'Skills'
-            : field.charAt(0).toUpperCase() + field.slice(1)
-        } is required`;
-        isValid = false;
-      }
-    });
+    if (forPublish) {
+      requiredFields.forEach((field) => {
+        const value = formData[field];
+        if (
+          !value ||
+          (Array.isArray(value) && value.length === 0) ||
+          value === ''
+        ) {
+          errors[field] = `${
+            field === 'requiredSkills'
+              ? 'Skills'
+              : field.charAt(0).toUpperCase() + field.slice(1)
+          } is required`;
+          isValid = false;
+        }
+      });
+    }
 
     if (formData.title && formData.title.length < 3) {
       errors.title = 'Job title must be at least 3 characters';
@@ -388,20 +392,22 @@ const EditJobPage = () => {
 
     dispatch(setValidationErrors(errors));
 
-    setTouched({
-      title: true,
-      department: true,
-      description: true,
-      requiredSkills: true,
-      experienceLevel: true,
-      educationRequirements: true,
-      location: true,
-      employmentType: true,
-      salaryMin: true,
-      salaryMax: true,
-      applicationDeadline: true,
-      status: true,
-    });
+    if (forPublish) {
+      setTouched({
+        title: true,
+        department: true,
+        description: true,
+        requiredSkills: true,
+        experienceLevel: true,
+        educationRequirements: true,
+        location: true,
+        employmentType: true,
+        salaryMin: true,
+        salaryMax: true,
+        applicationDeadline: true,
+        status: true,
+      });
+    }
 
     // Scroll to the first field with an error
     if (!isValid) {
@@ -413,12 +419,13 @@ const EditJobPage = () => {
 
   const handleUpdateJob = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm(!isDraftJob)) return;
 
     const { customDepartment, ...baseFormData } = formData;
 
     const jobData = {
       ...baseFormData,
+      status: isDraftJob ? 'draft' : (formData.status || currentJob?.status),
       department: formData.department === 'other'
         ? (formData.customDepartment.trim() || undefined)
         : (formData.department || undefined),
@@ -439,6 +446,39 @@ const EditJobPage = () => {
       navigate('/employer/jobs');
     } catch (err) {
       console.error('Failed to update job', err);
+    }
+  };
+
+  const handlePublishJob = async (e) => {
+    e.preventDefault();
+    if (!validateForm(true)) return;
+
+    const { customDepartment, ...baseFormData } = formData;
+
+    const jobData = {
+      ...baseFormData,
+      status: 'draft',
+      department: formData.department === 'other'
+        ? (formData.customDepartment.trim() || undefined)
+        : (formData.department || undefined),
+      salaryRange:
+        formData.salaryMin || formData.salaryMax
+          ? {
+              min: formData.salaryMin ? parseFloat(formData.salaryMin) : undefined,
+              max: formData.salaryMax ? parseFloat(formData.salaryMax) : undefined,
+              currency: formData.salaryCurrency || 'USD',
+            }
+          : undefined,
+      applicationDeadline: formData.applicationDeadline || undefined,
+    };
+
+    try {
+      const token = await getToken();
+      await dispatch(updateJob({ jobId, jobData, token })).unwrap();
+      await dispatch(updateJobStatus({ jobId, status: 'active', token })).unwrap();
+      navigate('/employer/jobs');
+    } catch (err) {
+      console.error('Failed to publish job', err);
     }
   };
 
@@ -721,13 +761,33 @@ const EditJobPage = () => {
         >
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? 'Saving...' : 'Save Changes'}
-        </button>
+        {isDraftJob ? (
+          <>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex items-center justify-center rounded-xl border border-zinc-200 px-6 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? 'Saving...' : 'Save as Draft'}
+            </button>
+            <button
+              type="button"
+              onClick={handlePublishJob}
+              disabled={loading}
+              className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? 'Publishing...' : 'Publish Job'}
+            </button>
+          </>
+        ) : (
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? 'Saving...' : 'Save Changes'}
+          </button>
+        )}
       </div>
     </form>
   );

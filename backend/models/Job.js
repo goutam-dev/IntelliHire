@@ -4,6 +4,17 @@ const EXPERIENCE_LEVELS = ['no-experience', 'entry', 'mid', 'senior', 'expert'];
 const EMPLOYMENT_TYPES = ['full-time', 'part-time', 'contract', 'remote'];
 const JOB_STATUSES = ['draft', 'active', 'closed', 'archived'];
 
+const requiredWhenActive = function requiredWhenActive() {
+  return this.status === 'active';
+};
+
+const emptyStringToUndefined = (value) => {
+  if (typeof value === 'string' && value.trim() === '') {
+    return undefined;
+  }
+  return value;
+};
+
 const SalaryRangeSchema = new Schema(
   {
     min: { type: Number },
@@ -16,14 +27,24 @@ const SalaryRangeSchema = new Schema(
 const JobSchema = new Schema(
   {
     employer: { type: Schema.Types.ObjectId, ref: 'EmployerProfile', required: true },
-    title: { type: String, required: true, trim: true },
+    title: { type: String, required: requiredWhenActive, trim: true },
     department: { type: String, trim: true },
-    description: { type: String, required: true },
-    requiredSkills: { type: [String], required: true },
-    experienceLevel: { type: String, enum: EXPERIENCE_LEVELS, required: true },
+    description: { type: String, required: requiredWhenActive },
+    requiredSkills: { type: [String], required: requiredWhenActive },
+    experienceLevel: {
+      type: String,
+      enum: EXPERIENCE_LEVELS,
+      required: requiredWhenActive,
+      set: emptyStringToUndefined,
+    },
     educationRequirements: { type: String },
-    location: { type: String, required: true },
-    employmentType: { type: String, enum: EMPLOYMENT_TYPES, required: true },
+    location: { type: String, required: requiredWhenActive },
+    employmentType: {
+      type: String,
+      enum: EMPLOYMENT_TYPES,
+      required: requiredWhenActive,
+      set: emptyStringToUndefined,
+    },
     salaryRange: { type: SalaryRangeSchema },
     applicationDeadline: { type: Date },
     status: { type: String, enum: JOB_STATUSES, default: 'draft' },

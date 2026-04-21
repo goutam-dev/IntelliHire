@@ -387,42 +387,66 @@ const createJob = async (clerkUserId, jobData) => {
     applicationDeadline,
     status = 'draft',
   } = jobData;
-  
-  const { sanitizeString, isValidStringArray, isValidEnum, isValidDate } = require('../utils/validators');
-  const { EXPERIENCE_LEVELS, EMPLOYMENT_TYPES, JOB_STATUS } = require('../config/constants');
 
-  // Validate required fields
-  const validation = validateRequiredFields(jobData, [
-    'title',
-    'description',
-    'requiredSkills',
-    'experienceLevel',
-    'location',
-    'employmentType',
-  ]);
+  const normalizedExperienceLevel = typeof experienceLevel === 'string'
+    ? experienceLevel.trim()
+    : experienceLevel;
+  const normalizedEmploymentType = typeof employmentType === 'string'
+    ? employmentType.trim()
+    : employmentType;
+  
+  const { sanitizeString, isValidStringArray, isValidDate } = require('../utils/validators');
 
-  if (!validation.valid) {
-    throw new ValidationError(validation.message);
+  const isPublishing = status === 'active';
+
+  // Enforce full required fields only for published jobs.
+  if (isPublishing) {
+    const validation = validateRequiredFields(jobData, [
+      'title',
+      'description',
+      'requiredSkills',
+      'experienceLevel',
+      'location',
+      'employmentType',
+    ]);
+
+    if (!validation.valid) {
+      throw new ValidationError(validation.message);
+    }
   }
   
-  // Validate skills array
-  if (!Array.isArray(requiredSkills) || requiredSkills.length === 0) {
-    throw new ValidationError('Required skills must be a non-empty array');
+  // Validate skills only when provided in drafts; require them when publishing.
+  if (requiredSkills !== undefined) {
+    if (!Array.isArray(requiredSkills)) {
+      throw new ValidationError('Required skills must be an array');
+    }
+
+    if (isPublishing && requiredSkills.length === 0) {
+      throw new ValidationError('Required skills must be a non-empty array');
+    }
+
+    if (requiredSkills.length > 0 && !isValidStringArray(requiredSkills, 1, 50)) {
+      throw new ValidationError('Required skills must contain 1-50 valid skill names');
+    }
   }
   
-  if (!isValidStringArray(requiredSkills, 1, 50)) {
-    throw new ValidationError('Required skills must contain 1-50 valid skill names');
-  }
-  
-  // Validate experience level
+  // Validate experience level when provided.
   const experienceLevels = ['no-experience', 'entry', 'mid', 'senior', 'expert'];
-  if (!experienceLevels.includes(experienceLevel)) {
+  if (
+    normalizedExperienceLevel !== undefined
+    && normalizedExperienceLevel !== ''
+    && !experienceLevels.includes(normalizedExperienceLevel)
+  ) {
     throw new ValidationError(`Experience level must be one of: ${experienceLevels.join(', ')}`);
   }
   
-  // Validate employment type
+  // Validate employment type when provided.
   const employmentTypes = ['full-time', 'part-time', 'contract', 'remote'];
-  if (!employmentTypes.includes(employmentType)) {
+  if (
+    normalizedEmploymentType !== undefined
+    && normalizedEmploymentType !== ''
+    && !employmentTypes.includes(normalizedEmploymentType)
+  ) {
     throw new ValidationError(`Employment type must be one of: ${employmentTypes.join(', ')}`);
   }
   
@@ -466,12 +490,14 @@ const createJob = async (clerkUserId, jobData) => {
   }
 
   // Sanitize text inputs
-  const sanitizedTitle = sanitizeString(title, 200);
+  const sanitizedTitle = title !== undefined ? sanitizeString(title, 200) : undefined;
   const sanitizedDepartment = department ? sanitizeString(department, 100) : undefined;
-  const sanitizedDescription = sanitizeString(description, 5000);
-  const sanitizedLocation = sanitizeString(location, 200);
+  const sanitizedDescription = description !== undefined ? sanitizeString(description, 5000) : undefined;
+  const sanitizedLocation = location !== undefined ? sanitizeString(location, 200) : undefined;
   const sanitizedEducationReqs = educationRequirements ? sanitizeString(educationRequirements, 500) : undefined;
-  const sanitizedSkills = requiredSkills.map(skill => sanitizeString(skill, 50)).filter(s => s.length > 0);
+  const sanitizedSkills = Array.isArray(requiredSkills)
+    ? requiredSkills.map(skill => sanitizeString(skill, 50)).filter(s => s.length > 0)
+    : undefined;
 
   const job = await Job.create({
     employer: employerProfile._id,
@@ -479,10 +505,10 @@ const createJob = async (clerkUserId, jobData) => {
     department: sanitizedDepartment,
     description: sanitizedDescription,
     requiredSkills: sanitizedSkills,
-    experienceLevel,
+    experienceLevel: normalizedExperienceLevel || undefined,
     educationRequirements: sanitizedEducationReqs,
     location: sanitizedLocation,
-    employmentType,
+    employmentType: normalizedEmploymentType || undefined,
     salaryRange,
     applicationDeadline: normalizedApplicationDeadline,
     status,
