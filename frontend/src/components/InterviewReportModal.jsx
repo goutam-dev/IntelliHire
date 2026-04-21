@@ -250,6 +250,7 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
   const [activeTab, setActiveTab] = useState('overview');
   const [proctorFilter, setProctorFilter] = useState('all');
   const [snapshotPreview, setSnapshotPreview] = useState(null);
+  const [audioPreview, setAudioPreview] = useState(null);
 
   const scoring = report?.scoring || {};
   const turns = report?.turns || [];
@@ -640,7 +641,7 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
                                     if (event.mediaKind === 'image') {
                                       setSnapshotPreview({ candidates: event.mediaCandidates, index: 0, failed: false, title: event.title, time: toClock(event.timestamp) });
                                     } else {
-                                      window.open(event.mediaCandidates[0], '_blank');
+                                      setAudioPreview({ candidates: event.mediaCandidates, index: 0, failed: false, title: event.title, time: toClock(event.timestamp) });
                                     }
                                   }}
                                   className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 text-xs text-indigo-600 font-bold transition-colors"
@@ -770,6 +771,63 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
                     <div className="flex flex-col items-center justify-center gap-3 p-8 bg-rose-50 text-rose-500 rounded-2xl ring-1 ring-rose-500/20">
                       <AlertTriangle className="h-8 w-8 text-rose-400" />
                       <p className="text-sm font-bold">Failed to load snapshot image</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Voice Clip Lightbox ── */}
+        <AnimatePresence>
+          {audioPreview && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-8 bg-slate-900/40 backdrop-blur-md"
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 10 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 10 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="w-full max-w-2xl bg-white rounded-[28px] overflow-hidden shadow-2xl ring-1 ring-slate-900/10 flex flex-col"
+              >
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-800">{audioPreview.title}</h3>
+                    <p className="text-sm font-medium text-slate-500 mt-0.5">Recorded at <span className="font-mono">{audioPreview.time}</span></p>
+                  </div>
+                  <button
+                    onClick={() => setAudioPreview(null)}
+                    className="p-2.5 rounded-full bg-slate-50 text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="p-6 bg-slate-50">
+                  {!audioPreview.failed ? (
+                    <audio
+                      className="w-full"
+                      controls
+                      autoPlay
+                      preload="metadata"
+                      src={audioPreview.candidates[audioPreview.index]}
+                      onError={() => {
+                        if (audioPreview.index < audioPreview.candidates.length - 1) {
+                          setAudioPreview((prev) => ({ ...prev, index: prev.index + 1 }));
+                        } else {
+                          setAudioPreview((prev) => ({ ...prev, failed: true }));
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-3 p-6 bg-rose-50 text-rose-500 rounded-2xl ring-1 ring-rose-500/20">
+                      <AlertTriangle className="h-8 w-8 text-rose-400" />
+                      <p className="text-sm font-bold">Failed to load voice clip</p>
                     </div>
                   )}
                 </div>
