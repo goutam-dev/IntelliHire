@@ -145,7 +145,7 @@ class LivenessDetector:
 
     @staticmethod
     def _assess_frame_quality(image: np.ndarray, face_bbox: list, landmarks=None) -> dict:
-        """Return frame quality metrics and whether the frame is reliable for anti-spoof evidence."""
+        """Return frame quality metrics for observability (no frame is hard-rejected here)."""
         metrics = {
             "is_reliable": False,
             "reason": "missing_face_bbox",
@@ -308,8 +308,8 @@ class LivenessDetector:
                 if has_movement:
                     temporal_bonus += 0.03
 
-        # Only reliable frames contribute anti-spoof evidence.
-        if quality["is_reliable"]:
+        # Analyze every frame with an available face bbox; quality is telemetry only.
+        if face_bbox and len(face_bbox) == 4:
             try:
                 spoof_result = self._anti_spoof.predict(image, face_bbox)
                 raw_dl_score = spoof_result["real_score"]
@@ -331,12 +331,8 @@ class LivenessDetector:
         combined = max(0.0, min(1.0, combined))
 
         result["liveness_score"] = round(combined, 3)
-        if not quality["is_reliable"]:
-            result["status"] = "uncertain"
-            result["is_live"] = True
-        else:
-            result["status"] = "live" if combined >= LIVENESS_THRESHOLD else "fail"
-            result["is_live"] = combined >= LIVENESS_THRESHOLD
+        result["status"] = "live" if combined >= LIVENESS_THRESHOLD else "fail"
+        result["is_live"] = combined >= LIVENESS_THRESHOLD
         result["blink_count"] = self._blink_count
         result["quality"] = quality
 
@@ -360,7 +356,7 @@ class LivenessDetector:
         if spoof_result and spoof_result["label"] == "Fake":
             details.append(f"Spoof detected ({spoof_result['fake_score']:.2f})")
         if quality.get("reason") not in (None, "ok"):
-            details.append(f"Uncertain frame: {quality.get('reason')}")
+            details.append(f"Frame quality: {quality.get('reason')}")
         if elapsed > 10 and self._blink_count == 0:
             details.append("No blinks detected")
         if elapsed > 10 and not result["has_movement"]:

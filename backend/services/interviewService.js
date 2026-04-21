@@ -28,6 +28,25 @@ const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const MAX_REASK_ATTEMPTS = Number(process.env.INTERVIEW_MAX_REASK_ATTEMPTS || 2);
 
+function parseValidDate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getInterviewCycleStartDate(application) {
+  const windowStart = parseValidDate(application?.interviewWindowStart);
+  const reInterviewApprovedAt = application?.reInterviewRequest?.status === 'approved'
+    ? parseValidDate(application?.reInterviewRequest?.resolvedAt)
+    : null;
+
+  if (windowStart && reInterviewApprovedAt) {
+    return windowStart > reInterviewApprovedAt ? windowStart : reInterviewApprovedAt;
+  }
+
+  return reInterviewApprovedAt || windowStart;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  PERSONA & PROMPT ENGINEERING
 // ═════════════════════════════════════════════════════════════════════════════
@@ -50,116 +69,179 @@ function buildInterviewerPersona(jobTitle = '') {
   );
 }
 
-function getInterviewPhaseHint(elapsedSeconds, config) {
-  const minSec = config?.minDurationSec || 20 * 60;
-  const maxSec = config?.maxDurationSec || 30 * 60;
-
-  if (elapsedSeconds < 5 * 60) {
-    return 'OPENING: You have just started. Warm up the candidate with a brief welcome and an introduction question.';
+function getInterviewPhaseHint(questionCount) {
+  if (questionCount <= 1) {
+    return 'OPENING: Start with a brief welcome and one role-relevant opener.';
   }
-  if (elapsedSeconds < minSec) {
-    const remaining = Math.round((minSec - elapsedSeconds) / 60);
-    return `MAIN BODY: ${remaining} minutes remain in the core session. Probe deeply and vary topics — technical, behavioural, situational.`;
-  }
-  if (elapsedSeconds < maxSec) {
-    return 'CLOSING: Interview is in the final window. Ask 1-2 high-level, motivational, or culture-fit questions before wrapping up.';
-  }
-  return 'WRAP_UP: Time is up. Give a brief warm closing statement and end the session.';
+  return 'ACTIVE INTERVIEW: Keep probing for concrete evidence, depth, and role fit.';
 }
 
 function buildSystemPrompt(session, lastEval = null) {
-  const { jobTitle, context, interviewState, config } = session;
-  const elapsedSeconds = session.totalDurationSec || 0;
+  const { jobTitle, context, interviewState } = session;
   const persona = buildInterviewerPersona(jobTitle);
-  const phaseHint = getInterviewPhaseHint(elapsedSeconds, config);
   const qCount = interviewState.questionCount || 0;
+  const phaseHint = getInterviewPhaseHint(qCount);
   const unanswered = interviewState.totalUnanswered || 0;
-  const minQuestionsBeforeEnd = Math.max(6, config?.minQuestionsBeforeEnd || 8);
   const candidateName = context.candidateName?.trim() || 'the candidate';
 
   let prompt = `${persona}\n\n`;
 
-  if (context.jobDescription) prompt += `## Job Description\n${context.jobDescription}\n\n`;
-  if (context.requirements?.length > 0) {
-    prompt += `## Key Requirements\n${context.requirements.map(r => `- ${r}`).join('\n')}\n\n`;
+  // ─────────────────────────────────────────────
+  // CONTEXT
+  // ─────────────────────────────────────────────
+  if (context.jobDescription) {
+    prompt += `## Job Description\n${context.jobDescription}\n\n`;
   }
-  if (context.candidateInfo) prompt += `## Candidate Background\n${context.candidateInfo}\n\n`;
+
+  if (context.candidateInfo) {
+    prompt += `## Candidate Background\n${context.candidateInfo}\n\n`;
+  }
+
   if (context.skills?.length > 0) {
-    prompt += `## Candidate Skills\n${context.skills.join(', ')}\n\n`;
+    prompt += `## Candidate Skills (Secondary Reference)\n${context.skills.join(', ')}\n\n`;
   }
 
   prompt += `## Interview Phase\n${phaseHint}\n\n`;
-  prompt +=
-    `## Interview Objective\n` +
-    `Assess technical depth, practical execution ability, communication clarity, and ownership for this ${jobTitle} role. ` +
-    `Every question must produce high-signal evidence that helps hiring decisions.\n\n`;
 
+  // ─────────────────────────────────────────────
+  // TOPIC EXTRACTION
+  // ─────────────────────────────────────────────
   prompt +=
-    `## Question Design Rules\n` +
-    `- Ask exactly ONE question per turn.\n` +
-    `- Keep questions concise (max 35 words), specific, and role-relevant.\n` +
-    `- Prefer evidence-seeking prompts: ask for concrete examples, decisions, trade-offs, metrics, and outcomes.\n` +
-    `- Avoid generic fillers (e.g., "Tell me about yourself" after opening, "Any final thoughts").\n` +
-    `- Avoid repeating covered topics unless a deeper follow-up is clearly justified.\n` +
-    `- Do not include commentary, praise, scoring, or explanations in output.\n\n`;
+    `## Topic Extraction (MANDATORY)\n` +
+    `From the job description, infer 4–6 key evaluation topics.\n` +
+    `These can be skills, responsibilities, or capabilities.\n\n`;
 
+  // ─────────────────────────────────────────────
+  // INTERNAL TRACKING (CRITICAL)
+  // ─────────────────────────────────────────────
   prompt +=
-    `## Progression Strategy\n` +
-    `- Questions 1-2: establish role context and recent hands-on work.\n` +
-    `- Questions 3-6: deep technical and execution probing with realistic scenarios.\n` +
-    `- Questions 7+: challenge edge cases, trade-offs, failure handling, and prioritization under constraints.\n\n`;
+    `## Internal Tracking (MANDATORY)\n` +
+    `You must internally track:\n` +
+    `- Topics identified\n` +
+    `- Topics already covered\n` +
+    `- Topics not yet covered\n` +
+    `- Topics that have been explored with depth\n\n` +
+    `Before asking each question:\n` +
+    `→ Decide which topic to focus on\n` +
+    `→ Prefer uncovered OR shallow topics\n\n`;
 
-  // Adaptive difficulty based on last evaluation
+  // ─────────────────────────────────────────────
+  // PRIORITY CONTROL
+  // ─────────────────────────────────────────────
+  prompt +=
+    `## Priority Rule (CRITICAL)\n` +
+    `1. Job description topics are PRIMARY\n` +
+    `2. Candidate background is SECONDARY\n` +
+    `3. Do NOT let interesting projects override missing topic coverage\n\n`;
+
+  // ─────────────────────────────────────────────
+  // STRUCTURE
+  // ─────────────────────────────────────────────
+  prompt +=
+    `## Interview Structure\n` +
+    `PHASE 1: Coverage\n` +
+    `- Cover all key topics\n` +
+    `- Ask one main question per topic\n\n` +
+    `PHASE 2: Depth\n` +
+    `- Ask follow-ups for strong signals\n` +
+    `- Validate real understanding\n\n`;
+
+  // ─────────────────────────────────────────────
+  // DEPTH CONTROL (CRITICAL FIX)
+  // ─────────────────────────────────────────────
+  prompt +=
+    `## Depth Control Rule (CRITICAL)\n` +
+    `For EACH topic:\n\n` +
+    `Step 1: Ask a main question\n` +
+    `Step 2: Evaluate the answer\n\n` +
+    `IF answer is strong:\n` +
+    `→ Ask ONE follow-up (example, trade-off, real scenario)\n\n` +
+    `IF answer is weak:\n` +
+    `→ Ask ONE clarification OR move on\n\n` +
+    `You MUST NOT leave a topic without attempting depth validation.\n\n`;
+
+  // ─────────────────────────────────────────────
+  // COVERAGE STRATEGY (FIXED BFS)
+  // ─────────────────────────────────────────────
+  prompt +=
+    `## Coverage Strategy\n` +
+    `- Balance breadth AND depth\n` +
+    `- Do NOT jump topics too quickly\n` +
+    `- Validate understanding before moving on\n` +
+    `- Maximum ~2 questions per topic\n\n`;
+
+  // ─────────────────────────────────────────────
+  // ANTI-CHECKLIST RULE (IMPORTANT)
+  // ─────────────────────────────────────────────
+  prompt +=
+    `## Anti-Checklist Rule\n` +
+    `Do NOT behave like a checklist interviewer.\n` +
+    `Do NOT ask one question per topic and move on.\n\n` +
+    `Your goal is to VERIFY understanding, not just ask.\n\n`;
+
+  // ─────────────────────────────────────────────
+  // DEFINITION OF "COVERED"
+  // ─────────────────────────────────────────────
+  prompt +=
+    `## Coverage Definition (CRITICAL)\n` +
+    `A topic is ONLY considered covered if:\n` +
+    `- Candidate gave a meaningful answer\n` +
+    `- AND at least one follow-up or validation was done\n\n` +
+    `Superficial coverage does NOT count.\n\n`;
+
+  // ─────────────────────────────────────────────
+  // ADAPTIVE FOLLOW-UP LOGIC
+  // ─────────────────────────────────────────────
   if (lastEval?.score != null) {
     if (lastEval.score >= 7) {
-      prompt += `The candidate's last answer was strong (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
-        `Escalate difficulty with a deeper follow-up, architectural trade-off, or edge-case stress test.\n\n`;
+      prompt +=
+        `Previous answer strong → ask ONE follow-up to validate real-world depth, then move topic.\n\n`;
     } else if (lastEval.score <= 4) {
-      prompt += `The candidate's last answer was weak (score ${lastEval.score}/10: "${lastEval.feedback}"). ` +
-        `Pivot to another key requirement and ask a clearer but still rigorous question.\n\n`;
+      prompt +=
+        `Previous answer weak → ask ONE clearer follow-up or simplify question.\n\n`;
     } else {
-      prompt += `The last answer was average (score ${lastEval.score}/10). Continue with a targeted follow-up or adjacent topic.\n\n`;
+      prompt +=
+        `Previous answer partial → ask ONE follow-up to deepen understanding.\n\n`;
     }
   }
 
   if (unanswered > 0) {
     prompt +=
-      `The candidate has ${unanswered} unanswered question(s). If they were recently silent, ` +
-      `use a simpler, direct prompt that is easier to answer while still evaluating a core requirement.\n\n`;
+      `Candidate has ${unanswered} unanswered responses → simplify next question.\n\n`;
   }
 
-  // Topic awareness — avoid repetition
-  if (interviewState.topicsCovered?.length > 0) {
-    prompt += `## Topics Already Covered\n${interviewState.topicsCovered.join(', ')}\n` +
-      `Avoid repeating these topics unless you need a deeper follow-up.\n\n`;
-  }
+  // ─────────────────────────────────────────────
+  // QUESTION RULES
+  // ─────────────────────────────────────────────
+  prompt +=
+    `## Question Rules\n` +
+    `- Ask exactly ONE question\n` +
+    `- Max 35 words\n` +
+    `- Focus on examples, decisions, or outcomes\n` +
+    `- No explanation or feedback\n\n`;
 
+  // ─────────────────────────────────────────────
+  // ENDING CONTROL (FIXES EARLY STOP)
+  // ─────────────────────────────────────────────
   if (qCount === 0) {
     prompt +=
-      `This is the FIRST question. Begin with one short welcome sentence, mention ${candidateName}, and ask for ` +
-      `their most relevant recent experience for this ${jobTitle} role with one concrete project example.`;
+      `This is the FIRST question. Welcome ${candidateName} and ask for one relevant experience.\n`;
   } else {
     prompt +=
-      `## Cross-Examination Strategy\n` +
-      `You MUST actively reference specifics from the candidate's resume (projects, technologies, past roles, achievements) ` +
-      `when formulating questions. Cross-examine their claims — if they mentioned a project or technology in their resume ` +
-      `or an earlier answer, dig deeper: ask HOW they implemented it, what technical challenges they faced, ` +
-      `what tradeoffs they made, and what they would do differently now. If an earlier answer was vague or unconvincing, ` +
-      `challenge it directly with a targeted follow-up.\n\n` +
-      `## When to End the Interview\n` +
-      `You have asked ${qCount} question(s) so far. The candidate has left ${unanswered} question(s) unanswered. ` +
-      `You MAY decide to end the interview when BOTH conditions are true: ` +
-      `(a) you have asked at least ${minQuestionsBeforeEnd} questions, AND ` +
-      `(b) you feel confident in your overall assessment — ` +
-      `whether positive (thoroughly impressed) or negative (consistently poor or evasive answers). ` +
-      `To signal that the interview should end, output ONLY this exact token on its own: [END_INTERVIEW]\n\n` +
-      `Otherwise, ask the NEXT interview question. Output ONLY the question — ` +
-      `no preamble, no "Great answer", no pleasantries, no numbering. One concise, focused question.`;
+      `## Strict Ending Rule (MANDATORY)\n` +
+      `You MUST NOT end the interview early.\n\n` +
+      `Minimum requirements before ending:\n` +
+      `- At least 8–12 questions asked\n` +
+      `- At least 4 topics covered\n` +
+      `- At least 2 topics explored with follow-up depth\n\n` +
+      `If these are NOT met:\n` +
+      `→ DO NOT end\n` +
+      `→ Continue asking\n\n` +
+      `Only output: [END_INTERVIEW]\n\n`;
   }
 
   return prompt;
 }
-
 // ═════════════════════════════════════════════════════════════════════════════
 //  GROQ LLM API
 // ═════════════════════════════════════════════════════════════════════════════
@@ -255,14 +337,27 @@ async function transcribeAudio(audioBuffer, mimeType = 'audio/webm') {
  * Create a new interview session and load context from the job application.
  */
 async function createSession(applicationId, candidateId) {
-  const attemptedSession = await InterviewSession.findOne({
+  const application = await JobApplication.findOne({ applicationId })
+    .populate('jobId')
+    .lean();
+
+  if (!application) throw new Error('Application not found');
+
+  const cycleStartDate = getInterviewCycleStartDate(application);
+  const attemptedSessionFilter = {
     applicationId,
     candidateId,
     $or: [
       { startedAt: { $ne: null } },
       { status: { $in: ['completed', 'terminated', 'abandoned', 'completing'] } },
     ],
-  })
+  };
+
+  if (cycleStartDate) {
+    attemptedSessionFilter.createdAt = { $gte: cycleStartDate };
+  }
+
+  const attemptedSession = await InterviewSession.findOne(attemptedSessionFilter)
     .sort({ createdAt: -1 })
     .lean();
 
@@ -272,23 +367,16 @@ async function createSession(applicationId, candidateId) {
         status: 'abandoned',
         completedAt: attemptedSession.completedAt || new Date(),
         'integrity.terminationReason': attemptedSession.integrity?.terminationReason || 'Interview session ended unexpectedly',
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     await JobApplication.findOneAndUpdate(
       { applicationId, status: 'Interview Scheduled' },
       { status: 'Interviewed' }
-    ).catch(() => {});
+    ).catch(() => { });
 
     throw new AppError('Interview has already been attempted for this application. Retakes are not allowed.', 409);
   }
-
-  // Load application data for context  
-  const application = await JobApplication.findOne({ applicationId })
-    .populate('jobId')
-    .lean();
-
-  if (!application) throw new Error('Application not found');
 
   if (application.status !== 'Interview Scheduled') {
     throw new AppError('Interview is not available for this application yet.', 403);
@@ -508,18 +596,23 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
   // Process next question
   let nextQuestion = null;
   let shouldEnd = false;
-  const maxDurationSec = session.config?.maxDurationSec || 30 * 60;
-  const hardQuestionCap = 12;
-  const reachedMaxDuration = session.totalDurationSec >= maxDurationSec;
-  const reachedHardQuestionCap = (session.interviewState.questionCount || 0) >= hardQuestionCap;
+  let endReasonCode = '';
+  let endReasonSource = '';
+  let endReasonDetail = '';
 
   // Auto-end conditions
-  if (session.interviewState.consecutiveSilent >= 3 || reachedMaxDuration || reachedHardQuestionCap) {
+  if (session.interviewState.consecutiveSilent >= 3) {
     shouldEnd = true;
+    endReasonCode = 'consecutive_silence_threshold';
+    endReasonSource = 'engine';
+    endReasonDetail = 'Interview ended after 3 consecutive unanswered turns.';
   } else if (nextQuestionResult.status === 'fulfilled') {
     const q = nextQuestionResult.value;
     if (q.endInterview) {
       shouldEnd = true;
+      endReasonCode = 'llm_end_token';
+      endReasonSource = 'llm';
+      endReasonDetail = 'LLM emitted [END_INTERVIEW] token.';
     } else {
       nextQuestion = q.question;
 
@@ -527,7 +620,7 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
       session.conversationHistory.push({ role: 'assistant', content: nextQuestion });
       const newPhase = q.reask
         ? 'follow_up'
-        : getPhaseForElapsed(session.totalDurationSec, session.config);
+        : getPhaseForProgress(session.interviewState.questionCount);
       session.turns.push({
         index: session.turns.length,
         phase: newPhase,
@@ -544,6 +637,14 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
 
   if (shouldEnd) {
     session.status = 'completing';
+    setInterviewEndMeta(session, {
+      endReasonCode,
+      endReasonSource,
+      endReasonDetail,
+      endInitiator: 'backend_engine',
+      endTrigger: 'auto_end_condition',
+      endedAtStage: 'submit_answer',
+    });
   }
 
   await session.save();
@@ -560,6 +661,14 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
     evaluation: deferredEvaluation,
     nextQuestion,
     shouldEnd,
+    endSignal: shouldEnd
+      ? {
+        endReasonCode,
+        endReasonSource,
+        endReasonDetail,
+        endedAtStage: 'submit_answer',
+      }
+      : null,
     turnIndex: nextQuestion ? session.turns.length - 1 : turnIndex,
     interviewState: {
       phase: session.interviewState.currentPhase,
@@ -574,8 +683,12 @@ async function submitAnswer(sessionId, { answerText, turnIndex, answerDurationMs
 /**
  * Finalize the interview — generate closing summary and detailed evaluation.
  */
-async function completeSession(sessionId, { cheatingEvents = [], totalCheatingScore = 0, terminationReason = '' } = {}) {
-  let session = await InterviewSession.findById(sessionId);
+async function completeSession(
+  sessionId,
+  { cheatingEvents = [], totalCheatingScore = 0, terminationReason = '', completionContext = {} } = {}
+) {
+  let session = await InterviewSession.findById(sessionId)
+    .select('+interviewEndMeta.endReasonCode +interviewEndMeta.endReasonSource +interviewEndMeta.endReasonDetail +interviewEndMeta.endInitiator +interviewEndMeta.endTrigger +interviewEndMeta.endedAtStage +interviewEndMeta.recordedAt');
   if (!session) throw new Error('Session not found');
 
   // Flush voice proctoring before finalizing so mismatch/session stats are up to date.
@@ -591,8 +704,13 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
     logger.warn(`[Interview] Face proctoring stop failed during completeSession: ${err.message}`);
   }
 
-  session = await InterviewSession.findById(sessionId);
+  session = await InterviewSession.findById(sessionId)
+    .select('+interviewEndMeta.endReasonCode +interviewEndMeta.endReasonSource +interviewEndMeta.endReasonDetail +interviewEndMeta.endInitiator +interviewEndMeta.endTrigger +interviewEndMeta.endedAtStage +interviewEndMeta.recordedAt');
   if (!session) throw new Error('Session not found');
+
+  const completionInitiator = String(completionContext?.completionInitiator || '').trim();
+  const completionTrigger = String(completionContext?.completionTrigger || '').trim();
+  const completionDetail = String(completionContext?.completionDetail || '').trim();
 
   session.completedAt = new Date();
 
@@ -602,8 +720,24 @@ async function completeSession(sessionId, { cheatingEvents = [], totalCheatingSc
   if (terminationReason) {
     session.integrity.terminationReason = terminationReason;
     session.status = 'terminated';
+    setInterviewEndMeta(session, {
+      endReasonCode: 'terminated_by_integrity',
+      endReasonSource: 'integrity',
+      endReasonDetail: terminationReason,
+      endInitiator: completionInitiator || 'frontend_engine',
+      endTrigger: completionTrigger || 'integrity_terminate',
+      endedAtStage: 'complete_session',
+    });
   } else {
     session.status = 'completed';
+    setInterviewEndMeta(session, {
+      endReasonCode: session.interviewEndMeta?.endReasonCode || 'completed_via_complete_session',
+      endReasonSource: session.interviewEndMeta?.endReasonSource || 'manual_or_frontend',
+      endReasonDetail: session.interviewEndMeta?.endReasonDetail || completionDetail || 'Session finalized through completeSession endpoint.',
+      endInitiator: session.interviewEndMeta?.endInitiator || completionInitiator || 'frontend_engine',
+      endTrigger: session.interviewEndMeta?.endTrigger || completionTrigger || 'complete_session_called',
+      endedAtStage: 'complete_session',
+    });
   }
 
   session.computeIntegrityVerdict();
@@ -725,11 +859,24 @@ async function getSession(sessionId, candidateId) {
  * Get an existing active session for an application, if any.
  */
 async function getActiveSession(applicationId, candidateId) {
-  return InterviewSession.findOne({
+  const application = await JobApplication.findOne({ applicationId })
+    .select('interviewWindowStart reInterviewRequest.status reInterviewRequest.resolvedAt')
+    .lean();
+
+  const cycleStartDate = getInterviewCycleStartDate(application);
+  const filter = {
     applicationId,
     candidateId,
     status: { $in: ['created', 'started', 'in_progress'] },
-  }).lean();
+  };
+
+  if (cycleStartDate) {
+    filter.createdAt = { $gte: cycleStartDate };
+  }
+
+  return InterviewSession.findOne(filter)
+    .sort({ createdAt: -1 })
+    .lean();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -977,14 +1124,9 @@ function canIssueReaskForTurn(session, turnIndex) {
   return currentDepth < maxAttempts;
 }
 
-function getPhaseForElapsed(elapsedSec, config) {
-  const minSec = config?.minDurationSec || 20 * 60;
-  const maxSec = config?.maxDurationSec || 30 * 60;
-
-  if (elapsedSec < 5 * 60) return 'opening';
-  if (elapsedSec < minSec) return 'main';
-  if (elapsedSec < maxSec) return 'closing';
-  return 'wrap_up';
+function getPhaseForProgress(questionCount = 0) {
+  if (questionCount <= 1) return 'opening';
+  return 'main';
 }
 
 function assertInterviewWindowOpen(application) {
@@ -1019,6 +1161,7 @@ async function generateFinalEvaluationWithCalibration(session) {
 
   let parsed = parseFinalSummary(primaryText);
   if (!parsed) {
+    logger.error("❌ FINAL EVAL PARSE FAILED:", primaryText);
     const retryPrompt = `${calibrationPrompt}\n\nIMPORTANT: Return strictly valid JSON only. Do not include markdown, comments, or extra text.`;
     const retryText = await callGroqChat([
       { role: 'system', content: retryPrompt },
@@ -1055,40 +1198,47 @@ async function generateBatchEvaluations(session) {
 }
 
 function buildBatchEvaluationPrompt(session, batchTurns, offset) {
-  const requirements = Array.isArray(session.context?.requirements)
-    ? session.context.requirements.filter(Boolean)
-    : [];
-  const skills = Array.isArray(session.context?.skills)
-    ? session.context.skills.filter(Boolean)
-    : [];
+  const jobDescription = session.context?.jobDescription || '';
 
   const turnsText = batchTurns.map((t, idx) => {
     const turnIndex = offset + idx;
     return (
-      `TurnIndex: ${turnIndex}\n` +
-      `Phase: ${t.phase || 'main'}\n` +
-      `Question: ${smartTruncate(t.question || '', 280)}\n` +
-      `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
-      `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isTurnNonScoringMeta(t) ? 'true' : 'false'}, classification=${normalizeAnswerClassificationLabel(t.answerClassification)}`
+      `TurnIndex: ${turnIndex}
+Question: ${smartTruncate(t.question || '', 260)}
+Answer: ${smartTruncate(t.answer || '(no response)', 420)}
+Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, meta=${isTurnNonScoringMeta(t) ? 'true' : 'false'}`
     );
   }).join('\n\n');
 
-  return (
-    `You are evaluating a subset of interview turns for a ${session.jobTitle} role.\n\n` +
-    `Job Requirements: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
-    `Candidate Skills: ${skills.length ? skills.join(', ') : 'Not provided'}\n\n` +
-    `Evaluate each listed turn and return JSON only.\n` +
-    `Rules:\n` +
-    `- If clarification_or_correction=true, set score to null and do not penalize.\n` +
-    `- If unanswered=true and not clarification/correction, set score to 0.\n` +
-    `- Otherwise score 0-10 based on technical correctness, depth, and specificity.\n` +
-    `- Keep feedback short and evidence-based.\n\n` +
-    `Turns:\n${turnsText}\n\n` +
-    `Return schema:\n` +
-    `{ "batchEvaluations": [{ "turnIndex": <number>, "score": <0-10|null>, "feedback": "<string>", "topics": ["..."], "strengths": ["..."], "weaknesses": ["..."] }] }`
-  );
-}
+  return `
+You are evaluating interview answers for a ${session.jobTitle} role.
 
+## Job Description
+${jobDescription}
+
+## Task
+For EACH turn:
+- assign ONE topic
+- assign a score
+
+## STRICT RULES
+- meta=true → score = null
+- unanswered=true → score = 0
+- otherwise → MUST be 1–10 (never null)
+
+## Output format (STRICT JSON ONLY):
+{
+  "batchEvaluations": [
+    {
+      "turnIndex": 0,
+      "topic": "API Design",
+      "score": 7,
+      "feedback": "Good explanation but lacked real example"
+    }
+  ]
+}
+`;
+}
 function normalizeBatchEvaluations(parsed, batchTurns, offset) {
   const raw = Array.isArray(parsed?.batchEvaluations)
     ? parsed.batchEvaluations
@@ -1099,84 +1249,104 @@ function normalizeBatchEvaluations(parsed, batchTurns, offset) {
     const fromIndex = raw.find((item) => Number(item?.turnIndex) === turnIndex);
     const fromOrder = raw[idx];
     const source = fromIndex || fromOrder || {};
+
     const metaTurn = isTurnNonScoringMeta(turn);
     const unanswered = !!turn.isUnanswered;
-    const parsedScore = Number(source.score);
 
-    let score = null;
+    let score;
+
     if (metaTurn) {
       score = null;
     } else if (unanswered) {
       score = 0;
-    } else if (Number.isFinite(parsedScore)) {
-      score = Math.max(0, Math.min(10, parsedScore));
+    } else {
+      const parsedScore = Number(source.score);
+      score = Number.isFinite(parsedScore)
+        ? Math.max(0, Math.min(10, parsedScore))
+        : 5; // 🔥 fallback instead of null
     }
 
     return {
       turnIndex,
       score,
       feedback: metaTurn
-        ? 'Candidate requested clarification or corrected speech-to-text interpretation. This turn is excluded from scoring impact.'
+        ? 'Clarification/correction turn (not scored)'
         : (typeof source.feedback === 'string' && source.feedback.trim()
           ? source.feedback.trim()
-          : (unanswered ? 'No response given.' : '')),
-      topics: Array.isArray(source.topics) ? source.topics.filter(Boolean).slice(0, 5) : [],
-      strengths: Array.isArray(source.strengths) ? source.strengths.filter(Boolean).slice(0, 5) : [],
-      weaknesses: metaTurn ? [] : (Array.isArray(source.weaknesses) ? source.weaknesses.filter(Boolean).slice(0, 5) : []),
+          : (unanswered ? 'No response given.' : 'Answer lacked clear evidence.')),
+      topics: source.topic
+        ? [source.topic]
+        : (Array.isArray(source.topics) ? source.topics.slice(0, 3) : []),
+      strengths: Array.isArray(source.strengths) ? source.strengths.slice(0, 3) : [],
+      weaknesses: metaTurn ? [] : (Array.isArray(source.weaknesses) ? source.weaknesses.slice(0, 3) : []),
     };
   });
 }
-
 function buildFinalCalibrationPrompt(session, provisionalEvaluations) {
-  const requirements = Array.isArray(session.context?.requirements)
-    ? session.context.requirements.filter(Boolean)
-    : [];
-  const skills = Array.isArray(session.context?.skills)
-    ? session.context.skills.filter(Boolean)
-    : [];
+  const jobDescription = session.context?.jobDescription || '';
 
-  const transcript = (session.turns || []).map((t, i) => (
-    `TurnIndex: ${i}\n` +
-    `Phase: ${t.phase || 'main'}\n` +
-    `Question: ${smartTruncate(t.question || '', 260)}\n` +
-    `Answer: ${smartTruncate(t.answer || '(no response)', 420)}\n` +
-    `Flags: unanswered=${t.isUnanswered ? 'true' : 'false'}, clarification_or_correction=${isTurnNonScoringMeta(t) ? 'true' : 'false'}, classification=${normalizeAnswerClassificationLabel(t.answerClassification)}`
+  const transcript = session.turns.map((t, i) => (
+    `TurnIndex: ${i}
+Question: ${smartTruncate(t.question || '', 200)}
+Answer: ${smartTruncate(t.answer || '(no response)', 350)}`
   )).join('\n\n');
 
-  const provisional = (provisionalEvaluations || []).map((item) => (
-    `TurnIndex ${item.turnIndex}: score=${item.score == null ? 'null' : item.score}, feedback=${smartTruncate(item.feedback || '', 200)}`
+  const provisional = provisionalEvaluations.map(e => (
+    `TurnIndex: ${e.turnIndex}, Score: ${e.score}, Feedback: ${e.feedback}`
   )).join('\n');
 
-  return (
-    `You are a principal hiring evaluator conducting final calibration for a ${session.jobTitle} interview.\n\n` +
-    `Goal: Evaluate each turn using complete context of the whole interview transcript, then return final scores per turn.\n\n` +
-    `Role Context\n` +
-    `Job Requirements: ${requirements.length ? requirements.join('; ') : 'Not provided'}\n` +
-    `Candidate Skills: ${skills.length ? skills.join(', ') : 'Not provided'}\n\n` +
-    `Complete Interview Transcript (compact, full-turn coverage)\n${transcript}\n\n` +
-    `Provisional Batch Evaluations\n${provisional || 'Not available'}\n\n` +
-    `Rules\n` +
-    `- Evaluate ALL turns from TurnIndex 0 to TurnIndex ${Math.max((session.turns?.length || 1) - 1, 0)}.\n` +
-    `- Return EXACTLY ${session.turns?.length || 0} objects in perAnswerEvaluations.\n` +
-    `- If clarification_or_correction=true, set score to null and do not penalize aggregate scoring.\n` +
-    `- If unanswered=true and not clarification/correction, set score to 0.\n` +
-    `- feedback must be concise and evidence-based.\n` +
-    `- Keep overall scores consistent with per-turn evidence.\n\n` +
-    `Respond ONLY with valid JSON in this schema:\n` +
-    `{\n` +
-    `  "perAnswerEvaluations": [{ "turnIndex": <number>, "score": <0-10|null>, "feedback": "<1-2 sentence rationale>", "topics": ["<topic>"], "strengths": ["<strength>"], "weaknesses": ["<weakness>"] }],\n` +
-    `  "technicalScore": <1-10>,\n` +
-    `  "communicationScore": <1-10>,\n` +
-    `  "problemSolvingScore": <1-10>,\n` +
-    `  "overallVerdict": "<Strong Performance|Moderate Performance|Needs Improvement>",\n` +
-    `  "strengths": ["..."],\n` +
-    `  "weaknesses": ["..."],\n` +
-    `  "recommendations": ["..."]\n` +
-    `}`
-  );
+  return `
+You are performing a FINAL evaluation for a ${session.jobTitle} interview.
+
+## Job Description
+${jobDescription}
+
+## Instructions
+- You MUST evaluate EVERY turn
+- You MUST return perAnswerEvaluations
+- Use provisional scores but refine them
+
+## Rules
+- meta turns → score = null
+- unanswered → score = 0
+- others → MUST be 1–10
+
+## Evidence Rule
+- Listing concepts only → max 6
+- Real example/trade-off → 7+
+
+## Transcript
+${transcript}
+
+## Provisional Scores
+${provisional}
+
+## OUTPUT (STRICT JSON ONLY)
+{
+  "perAnswerEvaluations": [
+    {
+      "turnIndex": 0,
+      "score": 7,
+      "feedback": "Clear but lacked real example",
+      "topics": ["API Design"],
+      "strengths": ["Structured thinking"],
+      "weaknesses": ["No real scenario"]
+    }
+  ],
+  "technicalScore": 1-10,
+  "communicationScore": 1-10,
+  "problemSolvingScore": 1-10,
+  "overallVerdict": "Strong|Moderate|Weak",
+  "strengths": [],
+  "weaknesses": [],
+  "recommendations": []
 }
 
-function smartTruncate(text, maxLen = 300) {
+CRITICAL:
+- Do NOT skip perAnswerEvaluations
+- Return ONLY JSON
+`;
+} function smartTruncate(text, maxLen = 300) {
   const value = String(text || '').trim();
   if (value.length <= maxLen) return value;
   const head = Math.max(80, Math.floor(maxLen * 0.7));
@@ -1185,16 +1355,31 @@ function smartTruncate(text, maxLen = 300) {
 }
 
 function parseFinalSummary(text) {
-  try {
-    // Try to extract JSON from the response  
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    return null;
-  } catch {
-    return null;
-  }
-}
+  if (!text) return null;
 
+  // 1. Direct parse
+  try {
+    return JSON.parse(text);
+  } catch { }
+
+  // 2. ```json block
+  const block = text.match(/```json\s*([\s\S]*?)```/i);
+  if (block) {
+    try {
+      return JSON.parse(block[1]);
+    } catch { }
+  }
+
+  // 3. Fallback extraction
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch { }
+  }
+
+  return null;
+}
 function normalizeFinalSummary(summary, turns = []) {
   if (!summary || typeof summary !== 'object') return null;
 
@@ -1249,6 +1434,28 @@ function normalizeAggregateScore(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   return Math.max(1, Math.min(10, n));
+}
+
+function setInterviewEndMeta(session, {
+  endReasonCode = '',
+  endReasonSource = '',
+  endReasonDetail = '',
+  endInitiator = '',
+  endTrigger = '',
+  endedAtStage = '',
+} = {}) {
+  if (!session) return;
+
+  const existing = session.interviewEndMeta || {};
+  session.interviewEndMeta = {
+    endReasonCode: String(endReasonCode || existing.endReasonCode || '').trim(),
+    endReasonSource: String(endReasonSource || existing.endReasonSource || '').trim(),
+    endReasonDetail: String(endReasonDetail || existing.endReasonDetail || '').trim().slice(0, 500),
+    endInitiator: String(endInitiator || existing.endInitiator || '').trim(),
+    endTrigger: String(endTrigger || existing.endTrigger || '').trim(),
+    endedAtStage: String(endedAtStage || existing.endedAtStage || '').trim(),
+    recordedAt: new Date(),
+  };
 }
 
 function formatSessionSummary(session) {

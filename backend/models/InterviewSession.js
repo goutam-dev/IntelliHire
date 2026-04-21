@@ -97,6 +97,8 @@ const interviewSessionSchema = new mongoose.Schema({
     maxDurationSec: { type: Number, default: 30 * 60 },
     cheatingThreshold: { type: Number, default: 10 },
     minQuestionsBeforeEnd: { type: Number, default: 8 },
+    silenceTimeoutMs: { type: Number, default: 12000 },
+    initialWaitMs: { type: Number, default: 35000 },
     llmModel: { type: String, default: 'llama-3.3-70b-versatile' },
   },
 
@@ -157,6 +159,18 @@ const interviewSessionSchema = new mongoose.Schema({
     strengths: [String],
     weaknesses: [String],
     recommendations: [String],
+  },
+
+  // ── Internal End Metadata (DB-only) ─────────────────────────────────────
+  // Persist why a session ended. Hidden from normal API reads.
+  interviewEndMeta: {
+    endReasonCode: { type: String, default: '', select: false },
+    endReasonSource: { type: String, default: '', select: false },
+    endReasonDetail: { type: String, default: '', select: false },
+    endInitiator: { type: String, default: '', select: false },
+    endTrigger: { type: String, default: '', select: false },
+    endedAtStage: { type: String, default: '', select: false },
+    recordedAt: { type: Date, default: null, select: false },
   },
 
   // ── Integrity / Anti-Cheating (Screen Events) ───────────────────────────────

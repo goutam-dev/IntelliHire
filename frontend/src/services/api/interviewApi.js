@@ -60,11 +60,15 @@ export async function transcribeAudio(sessionId, audioBlob) {
 /**
  * Complete the interview and get the full summary.
  */
-export async function completeSession(sessionId, { cheatingEvents = [], totalCheatingScore = 0, terminationReason = '' } = {}) {
+export async function completeSession(
+  sessionId,
+  { cheatingEvents = [], totalCheatingScore = 0, terminationReason = '', completionContext = {} } = {}
+) {
   const res = await api.post(`${BASE}/sessions/${sessionId}/complete`, {
     cheatingEvents,
     totalCheatingScore,
     terminationReason,
+    completionContext,
   });
   return res.data.data;
 }
