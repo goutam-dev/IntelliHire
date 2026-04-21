@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { toast } from 'react-toastify';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '@clerk/clerk-react';
 import { createJob, clearJobData, setValidationErrors } from '../store/slices/jobSlice';
@@ -20,6 +21,13 @@ import {
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0 },
+};
+
+const getErrorMessage = (err) => {
+  if (!err) return 'Something went wrong while creating the job';
+  if (typeof err === 'string') return err;
+  if (typeof err?.message === 'string') return err.message;
+  return 'Something went wrong while creating the job';
 };
 
 const CreateJobPage = () => {
@@ -55,6 +63,12 @@ const CreateJobPage = () => {
     };
     loadProfile();
   }, [dispatch, getToken]);
+
+  useEffect(() => {
+    if (error) {
+      toast.error(getErrorMessage(error));
+    }
+  }, [error]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -315,6 +329,9 @@ const CreateJobPage = () => {
     // Scroll to the first field with an error
     if (!isValid) {
       scrollToFirstError(errors);
+      const firstErrorField = fieldOrder.find((field) => errors[field]);
+      const firstErrorMessage = firstErrorField ? errors[firstErrorField] : 'Please fix the highlighted form errors';
+      toast.error(firstErrorMessage);
     }
 
     return isValid;
@@ -342,7 +359,7 @@ const CreateJobPage = () => {
     };
 
     try {
-      const result = await dispatch(createJob(jobData)).unwrap();
+      await dispatch(createJob(jobData)).unwrap();
       // Navigate to jobs list or job detail page
       navigate('/employer/jobs');
     } catch (err) {
@@ -379,7 +396,7 @@ const CreateJobPage = () => {
     };
 
     try {
-      const result = await dispatch(createJob(jobData)).unwrap();
+      await dispatch(createJob(jobData)).unwrap();
       // Navigate to jobs list or job detail page
       navigate('/employer/jobs');
     } catch (err) {

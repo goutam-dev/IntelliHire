@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { toast } from "react-toastify";
 import {
   ArrowLeft,
   Building2,
@@ -300,7 +301,7 @@ const JobApplication = () => {
     console.log('Resume data:', profileData?.resume); // Debug log
     
     if (!profileData?.resume) {
-      alert('No resume found in profile.');
+      toast.error('No resume found in profile.');
       return;
     }
 
@@ -331,7 +332,7 @@ const JobApplication = () => {
         'File preview not available. Please contact support if this issue persists.'
       ].join('\n');
       
-      alert(resumeInfo);
+      toast.error(resumeInfo);
     }
   };
 
@@ -414,6 +415,12 @@ const JobApplication = () => {
     }
   }, [successMessage, dispatch]);
 
+  useEffect(() => {
+    if (error) {
+      toast.error(typeof error === 'string' ? error : 'Failed to submit application');
+    }
+  }, [error]);
+
   const handleSectionEdit = (section) => {
     setEditingSections((prev) => ({
       ...prev,
@@ -426,7 +433,7 @@ const JobApplication = () => {
     if (section === 'personalInfo') {
       const { name, email, phone } = applicationProfile.personalInfo;
       if (!name.trim() || !email.trim() || !phone.trim()) {
-        alert('Name, email, and phone are required fields.');
+        toast.error('Name, email, and phone are required fields.');
         return;
       }
     }
@@ -513,13 +520,13 @@ const JobApplication = () => {
 
     // Validate file type
     if (file.type !== 'application/pdf') {
-      alert('Please select a PDF file.');
+      toast.error('Please select a PDF file.');
       return;
     }
 
     // Validate file size (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB.');
+      toast.error('File size must be less than 5MB.');
       return;
     }
 
@@ -535,12 +542,12 @@ const JobApplication = () => {
 
     const allowedTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo'];
     if (!allowedTypes.includes(file.type)) {
-      alert('Please select a valid video file (MP4, WEBM, MOV, or AVI).');
+      toast.error('Please select a valid video file (MP4, WEBM, MOV, or AVI).');
       return;
     }
 
     if (file.size > 50 * 1024 * 1024) {
-      alert('Video file size must be less than 50MB.');
+      toast.error('Video file size must be less than 50MB.');
       return;
     }
 
@@ -781,34 +788,34 @@ const JobApplication = () => {
   const handleSubmitApplication = async () => {
     // Check if user has already applied (safety check)
     if (hasApplied) {
-      alert("You have already applied to this job.");
+      toast.error("You have already applied to this job.");
       return;
     }
 
     if (!applicationForm.profileAccuracyConfirmed) {
-      alert("Please confirm that your profile information is accurate.");
+      toast.error("Please confirm that your profile information is accurate.");
       return;
     }
 
     if (isDeadlinePassed) {
-      alert("Application deadline has passed for this job.");
+      toast.error("Application deadline has passed for this job.");
       return;
     }
 
     // Validate required personal info
     const { name, email, phone } = applicationProfile.personalInfo;
     if (!name.trim() || !email.trim() || !phone.trim()) {
-      alert('Please fill in all required personal information (Name, Email, Phone).');
+      toast.error('Please fill in all required personal information (Name, Email, Phone).');
       return;
     }
 
     // Validate video: must have either an existing profile video (when opting "existing") or a new file
     if (applicationForm.videoOption === 'existing' && !profileData?.video) {
-      alert('You do not have a video introduction in your profile. Please upload a new video for this application.');
+      toast.error('You do not have a video introduction in your profile. Please upload a new video for this application.');
       return;
     }
     if (applicationForm.videoOption === 'new' && !applicationForm.newVideoFile) {
-      alert('Please select a video file to upload with your application.');
+      toast.error('Please select a video file to upload with your application.');
       return;
     }
 

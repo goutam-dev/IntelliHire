@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { toast } from 'react-toastify';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '@clerk/clerk-react';
 import {
@@ -29,6 +30,13 @@ const fadeUp = {
   visible: { opacity: 1, y: 0 },
 };
 
+const getErrorMessage = (err) => {
+  if (!err) return 'Something went wrong while updating the job';
+  if (typeof err === 'string') return err;
+  if (typeof err?.message === 'string') return err.message;
+  return 'Something went wrong while updating the job';
+};
+
 const EditJobPage = () => {
   const { jobId } = useParams();
   const navigate = useNavigate();
@@ -38,6 +46,7 @@ const EditJobPage = () => {
     currentJobLoading,
     currentJobError,
     loading,
+    error,
     validationErrors,
   } = useAppSelector((state) => state.jobs);
 
@@ -100,6 +109,18 @@ const EditJobPage = () => {
       });
     }
   }, [currentJob, jobId]);
+
+  useEffect(() => {
+    if (currentJobError) {
+      toast.error(getErrorMessage(currentJobError));
+    }
+  }, [currentJobError]);
+
+  useEffect(() => {
+    if (error) {
+      toast.error(getErrorMessage(error));
+    }
+  }, [error]);
 
   const historyEntries = useMemo(() => {
     if (!currentJob) return [];
@@ -412,6 +433,11 @@ const EditJobPage = () => {
     // Scroll to the first field with an error
     if (!isValid) {
       scrollToFirstError(errors);
+      const firstErrorField = fieldOrder.find((field) => errors[field]);
+      const firstErrorMessage = firstErrorField
+        ? errors[firstErrorField]
+        : 'Please fix the highlighted form errors';
+      toast.error(firstErrorMessage);
     }
 
     return isValid;
