@@ -862,9 +862,9 @@ const JobApplication = () => {
 
       // Show success message and redirect after a short delay
       setTimeout(() => {
+        dispatch(clearSuccessMessage());
         navigate(returnTo, {
           state: {
-            message: "Application submitted successfully!",
             appliedJobId: jobId,
             applicationId: result.applicationId,
             forceRefresh: true // Flag to force refresh in BrowseJobs

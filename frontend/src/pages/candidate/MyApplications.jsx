@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'react-toastify';
 import {
   MapPin,
   Clock,
@@ -88,13 +89,13 @@ const MyApplications = () => {
     }
   }, [location.state]);
 
-  // Clear messages after some time
+  // Show success feedback as toast and clear message immediately to prevent replays
   useEffect(() => {
     if (successMessage) {
-      const timer = setTimeout(() => {
-        dispatch(clearSuccessMessage());
-      }, 5000);
-      return () => clearTimeout(timer);
+      if (successMessage === 'Application withdrawn successfully') {
+        toast.success(successMessage);
+      }
+      dispatch(clearSuccessMessage());
     }
   }, [successMessage, dispatch]);
 
@@ -273,13 +274,6 @@ const MyApplications = () => {
             >
               <X className="w-4 h-4" />
             </button>
-          </motion.div>
-        )}
-
-        {successMessage && (
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center gap-3 text-emerald-800 shadow-sm">
-            <CheckCircle className="w-5 h-5 flex-shrink-0 text-emerald-600" />
-            <span className="text-sm font-medium">{successMessage}</span>
           </motion.div>
         )}
 

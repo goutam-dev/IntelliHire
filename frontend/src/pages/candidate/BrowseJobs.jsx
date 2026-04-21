@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { 
   Search, 
   MapPin, 
@@ -712,6 +713,10 @@ const BrowseJobs = () => {
   useEffect(() => {
     if (location.state?.forceRefresh && location.state?.appliedJobId) {
       const appliedJobId = location.state.appliedJobId;
+
+      toast.success('Application submitted successfully!', {
+        toastId: `application-submitted-${appliedJobId}`,
+      });
 
       
       // Force refresh the specific job's application status by clearing cache first
