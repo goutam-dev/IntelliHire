@@ -28,6 +28,25 @@ const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const MAX_REASK_ATTEMPTS = Number(process.env.INTERVIEW_MAX_REASK_ATTEMPTS || 2);
 
+function parseValidDate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getInterviewCycleStartDate(application) {
+  const windowStart = parseValidDate(application?.interviewWindowStart);
+  const reInterviewApprovedAt = application?.reInterviewRequest?.status === 'approved'
+    ? parseValidDate(application?.reInterviewRequest?.resolvedAt)
+    : null;
+
+  if (windowStart && reInterviewApprovedAt) {
+    return windowStart > reInterviewApprovedAt ? windowStart : reInterviewApprovedAt;
+  }
+
+  return reInterviewApprovedAt || windowStart;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  PERSONA & PROMPT ENGINEERING
 // ═════════════════════════════════════════════════════════════════════════════
@@ -318,14 +337,27 @@ async function transcribeAudio(audioBuffer, mimeType = 'audio/webm') {
  * Create a new interview session and load context from the job application.
  */
 async function createSession(applicationId, candidateId) {
-  const attemptedSession = await InterviewSession.findOne({
+  const application = await JobApplication.findOne({ applicationId })
+    .populate('jobId')
+    .lean();
+
+  if (!application) throw new Error('Application not found');
+
+  const cycleStartDate = getInterviewCycleStartDate(application);
+  const attemptedSessionFilter = {
     applicationId,
     candidateId,
     $or: [
       { startedAt: { $ne: null } },
       { status: { $in: ['completed', 'terminated', 'abandoned', 'completing'] } },
     ],
-  })
+  };
+
+  if (cycleStartDate) {
+    attemptedSessionFilter.createdAt = { $gte: cycleStartDate };
+  }
+
+  const attemptedSession = await InterviewSession.findOne(attemptedSessionFilter)
     .sort({ createdAt: -1 })
     .lean();
 
@@ -345,13 +377,6 @@ async function createSession(applicationId, candidateId) {
 
     throw new AppError('Interview has already been attempted for this application. Retakes are not allowed.', 409);
   }
-
-  // Load application data for context  
-  const application = await JobApplication.findOne({ applicationId })
-    .populate('jobId')
-    .lean();
-
-  if (!application) throw new Error('Application not found');
 
   if (application.status !== 'Interview Scheduled') {
     throw new AppError('Interview is not available for this application yet.', 403);
@@ -834,11 +859,24 @@ async function getSession(sessionId, candidateId) {
  * Get an existing active session for an application, if any.
  */
 async function getActiveSession(applicationId, candidateId) {
-  return InterviewSession.findOne({
+  const application = await JobApplication.findOne({ applicationId })
+    .select('interviewWindowStart reInterviewRequest.status reInterviewRequest.resolvedAt')
+    .lean();
+
+  const cycleStartDate = getInterviewCycleStartDate(application);
+  const filter = {
     applicationId,
     candidateId,
     status: { $in: ['created', 'started', 'in_progress'] },
-  }).lean();
+  };
+
+  if (cycleStartDate) {
+    filter.createdAt = { $gte: cycleStartDate };
+  }
+
+  return InterviewSession.findOne(filter)
+    .sort({ createdAt: -1 })
+    .lean();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

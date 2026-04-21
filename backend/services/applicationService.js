@@ -575,6 +575,25 @@ const queueInterviewEnrollmentRecovery = (jobApplicationId) => {
   });
 };
 
+const parseValidDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getInterviewCycleStartDate = (application) => {
+  const windowStart = parseValidDate(application?.interviewWindowStart);
+  const reInterviewApprovedAt = application?.reInterviewRequest?.status === 'approved'
+    ? parseValidDate(application?.reInterviewRequest?.resolvedAt)
+    : null;
+
+  if (windowStart && reInterviewApprovedAt) {
+    return windowStart > reInterviewApprovedAt ? windowStart : reInterviewApprovedAt;
+  }
+
+  return reInterviewApprovedAt || windowStart;
+};
+
 const enrichApplicationsWithInterviewState = async (applications = []) => {
   if (!applications.length) return applications;
 
@@ -588,17 +607,25 @@ const enrichApplicationsWithInterviewState = async (applications = []) => {
     .select('applicationId status startedAt completedAt updatedAt createdAt')
     .lean();
 
-  const latestByApplicationId = new Map();
+  const sessionsByApplicationId = new Map();
   for (const session of sessions) {
-    if (!latestByApplicationId.has(session.applicationId)) {
-      latestByApplicationId.set(session.applicationId, session);
-    }
+    const bucket = sessionsByApplicationId.get(session.applicationId) || [];
+    bucket.push(session);
+    sessionsByApplicationId.set(session.applicationId, bucket);
   }
 
   return applications.map((application) => {
-    const latestInterviewSession = latestByApplicationId.get(application.applicationId) || null;
+    const cycleStartDate = getInterviewCycleStartDate(application);
+    const appSessions = sessionsByApplicationId.get(application.applicationId) || [];
+    const latestInterviewSession = appSessions.find((session) => {
+      if (!cycleStartDate) return true;
+      const createdAt = parseValidDate(session.createdAt);
+      return createdAt && createdAt >= cycleStartDate;
+    }) || null;
+
     const interviewSessionStatus = latestInterviewSession?.status || null;
-    const interviewLocked = Boolean(latestInterviewSession?.startedAt) || TERMINAL_INTERVIEW_STATUSES.includes(interviewSessionStatus);
+    const interviewLocked = Boolean(latestInterviewSession?.startedAt)
+      || TERMINAL_INTERVIEW_STATUSES.includes(interviewSessionStatus);
 
     return {
       ...application,
