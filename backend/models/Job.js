@@ -33,6 +33,7 @@ const JobSchema = new Schema(
     },
     publishedAt: { type: Date },
     lastStatusChangeAt: { type: Date },
+    closedAt: { type: Date, default: null },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null }
   },

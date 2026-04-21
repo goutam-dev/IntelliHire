@@ -21,6 +21,9 @@ import {
 } from 'lucide-react';
 import api from '../../lib/api';
 import { getCurrencySymbol } from '../../constants/jobConstants';
+import { resolveUploadUrl } from '../../utils/mediaUrl';
+
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 const JobDetails = () => {
   const { jobId } = useParams();
@@ -30,11 +33,16 @@ const JobDetails = () => {
   const [error, setError] = useState(null);
   const [applicationStatus, setApplicationStatus] = useState(null);
   const [checkingApplication, setCheckingApplication] = useState(false);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 
   useEffect(() => {
     fetchJobDetails();
     checkApplicationStatus();
   }, [jobId]);
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [job?.companyLogoUrl]);
 
   const fetchJobDetails = async () => {
     try {
@@ -103,16 +111,12 @@ const JobDetails = () => {
 
   const hasSalaryRange = Boolean(job?.salaryRange && (job.salaryRange.min || job.salaryRange.max));
   const salarySymbol = hasSalaryRange ? getCurrencySymbol(job.salaryRange.currency || 'USD') : null;
+  const companyName = job?.company || 'Company Name';
+  const companyInitial = (companyName[0] || 'C').toUpperCase();
+  const companyLogoUrl = resolveUploadUrl(job?.companyLogoUrl || job?.employer?.logoUrl || null);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-zinc-900 mx-auto mb-4"></div>
-          <p className="text-zinc-600">Loading job details...</p>
-        </div>
-      </div>
-    );
+    return <SkeletonLoader type="layout-profile" />;
   }
 
   if (error) {
@@ -175,10 +179,21 @@ const JobDetails = () => {
             </button>
             <div className="flex-1">
               <h1 className="text-3xl sm:text-4xl font-extrabold text-zinc-900 tracking-tight mb-2">{job.title}</h1>
-              <p className="text-zinc-600 font-medium text-lg flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-zinc-400" />
-                {job.company}
-              </p>
+              <div className="text-zinc-600 font-medium text-lg flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-zinc-200 overflow-hidden flex items-center justify-center text-[11px] font-extrabold text-zinc-700 border border-zinc-300">
+                  {companyLogoUrl && !logoLoadFailed ? (
+                    <img
+                      src={companyLogoUrl}
+                      alt={`${companyName} logo`}
+                      className="w-full h-full object-cover"
+                      onError={() => setLogoLoadFailed(true)}
+                    />
+                  ) : (
+                    companyInitial
+                  )}
+                </div>
+                <span>{companyName}</span>
+              </div>
             </div>
           </div>
           
@@ -195,10 +210,6 @@ const JobDetails = () => {
               <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
                 <Calendar className="w-4 h-4" />
                 <span>Posted {job.postedAgo}</span>
-              </div>
-              <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
-                <Users className="w-4 h-4" />
-                <span>{job.applicationsCount || 0} applicants</span>
               </div>
             </div>
             
@@ -222,11 +233,11 @@ const JobDetails = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl shadow-sm border border-zinc-200 p-6"
+              className="bg-white rounded-xl shadow-sm border border-zinc-200 p-6 overflow-hidden"
             >
               <h2 className="text-lg font-semibold text-zinc-900 mb-4">Job Description</h2>
               <div className="prose prose-sm max-w-none">
-                <p className="text-zinc-700 whitespace-pre-wrap">{job.description}</p>
+                <p className="text-zinc-700 whitespace-pre-wrap break-words overflow-wrap-anywhere">{job.description}</p>
               </div>
             </motion.div>
 
@@ -436,10 +447,6 @@ const JobDetails = () => {
                     <div className="flex items-center gap-1">
                       <Eye className="w-4 h-4" />
                       <span>{job.viewsCount || 0} views</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Users className="w-4 h-4" />
-                      <span>{job.applicationsCount || 0} applicants</span>
                     </div>
                   </div>
                 </div>

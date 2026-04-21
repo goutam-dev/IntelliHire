@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, LogOut, User, Briefcase, LayoutDashboard } from 'lucide-react';
+import { ChevronDown, LogOut, User, Briefcase, LayoutDashboard, Menu, X } from 'lucide-react';
 import { useClerk, useUser } from '@clerk/clerk-react';
 import { useSelector } from 'react-redux';
 import NotificationBell from '../common/NotificationBell';
 import { useNotifications } from '../../hooks/useNotifications';
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 10 },
   visible: { opacity: 1, y: 0 },
 };
 
@@ -16,7 +16,7 @@ const staggerChildren = {
   hidden: {},
   visible: {
     transition: {
-      staggerChildren: 0.12,
+      staggerChildren: 0.05,
     },
   },
 };
@@ -29,91 +29,15 @@ const LogoMark = ({ className }) => (
     xmlns="http://www.w3.org/2000/svg"
     aria-hidden="true"
   >
-    <rect
-      x="3"
-      y="5"
-      width="26"
-      height="22"
-      rx="6"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    />
-    <path
-      d="M9 11H16.5C19.5376 11 22 13.4624 22 16.5C22 19.5376 19.5376 22 16.5 22H9"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M9 16H19"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
-const MenuIcon = ({ className }) => (
-  <svg
-    className={className}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    aria-hidden="true"
-  >
-    <path
-      d="M5 7H19"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M5 12H19"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M5 17H19"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
-const CloseIcon = ({ className }) => (
-  <svg
-    className={className}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    aria-hidden="true"
-  >
-    <path
-      d="M6 6L18 18"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M18 6L6 18"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
+    <rect x="3" y="5" width="26" height="22" rx="8" stroke="currentColor" strokeWidth="2" />
+    <path d="M10 12H16C18.2091 12 20 13.7909 20 16C20 18.2091 18.2091 20 16 20H10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M10 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', userImage, onLogout }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signOut } = useClerk();
   const { user } = useUser();
   const displayImage = userImage || user?.imageUrl;
@@ -138,7 +62,6 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
       if (onLogout) {
         await onLogout();
       } else {
-        // Default logout behavior using Clerk
         await signOut();
         navigate('/');
       }
@@ -154,50 +77,55 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
     setProfileDropdownOpen((prev) => !prev);
   };
 
-  // Close dropdown when clicking outside
   React.useEffect(() => {
     const handleClickOutside = (event) => {
       if (profileDropdownOpen && !event.target.closest('[data-profile-dropdown]')) {
         setProfileDropdownOpen(false);
       }
     };
-
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [profileDropdownOpen]);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur shadow-sm supports-backdrop-filter:bg-white/70">
-      <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/80 backdrop-blur-md shadow-sm">
+      <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+        {/* Logo */}
         <Link
           to="/employer/dashboard"
-          className="flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          className="flex items-center gap-3 text-xl font-extrabold tracking-tight text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 rounded-xl"
           onClick={closeMobile}
         >
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-950 text-white shadow-md">
             <LogoMark className="h-6 w-6" />
           </span>
           <span>IntelliHire</span>
         </Link>
         
-        <nav className="hidden md:flex items-center gap-6 text-sm text-slate-600 lg:gap-8">
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-6 text-sm text-zinc-600 lg:gap-8">
           {navLinks.map((link) => {
             const Icon = link.icon;
+            const isActive = location.pathname === link.href || location.pathname.startsWith(link.href + '/');
             return (
               <Link
                 key={link.label}
                 to={link.href}
-                className="flex items-center gap-1.5 rounded-full px-2 py-1 transition-colors hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                className={`flex items-center gap-1.5 px-2 py-1 font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 rounded-md ${
+                  isActive
+                    ? 'text-zinc-900'
+                    : 'text-zinc-500 hover:text-zinc-900'
+                }`}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className={`h-4 w-4 ${isActive ? 'text-zinc-900' : 'text-zinc-400'}`} />
                 <span>{link.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="hidden md:flex items-center gap-3">
-          
+        {/* Desktop Actions */}
+        <div className="hidden md:flex items-center gap-4">
           <NotificationBell />
 
           {/* User Profile Dropdown */}
@@ -205,58 +133,60 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
             <button
               type="button"
               onClick={handleProfileClick}
-              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white pl-3 pr-4 py-1.5 transition-all hover:border-zinc-300 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 hover:shadow-sm"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col items-end">
-                  <span className="font-medium text-slate-900">{userName}</span>
-                  <span className="text-xs text-slate-500">{companyName}</span>
+              {displayImage ? (
+                <img src={displayImage} alt={userName} className="h-8 w-8 rounded-full object-cover border border-zinc-200 shadow-sm" />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-zinc-900 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                  {userName.charAt(0)}
                 </div>
-                {displayImage ? (
-                  <img src={displayImage} alt={userName} className="h-8 w-8 rounded-full object-cover border border-slate-200" />
-                ) : (
-                  <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-medium text-xs border border-slate-200">
-                    {userName.charAt(0)}
-                  </div>
-                )}
+              )}
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col items-start leading-none">
+                  <span className="font-extrabold text-sm text-zinc-900">{userName}</span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-0.5">{companyName || 'Employer'}</span>
+                </div>
+                <ChevronDown
+                  className={`h-4 w-4 text-zinc-400 transition-transform ml-1 ${
+                    profileDropdownOpen ? 'rotate-180' : ''
+                  }`}
+                />
               </div>
-              <ChevronDown
-                className={`h-4 w-4 text-slate-400 transition-transform ${
-                  profileDropdownOpen ? 'rotate-180' : ''
-                }`}
-              />
             </button>
 
             <AnimatePresence>
               {profileDropdownOpen && (
                 <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-2 w-56 origin-top-right rounded-xl border border-slate-200 bg-white shadow-lg"
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15, ease: 'easeOut' }}
+                  className="absolute right-0 mt-3 w-64 origin-top-right rounded-2xl border border-zinc-200 bg-white shadow-xl shadow-zinc-200/50 overflow-hidden"
                 >
-                  <div className="py-1">
-                    <div className="border-b border-slate-100 px-4 py-3">
-                      <p className="text-sm font-medium text-slate-900">{userName}</p>
-                      <p className="text-xs text-slate-500">{companyName}</p>
+                  <div className="p-2">
+                    <div className="px-3 py-3 mb-2 rounded-xl bg-zinc-50 border border-zinc-100">
+                      <p className="text-sm font-extrabold text-zinc-900 truncate">{userName}</p>
+                      <p className="text-xs font-bold text-zinc-500 truncate mt-0.5">{companyName}</p>
                     </div>
-                    <Link
-                      to="/employer/profile"
-                      onClick={() => setProfileDropdownOpen(false)}
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50"
-                    >
-                      <User className="h-4 w-4" />
-                      <span>Profile Settings</span>
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span>Logout</span>
-                    </button>
+                    <div className="space-y-1">
+                      <Link
+                        to="/employer/profile"
+                        onClick={() => setProfileDropdownOpen(false)}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                      >
+                        <User className="h-4 w-4" />
+                        <span>Profile Settings</span>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-red-600 transition-colors hover:bg-red-50 hover:text-red-700"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        <span>Logout</span>
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -265,18 +195,18 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
         </div>
 
         {/* Mobile Menu Button */}
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex items-center gap-3 md:hidden">
           <NotificationBell />
           <button
             type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
             onClick={() => setMobileOpen((prev) => !prev)}
             aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
           >
             {mobileOpen ? (
-              <CloseIcon className="h-5 w-5" />
+              <X className="h-5 w-5" />
             ) : (
-              <MenuIcon className="h-5 w-5" />
+              <Menu className="h-5 w-5" />
             )}
           </button>
         </div>
@@ -286,50 +216,54 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="md:hidden border-t border-slate-200 bg-white/95 backdrop-blur"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="md:hidden border-t border-zinc-200 bg-white overflow-hidden"
           >
             <motion.nav
               initial="hidden"
               animate="visible"
               exit="hidden"
               variants={staggerChildren}
-              className="max-w-6xl mx-auto flex flex-col gap-2 px-4 py-4 text-sm text-slate-700 sm:gap-3 sm:px-6 lg:px-8"
+              className="flex flex-col gap-1 px-4 py-6"
             >
               {navLinks.map((link) => {
                 const Icon = link.icon;
+                const isActive = location.pathname === link.href || location.pathname.startsWith(link.href + '/');
                 return (
                   <motion.div key={link.label} variants={fadeUp}>
                     <Link
                       to={link.href}
-                      className="flex items-center gap-2 rounded-xl border border-transparent px-4 py-2 transition-colors hover:border-slate-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-all ${
+                        isActive
+                          ? 'bg-zinc-100 text-zinc-900'
+                          : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
+                      }`}
                       onClick={closeMobile}
                     >
-                      <Icon className="h-4 w-4" />
+                      <Icon className="h-5 w-5" />
                       <span>{link.label}</span>
                     </Link>
                   </motion.div>
                 );
               })}
               
+              <motion.div variants={fadeUp} className="mx-4 my-4 h-px bg-zinc-100" />
+              
               {/* Mobile User Info */}
-              <motion.div
-                variants={fadeUp}
-                className="mt-2 border-t border-slate-200 pt-4"
-              >
-                <div className="px-4 py-2">
-                  <p className="text-sm font-medium text-slate-900">{userName}</p>
-                  <p className="text-xs text-slate-500">{companyName}</p>
+              <motion.div variants={fadeUp} className="flex flex-col gap-1">
+                <div className="px-4 py-3 rounded-xl bg-zinc-50 border border-zinc-100 mb-2">
+                  <p className="text-sm font-extrabold text-zinc-900">{userName}</p>
+                  <p className="text-xs font-bold text-zinc-500 mt-0.5">{companyName}</p>
                 </div>
                 <Link
                   to="/employer/profile"
                   onClick={closeMobile}
-                  className="flex items-center gap-2 rounded-xl border border-transparent px-4 py-2 transition-colors hover:border-slate-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-zinc-600 transition-all hover:bg-zinc-50 hover:text-zinc-900"
                 >
-                  <User className="h-4 w-4" />
+                  <User className="h-5 w-5" />
                   <span>Profile Settings</span>
                 </Link>
                 <button
@@ -338,9 +272,9 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
                     closeMobile();
                     handleLogout();
                   }}
-                  className="flex w-full items-center gap-2 rounded-xl border border-transparent px-4 py-2 text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-900 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-red-600 transition-all hover:bg-red-50 hover:text-red-700"
                 >
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="h-5 w-5" />
                   <span>Logout</span>
                 </button>
               </motion.div>

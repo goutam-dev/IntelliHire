@@ -27,6 +27,8 @@ import VideoSection from '../../components/candidate/profile/VideoSection';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { toast } from 'react-toastify';
 
+import SkeletonLoader from '../../components/common/SkeletonLoader';
+
 const Profile = () => {
   const dispatch = useDispatch();
   const { profile, loading, error } = useSelector(state => state.candidate);
@@ -69,11 +71,7 @@ const Profile = () => {
   ];
 
   if (loading && !profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="large" />
-      </div>
-    );
+    return <SkeletonLoader type="layout-profile" />;
   }
 
   return (

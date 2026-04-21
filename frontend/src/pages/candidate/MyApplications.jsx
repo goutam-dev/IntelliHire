@@ -3,11 +3,9 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Building2,
   MapPin,
   Clock,
   Calendar,
-  Eye,
   AlertCircle,
   CheckCircle,
   XCircle,
@@ -17,7 +15,8 @@ import {
   FileText,
   ExternalLink,
   Video,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 
 import {
@@ -29,6 +28,8 @@ import {
 import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
 import ReInterviewRequestDialog, { ReInterviewStatusBadge } from '../../components/candidate/ReInterviewRequestDialog';
 import { requestReInterview } from '../../services/api/applicationApi';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
+import { resolveUploadUrl } from '../../utils/mediaUrl';
 
 const MyApplications = () => {
   const dispatch = useDispatch();
@@ -54,13 +55,14 @@ const MyApplications = () => {
   const [reInterviewDialogApp, setReInterviewDialogApp] = useState(null);
   const [reInterviewLoading, setReInterviewLoading] = useState(false);
 
-  // Status options for filter - simplified to only important ones
+  // Status options for filter
   const statusOptions = [
     { value: 'all', label: 'All Applications', count: 0 },
     { value: 'Applied', label: 'Applied', count: 0 },
-    { value: 'Under Review', label: 'Under Review', count: 0 },
     { value: 'Shortlisted', label: 'Shortlisted', count: 0 },
     { value: 'Interview Scheduled', label: 'Interview Scheduled', count: 0 },
+    { value: 'Interviewed', label: 'Interviewed', count: 0 },
+    { value: 'Finalist', label: 'Finalist', count: 0 },
     { value: 'Hired', label: 'Hired', count: 0 },
     { value: 'Rejected', label: 'Rejected', count: 0 }
   ];
@@ -160,10 +162,10 @@ const MyApplications = () => {
   const getStatusColor = (status) => {
     const colors = {
       'Applied': 'bg-slate-100 text-slate-700 border-slate-200/80',
-      'Under Review': 'bg-amber-50 text-amber-700 border-amber-200/80',
       'Shortlisted': 'bg-sky-50 text-sky-700 border-sky-200/80',
       'Interview Scheduled': 'bg-cyan-50 text-cyan-700 border-cyan-200/80',
-      'Job Closed': 'bg-zinc-100 text-zinc-600 border-zinc-200/80',
+      'Interviewed': 'bg-teal-50 text-teal-700 border-teal-200/80',
+      'Finalist': 'bg-indigo-50 text-indigo-700 border-indigo-200/80',
       'Job Deleted': 'bg-zinc-200 text-zinc-700 border-zinc-300',
       'Rejected': 'bg-rose-50 text-rose-700 border-rose-200/80',
       'Hired': 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
@@ -175,10 +177,10 @@ const MyApplications = () => {
   const getStatusIcon = (status) => {
     const icons = {
       'Applied': <Clock className="w-4 h-4" />,
-      'Under Review': <Eye className="w-4 h-4" />,
       'Shortlisted': <CheckCircle className="w-4 h-4" />,
       'Interview Scheduled': <Calendar className="w-4 h-4" />,
-      'Job Closed': <AlertCircle className="w-4 h-4" />,
+      'Interviewed': <Video className="w-4 h-4" />,
+      'Finalist': <CheckCircle className="w-4 h-4" />,
       'Job Deleted': <AlertCircle className="w-4 h-4" />,
       'Rejected': <XCircle className="w-4 h-4" />,
       'Hired': <CheckCircle className="w-4 h-4" />,
@@ -187,15 +189,53 @@ const MyApplications = () => {
     return icons[status] || <Clock className="w-4 h-4" />;
   };
 
-  if (loading.fetchingApplications) {
-    return (
-      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-zinc-600 font-medium">Loading your applications...</p>
-        </div>
-      </div>
-    );
+  const listTransitionKey = `${filters.status}-${currentPage}`;
+
+  const listVariants = {
+    hidden: { opacity: 0, y: 12 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.32,
+        ease: [0.22, 1, 0.36, 1],
+        when: 'beforeChildren',
+        staggerChildren: 0.06,
+        delayChildren: 0.04,
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: -8,
+      transition: { duration: 0.2, ease: 'easeIn' },
+    },
+  };
+
+  const cardVariants = {
+    hidden: { opacity: 0, y: 18, scale: 0.992 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: 'spring',
+        stiffness: 260,
+        damping: 24,
+        mass: 0.85,
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: 10,
+      scale: 0.995,
+      transition: { duration: 0.16, ease: 'easeIn' },
+    },
+  };
+
+  const isInitialLoading = loading.fetchingApplications && myApplications.length === 0;
+
+  if (isInitialLoading) {
+    return <SkeletonLoader type="layout-list" />;
   }
 
   return (
@@ -245,9 +285,16 @@ const MyApplications = () => {
 
         {/* Filters */}
         <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 mb-8">
-          <div className="flex items-center gap-2.5 mb-5">
-            <Filter className="w-4 h-4 text-zinc-400" />
-            <h2 className="text-sm font-bold text-zinc-900 tracking-wide uppercase">Filter Applications</h2>
+          <div className="flex items-center justify-between gap-2.5 mb-5">
+            <div className="flex items-center gap-2.5">
+              <Filter className="w-4 h-4 text-zinc-400" />
+              <h2 className="text-sm font-bold text-zinc-900 tracking-wide uppercase">Filter Applications</h2>
+            </div>
+            {loading.fetchingApplications && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Updating...
+              </span>
+            )}
           </div>
           
           <div className="flex flex-wrap gap-2.5">
@@ -255,11 +302,12 @@ const MyApplications = () => {
               <button
                 key={option.value}
                 onClick={() => handleStatusFilter(option.value)}
+                disabled={loading.fetchingApplications}
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${
                   filters.status === option.value
                     ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
                     : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-900'
-                }`}
+                } ${loading.fetchingApplications ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
                 {option.label}
                 {option.value === 'all' && applicationsPagination.totalApplications > 0 && (
@@ -295,20 +343,40 @@ const MyApplications = () => {
             </button>
           </div>
         ) : (
-          <div className="space-y-5">
-            <AnimatePresence>
+          <div className={`transition-opacity duration-200 ${loading.fetchingApplications ? 'opacity-85' : 'opacity-100'}`}>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={listTransitionKey}
+                variants={listVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="space-y-5"
+              >
               {myApplications.map((application) => (
                 <motion.div
                   key={application.applicationId}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
+                  layout
+                  variants={cardVariants}
                   className={`bg-white rounded-2xl shadow-sm border transition-all duration-300 group overflow-hidden ${
                     highlightedApplication === application.applicationId
                       ? 'border-zinc-900 shadow-lg ring-1 ring-zinc-900'
                       : 'border-zinc-200 hover:shadow-xl hover:-translate-y-0.5 hover:border-zinc-300'
                   }`}
                 >
+                  {(() => {
+                    const isJobClosed = application.jobId?.status === 'closed';
+                    const closedAt = application.jobId?.closedAt ? new Date(application.jobId.closedAt) : null;
+                    const closedAtLabel = closedAt && !Number.isNaN(closedAt.getTime())
+                      ? closedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                      : null;
+                    const companyName = application.jobId?.company || 'Company';
+                    const companyInitial = (companyName[0] || 'C').toUpperCase();
+                    const companyLogoUrl = resolveUploadUrl(
+                      application.jobId?.companyLogoUrl || application.companyLogoUrl || null
+                    );
+
+                    return (
                   <div className="p-6 sm:p-8">
                     <div className="flex items-start justify-between mb-6">
                       <div className="flex-1 w-full">
@@ -316,16 +384,44 @@ const MyApplications = () => {
                           <h3 className="text-xl font-bold text-zinc-900 tracking-tight group-hover:text-zinc-700 transition-colors">
                             {application.jobId?.title || 'Job Title Not Available'}
                           </h3>
-                          <div className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold uppercase tracking-wider border flex items-center self-start sm:self-auto gap-1.5 shadow-sm ${getStatusColor(application.status)}`}>
-                            {getStatusIcon(application.status)}
-                            {application.status}
-                          </div>
+                          {(() => {
+                            let displayStatus = application.status;
+                            if (displayStatus === 'Interview Scheduled') {
+                              const isMissed = !application.interviewCompletedAt && application.interviewWindowEnd && new Date(application.interviewWindowEnd) < new Date();
+                              if (isMissed) displayStatus = 'Interview Missed';
+                            }
+                            return (
+                              <div className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold uppercase tracking-wider border flex items-center self-start sm:self-auto gap-1.5 shadow-sm ${displayStatus === 'Interview Missed' ? 'bg-amber-50 text-amber-700 border-amber-200' : getStatusColor(displayStatus)}`}>
+                                {getStatusIcon(displayStatus === 'Interview Missed' ? 'Interview Scheduled' : displayStatus)}
+                                {displayStatus}
+                              </div>
+                            );
+                          })()}
                         </div>
                         
                         <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-zinc-600 mb-4">
                           <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
-                            <Building2 className="w-4 h-4 text-zinc-400" />
-                            <span>{application.jobId?.company || 'Company'}</span>
+                            <div className="w-5 h-5 rounded-full bg-zinc-200 overflow-hidden flex items-center justify-center text-[10px] font-extrabold text-zinc-700 border border-zinc-300">
+                              {companyLogoUrl ? (
+                                <>
+                                  <img
+                                    src={companyLogoUrl}
+                                    alt={`${companyName} logo`}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      if (e.currentTarget.nextElementSibling) {
+                                        e.currentTarget.nextElementSibling.style.display = 'flex';
+                                      }
+                                    }}
+                                  />
+                                  <span className="hidden w-full h-full items-center justify-center">{companyInitial}</span>
+                                </>
+                              ) : (
+                                <span className="w-full h-full flex items-center justify-center">{companyInitial}</span>
+                              )}
+                            </div>
+                            <span>{companyName}</span>
                           </div>
                           <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/60 px-2.5 py-1 rounded-md">
                             <MapPin className="w-4 h-4 text-zinc-400" />
@@ -337,23 +433,20 @@ const MyApplications = () => {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2.5 text-xs font-bold tracking-widest text-zinc-400 uppercase">
-                          <span>ID: {application.applicationId}</span>
+                        <div className="flex items-center gap-2.5 text-xs font-bold text-zinc-400 uppercase">
                           {application.jobId?.salaryRange && (
-                            <>
-                              <span className="w-1 h-1 rounded-full bg-zinc-300"></span>
-                              <span className="text-emerald-600">
-                                ${application.jobId.salaryRange.min?.toLocaleString()} - 
-                                ${application.jobId.salaryRange.max?.toLocaleString()}
-                              </span>
-                            </>
+                            <span className="text-emerald-600 tracking-widest">
+                              Salary: ${application.jobId.salaryRange.min?.toLocaleString()} - ${application.jobId.salaryRange.max?.toLocaleString()}
+                            </span>
                           )}
                         </div>
 
-                        {application.status === 'Job Closed' && (
+                        {isJobClosed && (
                           <div className="mt-4 p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-800">
                             <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
-                            <p className="text-sm font-medium">This role has been closed by the employer. New applications are stopped.</p>
+                            <p className="text-sm font-medium">
+                              This role has been closed by the employer{closedAtLabel ? ` on ${closedAtLabel}` : ''}. New applications are stopped.
+                            </p>
                           </div>
                         )}
 
@@ -364,7 +457,7 @@ const MyApplications = () => {
                           </div>
                         )}
 
-                        {application.status === 'Interview Scheduled' && application.jobId?.status === 'closed' && (
+                        {application.status === 'Interview Scheduled' && isJobClosed && (
                           <div className="mt-4 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex items-start gap-2.5 text-indigo-800">
                             <Calendar className="w-4 h-4 text-indigo-600 mt-0.5" />
                             <p className="text-sm font-medium">The job is closed for new applicants, but your scheduled interview remains valid.</p>
@@ -386,7 +479,7 @@ const MyApplications = () => {
                           onClick={() => navigate(`/candidate/applications/${application.applicationId}`)}
                           className="flex-1 sm:flex-none px-4 py-2 bg-zinc-900 border border-zinc-900 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-zinc-800 hover:shadow-md transition-all flex items-center justify-center gap-1.5 focus:ring-2 focus:ring-offset-2 focus:ring-zinc-900"
                         >
-                          <Eye className="w-4 h-4 text-zinc-400" />
+                          <FileText className="w-4 h-4 text-zinc-400" />
                           View Details
                         </button>
                         
@@ -461,7 +554,7 @@ const MyApplications = () => {
                         const enrollmentFailed = voiceEnrollmentStatus === 'failed' || faceEnrollmentStatus === 'failed';
                         const ctaDisabled = interviewLocked || !active || !enrollmentsReady;
                         const ctaTitle = interviewLocked
-                          ? 'Interview already submitted. Results are under review.'
+                          ? 'Interview already submitted. Results are being evaluated.'
                           : !enrollmentsReady
                             ? 'Interview setup is in progress. Please wait for audio and video verification to complete.'
                             : beforeStart
@@ -486,11 +579,19 @@ const MyApplications = () => {
                         return (
                           <div className="flex w-full flex-col gap-2 md:w-auto md:items-end mt-4 sm:mt-0">
                             {windowLabel && (
-                              <InterviewSlotCard
-                                start={windowLabel.start}
-                                end={windowLabel.end}
-                                className="md:w-[290px]"
-                              />
+                              <div className="flex items-center gap-3 text-sm">
+                                <span className="text-zinc-500 font-medium whitespace-nowrap">Interview Slot</span>
+                                <div className="flex flex-col gap-1.5 text-zinc-900 font-bold bg-zinc-50 border border-zinc-200 px-3 py-2 rounded-lg shadow-sm text-left">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="w-4 h-4 text-zinc-400" />
+                                    <span>{windowLabel.start}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-zinc-500 text-xs">
+                                    <div className="w-4 flex justify-center text-zinc-300">↓</div>
+                                    <span>{windowLabel.end}</span>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                             {interviewLocked && (
                               <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide md:max-w-[290px] md:text-right flex items-center justify-end gap-1.5 pt-1.5">
@@ -498,14 +599,25 @@ const MyApplications = () => {
                                 Review in Progress
                               </span>
                             )}
-                            {!enrollmentsReady && !interviewLocked && (
+                            {!enrollmentsReady && !interviewLocked && !afterDeadline && (
                               <span className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 uppercase tracking-wide md:max-w-[290px] md:text-right flex items-start gap-1.5" title={ctaTitle}>
                                 {enrollmentFailed
                                   ? <span className="flex text-rose-600 gap-1.5"><AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" /> Setup Failed</span>
                                   : <span className="flex text-zinc-500 gap-1.5"><RefreshCw className="w-3.5 h-3.5 flex-shrink-0 mt-px animate-spin" /> Setup in Progress</span>}
                               </span>
                             )}
-                            {enrollmentsReady && (
+                            {!interviewLocked && afterDeadline && (
+                              <div className="flex flex-col gap-2 mt-1 w-full md:w-auto">
+                                <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200/60 px-3 py-2 rounded-lg text-center md:max-w-[320px] md:text-right tracking-wide">
+                                  You missed this interview. The employer will decide the next steps.
+                                </span>
+                                <button disabled className="inline-flex justify-center items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-zinc-400 bg-zinc-100 border border-zinc-200/60 cursor-not-allowed shadow-none transition-all">
+                                  <Lock className="w-4 h-4" />
+                                  Window Closed
+                                </button>
+                              </div>
+                            )}
+                            {enrollmentsReady && !afterDeadline && (
                               <button
                                 disabled={ctaDisabled}
                                 onClick={() =>
@@ -533,8 +645,11 @@ const MyApplications = () => {
                       })()}
                     </div>
                   </div>
+                    );
+                  })()}
                 </motion.div>
               ))}
+              </motion.div>
             </AnimatePresence>
           </div>
         )}

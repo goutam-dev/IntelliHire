@@ -20,8 +20,10 @@
  */
 
 const ResumeAnalysis = require('../models/ResumeAnalysis');
+const { clerkClient } = require('@clerk/clerk-sdk-node');
 const Job = require('../models/Job');
 const JobApplication = require('../models/JobApplication');
+const CandidateProfile = require('../models/CandidateProfile');
 const { parseResume, validateResumeFile, extractResumeSections } = require('../utils/resumeParser');
 
 // Import Hybrid Ranking Module
@@ -32,6 +34,29 @@ const { extractJDInformation } = require('./ai-agents/agent1-jd-extractor');
 const { analyzeResumeTechnical } = require('./ai-agents/agent2-resume-analyzer');
 const { performSemanticMatching } = require('./ai-agents/agent3-semantic-matcher');
 const { superviseFinalVerdict } = require('./ai-agents/agent4-supervisor');
+
+const resolveCandidateClerkImageMap = async (candidateUsers = []) => {
+  const clerkUserIds = [...new Set(
+    candidateUsers
+      .map((user) => user?.clerkUserId)
+      .filter(Boolean)
+  )];
+
+  if (!clerkUserIds.length) return new Map();
+
+  const settled = await Promise.allSettled(
+    clerkUserIds.map((clerkUserId) => clerkClient.users.getUser(clerkUserId))
+  );
+
+  const imageMap = new Map();
+  settled.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      imageMap.set(clerkUserIds[index], result.value?.imageUrl || result.value?.profileImageUrl || null);
+    }
+  });
+
+  return imageMap;
+};
 
 /**
  * Main function to analyze a resume for a job application
@@ -370,7 +395,7 @@ async function getTopCandidatesForJob(jobId, limit = 10) {
       populate: [
         {
           path: 'candidateId',
-          select: 'fullName email phoneNumber'
+          select: 'fullName email phoneNumber metadata clerkUserId'
         },
         {
           path: 'jobId',
@@ -379,6 +404,24 @@ async function getTopCandidatesForJob(jobId, limit = 10) {
       ]
     })
     .lean();
+
+  const candidateUserIds = analyses
+    .map((analysis) => analysis.applicationId?.candidateId?._id || analysis.applicationId?.candidateId)
+    .filter(Boolean);
+
+  const candidateProfiles = candidateUserIds.length
+    ? await CandidateProfile.find({ user: { $in: candidateUserIds } })
+      .select('user profilePhotoUrl')
+      .lean()
+    : [];
+
+  const candidatePhotoByUserId = new Map(
+    candidateProfiles.map((profile) => [profile.user.toString(), profile.profilePhotoUrl || null])
+  );
+
+  const candidateClerkImageById = await resolveCandidateClerkImageMap(
+    analyses.map((analysis) => analysis.applicationId?.candidateId)
+  );
   
   return analyses.map(analysis => ({
     _id: analysis._id,
@@ -389,7 +432,10 @@ async function getTopCandidatesForJob(jobId, limit = 10) {
         email: analysis.applicationId.candidateId.email,
         phoneNumber: analysis.applicationId.candidateId.phoneNumber
       },
-      ...analysis.applicationId.applicationProfile
+      ...analysis.applicationId.applicationProfile,
+      profilePhotoUrl: (analysis.applicationId?.candidateId?._id || analysis.applicationId?.candidateId)
+        ? candidatePhotoByUserId.get((analysis.applicationId.candidateId._id || analysis.applicationId.candidateId).toString()) || analysis.applicationId?.candidateId?.metadata?.imageUrl || analysis.applicationId?.candidateId?.metadata?.profileImageUrl || (analysis.applicationId?.candidateId?.clerkUserId ? candidateClerkImageById.get(analysis.applicationId.candidateId.clerkUserId) || null : null)
+        : null,
     } : null,
     supervisorVerdict: analysis.supervisorVerdict,
     matchingScore: analysis.matchingScore,

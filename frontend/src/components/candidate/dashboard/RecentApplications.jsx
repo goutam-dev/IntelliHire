@@ -2,19 +2,23 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { fetchMyApplications, clearApplicationsCache } from '../../../store/slices/jobApplicationsSlice';
 import { ChevronRight, Building2, MapPin } from 'lucide-react';
+import { resolveUploadUrl } from '../../../utils/mediaUrl';
 
 const ApplicationCard = ({ application, index }) => {
+  const navigate = useNavigate();
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
   const getStatusConfig = (status) => {
     const statusLower = status?.toLowerCase();
     const dots = {
       applied: 'bg-blue-500 shadow-blue-500/40',
       pending: 'bg-amber-500 shadow-amber-500/40',
       shortlisted: 'bg-emerald-500 shadow-emerald-500/40',
-      'under review': 'bg-indigo-500 shadow-indigo-500/40',
       interview: 'bg-purple-500 shadow-purple-500/40',
       'interview scheduled': 'bg-purple-500 shadow-purple-500/40',
+      'interview missed': 'bg-orange-500 shadow-orange-500/40',
       accepted: 'bg-green-500 shadow-green-500/40',
       hired: 'bg-green-500 shadow-green-500/40',
       rejected: 'bg-rose-500 shadow-rose-500/40',
@@ -22,9 +26,9 @@ const ApplicationCard = ({ application, index }) => {
     };
     
     return {
-      bg: 'bg-zinc-50',
-      text: 'text-zinc-700',
-      border: 'border-zinc-200',
+      bg: statusLower === 'interview missed' ? 'bg-orange-50' : 'bg-zinc-50',
+      text: statusLower === 'interview missed' ? 'text-orange-700' : 'text-zinc-700',
+      border: statusLower === 'interview missed' ? 'border-orange-200' : 'border-zinc-200',
       dot: dots[statusLower] || 'bg-zinc-400 shadow-zinc-400/40'
     };
   };
@@ -35,11 +39,26 @@ const ApplicationCard = ({ application, index }) => {
                   application.jobId?.employer?.name || 
                   application.company || 
                   'Unknown Company';
+  const companyLogoUrl =
+    application.jobId?.companyLogoUrl ||
+    application.jobId?.employer?.logoUrl ||
+    application.companyLogoUrl ||
+    null;
   const location = application.jobId?.location || application.location || 'Remote / Hybrid';
-  const status = application.status || 'Applied';
+  
+  let status = application.status || 'Applied';
+  if (status === 'Interview Scheduled') {
+    const isMissed = !application.interviewCompletedAt && application.interviewWindowEnd && new Date(application.interviewWindowEnd) < new Date();
+    if (isMissed) status = 'Interview Missed';
+  }
   
   const companyInitial = company.charAt(0).toUpperCase();
+  const resolvedCompanyLogoUrl = resolveUploadUrl(companyLogoUrl);
   const statusConfig = getStatusConfig(status);
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [companyLogoUrl]);
 
   return (
     <motion.div 
@@ -47,12 +66,24 @@ const ApplicationCard = ({ application, index }) => {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
+      onClick={() => navigate(`/candidate/applications/${application.applicationId}`)}
     >
       {/* Left: Job Details */}
       <div className="flex items-center gap-4 flex-1 min-w-0">
         {/* Company Icon Placeholder */}
-        <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-lg bg-zinc-100 border border-zinc-200 shadow-sm text-zinc-900 font-bold text-lg">
-          {companyInitial}
+        <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-zinc-100 border border-zinc-200 shadow-sm overflow-hidden">
+          {resolvedCompanyLogoUrl && !logoLoadFailed ? (
+            <img
+              src={resolvedCompanyLogoUrl}
+              alt={`${company} logo`}
+              className="w-full h-full object-cover"
+              onError={() => setLogoLoadFailed(true)}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-900 font-bold text-lg">
+              {companyInitial}
+            </div>
+          )}
         </div>
         
         <div className="flex flex-col min-w-0">

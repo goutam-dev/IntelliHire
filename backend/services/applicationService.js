@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { clerkClient } = require('@clerk/clerk-sdk-node');
 const JobApplication = require('../models/JobApplication');
 const Job = require('../models/Job');
 const CandidateProfile = require('../models/CandidateProfile');
@@ -14,6 +15,10 @@ const { extractAudio, createSilentVideo } = require('../utils/videoProcessor');
 const voiceProctoringService = require('./voiceProctoringService');
 const faceProctoringService = require('./faceProctoringService');
 const notificationService = require('./notificationService');
+
+const ENROLLMENT_RECOVERY_COOLDOWN_MS = Number(process.env.ENROLLMENT_RECOVERY_COOLDOWN_MS || 5 * 60 * 1000);
+const enrollmentRecoveryState = new Map();
+const INTERVIEW_START_GRACE_MS = Number(process.env.INTERVIEW_START_GRACE_MS || 5 * 60 * 1000);
 
 /**
  * Application service - handles all application-related business logic
@@ -108,17 +113,16 @@ const filterBySearch = (applications, search) => {
 const TERMINAL_INTERVIEW_STATUSES = ['completed', 'terminated', 'abandoned', 'completing'];
 const ALLOWED_APPLICATION_STATUSES = [
   'Applied',
-  'Under Review',
   'Shortlisted',
   'Interview Scheduled',
   'Interviewed',
+  'Finalist',
   'Rejected',
   'Hired',
   'Withdrawn',
-  'Job Closed',
   'Job Deleted',
 ];
-const TERMINAL_APPLICATION_STATUSES = ['Rejected', 'Hired', 'Withdrawn', 'Job Closed', 'Job Deleted'];
+const TERMINAL_APPLICATION_STATUSES = ['Rejected', 'Hired', 'Withdrawn', 'Job Deleted'];
 const EXPERIENCE_LEVEL_RANK = {
   'no-experience': 0,
   entry: 1,
@@ -152,15 +156,15 @@ const EDUCATION_LEVEL_RANK = {
   phd: 5,
 };
 const APPLICATION_TRANSITIONS = {
-  Applied: ['Under Review', 'Shortlisted', 'Rejected'],
-  'Under Review': ['Shortlisted', 'Rejected'],
+  Applied: ['Shortlisted', 'Rejected'],
   Shortlisted: ['Interview Scheduled', 'Rejected', 'Hired'],
   'Interview Scheduled': ['Interviewed', 'Rejected'],
-  Interviewed: ['Hired', 'Rejected', 'Shortlisted', 'Interview Scheduled'],
+  Interviewed: ['Finalist', 'Hired', 'Rejected', 'Shortlisted', 'Interview Scheduled'],
+  Finalist: ['Hired', 'Rejected'],
   Rejected: [],
   Hired: [],
   Withdrawn: [],
-  'Job Closed': [],
+  'Job Closed': ['Applied', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Finalist', 'Rejected', 'Hired'],
   'Job Deleted': [],
 };
 
@@ -188,7 +192,7 @@ const hasInterviewWindowExpired = (application, now = new Date()) => {
 
 const hasInterviewBeenTaken = async (application) => {
   if (!application?.applicationId) return false;
-  if (application.status === 'Interviewed') return true;
+  if (application.status === 'Interviewed' || application.status === 'Finalist') return true;
 
   const latestSession = await InterviewSession.findOne({ applicationId: application.applicationId })
     .sort({ createdAt: -1 })
@@ -242,6 +246,29 @@ const parseInterviewDateTime = (value, fieldName) => {
   return parsed;
 };
 
+const resolveCandidateClerkImageMap = async (candidateUsers = []) => {
+  const clerkUserIds = [...new Set(
+    candidateUsers
+      .map((user) => user?.clerkUserId)
+      .filter(Boolean)
+  )];
+
+  if (!clerkUserIds.length) return new Map();
+
+  const settled = await Promise.allSettled(
+    clerkUserIds.map((clerkUserId) => clerkClient.users.getUser(clerkUserId))
+  );
+
+  const imageMap = new Map();
+  settled.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      imageMap.set(clerkUserIds[index], result.value?.imageUrl || result.value?.profileImageUrl || null);
+    }
+  });
+
+  return imageMap;
+};
+
 const assertApplicationMutableForEmployer = (application) => {
   const job = application.jobId;
   if (!job || job.isDeleted) {
@@ -266,6 +293,23 @@ const normalizeStatusForDeletedJob = (application) => {
   return {
     ...application,
     status: 'Job Deleted',
+  };
+};
+
+const normalizeLegacyPipelineStatus = (application) => {
+  if (!application) return application;
+  if (application.status !== 'Job Closed') return application;
+
+  const nextStatus = application.jobId?.isDeleted ? 'Job Deleted' : 'Applied';
+
+  if (typeof application.set === 'function') {
+    application.set('status', nextStatus);
+    return application;
+  }
+
+  return {
+    ...application,
+    status: nextStatus,
   };
 };
 
@@ -477,6 +521,60 @@ const processInterviewEnrollmentArtifacts = async (jobApplicationId) => {
   }
 };
 
+const shouldRecoverInterviewEnrollment = (application) => {
+  if (!application?._id || application.status !== 'Interview Scheduled') return false;
+  if (hasInterviewWindowExpired(application)) return false;
+
+  const voiceStatus = application.voiceEnrollment?.status;
+  const faceStatus = application.faceEnrollment?.status;
+  const hasPendingEnrollment = voiceStatus === 'pending' || faceStatus === 'pending';
+  if (!hasPendingEnrollment) return false;
+
+  const hasVideoFile = Boolean(application.video?.filePath);
+  if (!hasVideoFile) return false;
+
+  const key = String(application._id);
+  const existingState = enrollmentRecoveryState.get(key);
+  if (existingState?.inFlight) return false;
+
+  if (existingState?.lastAttemptAt) {
+    const elapsedMs = Date.now() - existingState.lastAttemptAt;
+    if (elapsedMs < ENROLLMENT_RECOVERY_COOLDOWN_MS) return false;
+  }
+
+  return true;
+};
+
+const queueInterviewEnrollmentRecovery = (jobApplicationId) => {
+  const key = String(jobApplicationId);
+  const existingState = enrollmentRecoveryState.get(key) || {};
+
+  if (existingState.inFlight) return;
+
+  enrollmentRecoveryState.set(key, {
+    ...existingState,
+    inFlight: true,
+    lastAttemptAt: Date.now(),
+  });
+
+  setImmediate(() => {
+    processInterviewEnrollmentArtifacts(jobApplicationId)
+      .catch((err) => {
+        logger.warn(
+          `[interviewEnrollmentRecovery] Retry failed for application ${jobApplicationId}: ${err.message}`
+        );
+      })
+      .finally(() => {
+        const currentState = enrollmentRecoveryState.get(key) || {};
+        enrollmentRecoveryState.set(key, {
+          ...currentState,
+          inFlight: false,
+          lastAttemptAt: Date.now(),
+        });
+      });
+  });
+};
+
 const enrichApplicationsWithInterviewState = async (applications = []) => {
   if (!applications.length) return applications;
 
@@ -546,18 +644,55 @@ const getApplicationsByJob = async (jobId, filters = {}, userId) => {
   let applications = await JobApplication.find(query)
     .populate({
       path: 'candidateId',
-      select: 'fullName email phoneNumber'
+      select: 'fullName email phoneNumber metadata clerkUserId'
     })
-    .populate({ path: 'jobId', select: 'title department' })
+    .populate({ path: 'jobId', select: 'title department status closedAt isDeleted' })
     .lean();
+
+  applications = applications
+    .map(normalizeStatusForDeletedJob)
+    .map(normalizeLegacyPipelineStatus);
+
+  applications.forEach((application) => {
+    if (shouldRecoverInterviewEnrollment(application)) {
+      queueInterviewEnrollmentRecovery(application._id);
+    }
+  });
+
+  const candidateIds = applications
+    .map((app) => app.candidateId?._id || app.candidateId)
+    .filter(Boolean);
+
+  const candidateProfiles = candidateIds.length
+    ? await CandidateProfile.find({ user: { $in: candidateIds } })
+      .select('user profilePhotoUrl')
+      .lean()
+    : [];
+
+  const candidatePhotoByUserId = new Map(
+    candidateProfiles.map((profile) => [profile.user.toString(), profile.profilePhotoUrl || null])
+  );
+
+  const candidateClerkImageById = await resolveCandidateClerkImageMap(
+    applications.map((app) => app.candidateId)
+  );
 
   // Map to expected structure
   applications = applications.map(app => {
+    const candidateUserId = (app.candidateId?._id || app.candidateId)?.toString?.();
+    const userImageUrl =
+      app.candidateId?.metadata?.imageUrl ||
+      app.candidateId?.metadata?.profileImageUrl ||
+      (app.candidateId?.clerkUserId ? candidateClerkImageById.get(app.candidateId.clerkUserId) || null : null);
+
     return {
       ...app,
       candidate: {
         user: app.candidateId,
-        ...app.applicationProfile
+        ...app.applicationProfile,
+        profilePhotoUrl: candidateUserId
+          ? candidatePhotoByUserId.get(candidateUserId) || userImageUrl || app.applicationProfile?.profilePhotoUrl || null
+          : userImageUrl || app.applicationProfile?.profilePhotoUrl || null,
       },
       job: app.jobId
     };
@@ -663,7 +798,9 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
     throw new ForbiddenError('You do not have permission to update this application');
   }
 
-  // Track old status for stats update
+  // Keep raw status for stats compatibility with legacy records.
+  const oldStatusRaw = application.status;
+  normalizeLegacyPipelineStatus(application);
   const oldStatus = application.status;
   assertApplicationMutableForEmployer(application);
   assertStatusTransitionAllowed(oldStatus, status);
@@ -675,15 +812,7 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
     }
   }
 
-  if (status === 'Interview Scheduled' && application.jobId.status !== 'active') {
-    throw new ValidationError('Interviews can only be scheduled while the job is active.');
-  }
-
-  if (application.jobId.status === 'closed' && !['Rejected', 'Hired'].includes(status)) {
-    throw new ValidationError('For closed jobs, only final decisions (Rejected or Hired) are allowed.');
-  }
-
-  if (status === 'Withdrawn' || status === 'Job Closed' || status === 'Job Deleted') {
+  if (status === 'Withdrawn' || status === 'Job Deleted') {
     throw new ValidationError('This status is system-managed and cannot be set manually.');
   }
 
@@ -731,15 +860,15 @@ const updateApplicationStatus = async (applicationId, statusData, userId) => {
   }
 
   // Update candidate profile stats if status changed
-  if (oldStatus !== status) {
+  if (oldStatusRaw !== status) {
     const statUpdates = {};
 
     // Decrement old status count
-    if (oldStatus === 'Applied') {
+    if (oldStatusRaw === 'Applied') {
       statUpdates['stats.pending'] = -1;
-    } else if (['Shortlisted', 'Interview Scheduled'].includes(oldStatus)) {
+    } else if (['Shortlisted', 'Interview Scheduled'].includes(oldStatusRaw)) {
       statUpdates['stats.shortlisted'] = -1;
-    } else if (oldStatus === 'Rejected') {
+    } else if (oldStatusRaw === 'Rejected') {
       statUpdates['stats.rejected'] = -1;
     }
 
@@ -783,7 +912,7 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
   }
   assertValidApplicationStatus(status);
 
-  if (status === 'Withdrawn' || status === 'Job Closed' || status === 'Job Deleted') {
+  if (status === 'Withdrawn' || status === 'Job Deleted') {
     throw new ValidationError('This status is system-managed and cannot be set manually.');
   }
 
@@ -808,6 +937,7 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
       throw new ForbiddenError(`You do not have permission to update application ${app._id}`);
     }
 
+    normalizeLegacyPipelineStatus(app);
     assertApplicationMutableForEmployer(app);
     assertStatusTransitionAllowed(app.status, status);
 
@@ -818,12 +948,6 @@ const bulkUpdateApplications = async (ids, statusData, userId) => {
       }
     }
 
-    if (status === 'Interview Scheduled' && app.jobId.status !== 'active') {
-      throw new ValidationError('Interviews can only be scheduled while the job is active.');
-    }
-    if (app.jobId.status === 'closed' && !['Rejected', 'Hired'].includes(status)) {
-      throw new ValidationError('For closed jobs, only final decisions (Rejected or Hired) are allowed.');
-    }
   }
 
   for (const app of applications) {
@@ -881,7 +1005,7 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   const endDate = parseInterviewDateTime(interviewWindowEnd, 'Interview end date/time');
 
   const now = new Date();
-  if (startDate < now) {
+  if (startDate.getTime() < now.getTime() - INTERVIEW_START_GRACE_MS) {
     throw new ValidationError('Interview start date/time cannot be in the past.');
   }
 
@@ -905,7 +1029,7 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
     throw new ForbiddenError('You do not have permission to schedule interview for this application');
   }
 
-  if (application.jobId.isDeleted || application.jobId.status !== 'active') {
+  if (application.jobId.isDeleted) {
     throw new ValidationError('This job is not accepting interview scheduling.');
   }
 
@@ -918,10 +1042,6 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
   }
 
   if (isReschedule) {
-    if (hasInterviewWindowExpired(application, now)) {
-      throw new ValidationError('Interview can no longer be rescheduled because the current interview window has already ended.');
-    }
-
     const interviewTaken = await hasInterviewBeenTaken(application);
     if (interviewTaken) {
       throw new ValidationError('Interview cannot be rescheduled because the candidate has already started or completed the interview.');
@@ -1015,6 +1135,7 @@ const checkApplicationStatus = async (candidateId, jobId) => {
 
   if (existingApplication) {
     existingApplication = normalizeStatusForDeletedJob(existingApplication);
+    existingApplication = normalizeLegacyPipelineStatus(existingApplication);
   }
 
   if (existingApplication && existingApplication.jobId && existingApplication.jobId.employer) {
@@ -1373,10 +1494,10 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
   let applications = await JobApplication.find(filter)
     .populate({
       path: 'jobId',
-      select: 'title location salaryRange employmentType employer status isDeleted',
+      select: 'title location salaryRange employmentType employer status closedAt isDeleted',
       populate: {
         path: 'employer',
-        select: 'companyName'
+        select: 'companyName logoUrl'
       }
     })
     .sort({ appliedAt: -1 })
@@ -1388,11 +1509,20 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
   applications.forEach(app => {
     if (app.jobId && app.jobId.employer) {
       app.jobId.company = app.jobId.employer.companyName;
+      app.jobId.companyLogoUrl = app.jobId.employer.logoUrl || null;
       delete app.jobId.employer;
     }
   });
 
-  applications = applications.map(normalizeStatusForDeletedJob);
+  applications = applications
+    .map(normalizeStatusForDeletedJob)
+    .map(normalizeLegacyPipelineStatus);
+
+  applications.forEach((application) => {
+    if (shouldRecoverInterviewEnrollment(application)) {
+      queueInterviewEnrollmentRecovery(application._id);
+    }
+  });
 
   const enrichedApplications = await enrichApplicationsWithInterviewState(applications);
 
@@ -1421,10 +1551,10 @@ const getApplicationById = async (candidateId, applicationId) => {
   })
     .populate({
       path: 'jobId',
-      select: 'title location salaryRange employmentType description requirements benefits employer status isDeleted',
+      select: 'title location salaryRange employmentType description requirements benefits employer status closedAt isDeleted',
       populate: {
         path: 'employer',
-        select: 'companyName'
+        select: 'companyName logoUrl'
       }
     })
     .populate('candidateId', 'fullName email phoneNumber')
@@ -1432,6 +1562,7 @@ const getApplicationById = async (candidateId, applicationId) => {
 
   if (application && application.jobId && application.jobId.employer) {
     application.jobId.company = application.jobId.employer.companyName;
+    application.jobId.companyLogoUrl = application.jobId.employer.logoUrl || null;
     delete application.jobId.employer;
   }
 
@@ -1439,7 +1570,11 @@ const getApplicationById = async (candidateId, applicationId) => {
     throw new NotFoundError('Application not found');
   }
 
-  const normalizedApplication = normalizeStatusForDeletedJob(application);
+  const normalizedApplication = normalizeLegacyPipelineStatus(normalizeStatusForDeletedJob(application));
+
+  if (shouldRecoverInterviewEnrollment(normalizedApplication)) {
+    queueInterviewEnrollmentRecovery(normalizedApplication._id);
+  }
 
   // Format the response to match expected structure
   const [enrichedApplication] = await enrichApplicationsWithInterviewState([normalizedApplication]);
@@ -1464,7 +1599,7 @@ const withdrawApplication = async (candidateId, applicationId) => {
       select: 'title employer',
       populate: {
         path: 'employer',
-        select: 'companyName'
+        select: 'companyName logoUrl'
       }
     });
 
@@ -1482,6 +1617,7 @@ const withdrawApplication = async (candidateId, applicationId) => {
 
     if (application.jobId && application.jobId.employer) {
       application.jobId.company = application.jobId.employer.companyName;
+      application.jobId.companyLogoUrl = application.jobId.employer.logoUrl || null;
       delete application.jobId.employer;
     }
 
@@ -1603,8 +1739,8 @@ const requestReInterview = async (candidateClerkId, applicationId, reason) => {
 
   if (!application) throw new NotFoundError('Application not found');
 
-  if (application.status !== 'Interviewed') {
-    throw new ValidationError('Re-interview can only be requested when the application is in Interviewed status.');
+  if (application.status !== 'Interviewed' && application.status !== 'Finalist') {
+    throw new ValidationError('Re-interview can only be requested when the application is in Interviewed or Finalist status.');
   }
 
   if (application.reInterviewRequest?.status === 'pending') {
@@ -1664,7 +1800,8 @@ const approveReInterview = async (applicationId, interviewData, userId) => {
   const startDate = parseInterviewDateTime(interviewWindowStart, 'Interview start date/time');
   const endDate = parseInterviewDateTime(interviewWindowEnd, 'Interview end date/time');
 
-  if (startDate < new Date()) {
+  const now = new Date();
+  if (startDate.getTime() < now.getTime() - INTERVIEW_START_GRACE_MS) {
     throw new ValidationError('Interview start date/time cannot be in the past.');
   }
   if (endDate <= startDate) {
@@ -1687,7 +1824,7 @@ const approveReInterview = async (applicationId, interviewData, userId) => {
     throw new ValidationError('No pending re-interview request found for this application.');
   }
 
-  if (application.jobId.isDeleted || application.jobId.status !== 'active') {
+  if (application.jobId.isDeleted) {
     throw new ValidationError('This job is not accepting interview scheduling.');
   }
 

@@ -249,6 +249,7 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
     {
       $addFields: {
         company: { $arrayElemAt: ['$employerProfile.companyName', 0] },
+        companyLogoUrl: { $arrayElemAt: ['$employerProfile.logoUrl', 0] },
       },
     },
   ];
@@ -321,7 +322,7 @@ const getJobsByEmployer = async (clerkUserId, queryFilters = {}) => {
  */
 const getJobById = async (jobId, userId = null) => {
   const job = await Job.findById(jobId)
-    .populate('employer', 'companyName user') // Populate user to check ownership
+    .populate('employer', 'companyName logoUrl user') // Populate user to check ownership
     .lean();
   
   if (!job || job.isDeleted) {
@@ -357,11 +358,13 @@ const getJobById = async (jobId, userId = null) => {
   // Map employer.companyName to company for frontend compatibility
   if (job.employer && job.employer.companyName) {
     job.company = job.employer.companyName;
+    job.companyLogoUrl = job.employer.logoUrl || null;
     // Remove sensitive/internal data
     if (job.employer.user) delete job.employer.user;
     delete job.employer;
   } else {
     job.company = 'Company Name Unavailable';
+    job.companyLogoUrl = null;
   }
   
   return job;
@@ -525,23 +528,14 @@ const updateJobStatus = async (jobId, status, clerkUserId) => {
   if (status === 'active' && !job.publishedAt) {
     job.publishedAt = new Date();
   }
+  if (status === 'closed') {
+    job.closedAt = new Date();
+  }
+  if (status === 'active') {
+    job.closedAt = null;
+  }
 
   await job.save();
-
-  if (status === 'closed') {
-    await JobApplication.updateMany(
-      {
-        jobId: job._id,
-        status: { $in: ['Applied', 'Under Review', 'Shortlisted'] },
-      },
-      {
-        $set: {
-          status: 'Job Closed',
-          lastUpdated: new Date(),
-        },
-      }
-    );
-  }
 
   return job;
 };

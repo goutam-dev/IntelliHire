@@ -9,11 +9,10 @@ import {
 const StatusBadge = ({ status }) => {
   const statusColors = {
     'Applied': 'bg-slate-100 text-slate-700 border-slate-200',
-    'Under Review': 'bg-yellow-100 text-yellow-700 border-yellow-200',
     'Shortlisted': 'bg-blue-100 text-blue-700 border-blue-200',
     'Interview Scheduled': 'bg-amber-100 text-amber-700 border-amber-200',
     'Interviewed': 'bg-teal-100 text-teal-700 border-teal-200',
-    'Job Closed': 'bg-orange-100 text-orange-700 border-orange-200',
+    'Finalist': 'bg-indigo-100 text-indigo-700 border-indigo-200',
     'Job Deleted': 'bg-gray-200 text-gray-800 border-gray-300',
     'Hired': 'bg-emerald-100 text-emerald-700 border-emerald-200',
     'Rejected': 'bg-rose-100 text-rose-700 border-rose-200',
@@ -257,7 +256,7 @@ const ApplicationDetailsModal = ({
                     <MessageSquare className="w-5 h-5 text-slate-400" />
                     Employer Notes & Feedback
                   </h3>
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap font-medium break-words overflow-wrap-anywhere">
                     {application.employerNotes || application.feedback}
                   </div>
                 </div>

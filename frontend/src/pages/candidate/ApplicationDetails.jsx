@@ -17,14 +17,17 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  Eye,
   RefreshCw,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 import api from '../../lib/api';
 import InterviewSlotCard from '../../components/candidate/InterviewSlotCard';
 import ReInterviewRequestDialog, { ReInterviewStatusBadge } from '../../components/candidate/ReInterviewRequestDialog';
 import { requestReInterview } from '../../services/api/applicationApi';
+import { resolveUploadUrl } from '../../utils/mediaUrl';
+
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 const ApplicationDetails = () => {
   const { applicationId } = useParams();
@@ -34,10 +37,15 @@ const ApplicationDetails = () => {
   const [error, setError] = useState(null);
   const [reInterviewDialogOpen, setReInterviewDialogOpen] = useState(false);
   const [reInterviewLoading, setReInterviewLoading] = useState(false);
+  const [companyLogoLoadFailed, setCompanyLogoLoadFailed] = useState(false);
 
   useEffect(() => {
     fetchApplicationDetails();
   }, [applicationId]);
+
+  useEffect(() => {
+    setCompanyLogoLoadFailed(false);
+  }, [application?.jobId?.companyLogoUrl]);
 
   const fetchApplicationDetails = async () => {
     try {
@@ -55,10 +63,8 @@ const ApplicationDetails = () => {
   const getStatusColor = (status) => {
     const colors = {
       'Applied': 'bg-slate-100 text-slate-700 border-slate-200/80',
-      'Under Review': 'bg-amber-50 text-amber-700 border-amber-200/80',
       'Shortlisted': 'bg-sky-50 text-sky-700 border-sky-200/80',
       'Interview Scheduled': 'bg-cyan-50 text-cyan-700 border-cyan-200/80',
-      'Job Closed': 'bg-zinc-100 text-zinc-600 border-zinc-200/80',
       'Job Deleted': 'bg-zinc-200 text-zinc-700 border-zinc-300',
       'Rejected': 'bg-rose-50 text-rose-700 border-rose-200/80',
       'Hired': 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
@@ -70,10 +76,8 @@ const ApplicationDetails = () => {
   const getStatusIcon = (status) => {
     const icons = {
       'Applied': <Clock className="w-4 h-4" />,
-      'Under Review': <Eye className="w-4 h-4" />,
       'Shortlisted': <CheckCircle className="w-4 h-4" />,
       'Interview Scheduled': <Calendar className="w-4 h-4" />,
-      'Job Closed': <AlertCircle className="w-4 h-4" />,
       'Job Deleted': <AlertCircle className="w-4 h-4" />,
       'Rejected': <XCircle className="w-4 h-4" />,
       'Hired': <CheckCircle className="w-4 h-4" />,
@@ -95,6 +99,16 @@ const ApplicationDetails = () => {
   const applicationJobId = typeof application?.jobId === 'string'
     ? application.jobId
     : application?.jobId?._id;
+  const isJobClosed = application?.jobId?.status === 'closed';
+  const closedAt = application?.jobId?.closedAt ? new Date(application.jobId.closedAt) : null;
+  const closedAtLabel = closedAt && !Number.isNaN(closedAt.getTime())
+    ? closedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+  const companyName = application?.jobId?.company || 'Unknown Company';
+  const companyInitial = (companyName[0] || 'C').toUpperCase();
+  const companyLogoUrl = resolveUploadUrl(
+    application?.jobId?.companyLogoUrl || application?.companyLogoUrl || null
+  );
 
   const handleRequestReInterview = async (reason) => {
     setReInterviewLoading(true);
@@ -111,14 +125,7 @@ const ApplicationDetails = () => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-zinc-50/50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-zinc-600 font-medium">Loading application details...</p>
-        </div>
-      </div>
-    );
+    return <SkeletonLoader type="layout-profile" />;
   }
 
   if (error) {
@@ -182,17 +189,27 @@ const ApplicationDetails = () => {
             </button>
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 tracking-tight">Application Details</h1>
-              <p className="text-zinc-500 text-sm font-medium mt-1 uppercase tracking-widest">ID: {application.applicationId}</p>
+              <p className="text-zinc-500 text-sm font-medium mt-1 uppercase tracking-widest">{application.jobId?.title || 'Unknown Role'} at {application.jobId?.company || 'Unknown Company'}</p>
             </div>
           </div>
           
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center w-fit gap-1.5 ${getStatusColor(application.status)}`}>
-              {getStatusIcon(application.status)}
-              {application.status}
-            </div>
+            {(() => {
+              let displayStatus = application.status;
+              if (displayStatus === 'Interview Scheduled') {
+                const isMissed = !application.interviewCompletedAt && application.interviewWindowEnd && new Date(application.interviewWindowEnd) < new Date();
+                if (isMissed) displayStatus = 'Interview Missed';
+              }
+              const isMissedView = displayStatus === 'Interview Missed';
+              return (
+                <div className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center w-fit gap-1.5 ${isMissedView ? 'bg-amber-50 text-amber-700 border-amber-200' : getStatusColor(displayStatus)}`}>
+                  {getStatusIcon(isMissedView ? 'Interview Scheduled' : displayStatus)}
+                  {displayStatus}
+                </div>
+              );
+            })()}
             
-            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
+            <div className="flex w-full flex-col gap-16 md:w-auto md:flex-row md:items-center">
               {applicationJobId && !application.jobId?.isDeleted && (
                 <button
                   onClick={() => navigate(`/candidate/jobs/${applicationJobId}`)}
@@ -238,16 +255,24 @@ const ApplicationDetails = () => {
                 return (
                   <div className="flex w-full flex-col gap-2 md:w-auto md:items-end md:mt-0 mt-4">
                     {hasValidStart && hasValidDeadline && (
-                      <InterviewSlotCard
-                        start={formatDateTime(start)}
-                        end={formatDateTime(deadline)}
-                        className="md:w-[320px]"
-                      />
+                      <div className="flex items-center gap-3 text-sm mb-2 md:mb-0">
+                        <span className="text-zinc-500 font-medium whitespace-nowrap">Interview Slot</span>
+                        <div className="flex flex-col gap-1.5 text-zinc-900 font-bold bg-zinc-50 border border-zinc-200 px-3 py-2 rounded-lg shadow-sm text-left">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-zinc-400" />
+                            <span>{formatDateTime(start)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-zinc-500 text-xs">
+                            <div className="w-4 flex justify-center text-zinc-300">↓</div>
+                            <span>{formatDateTime(deadline)}</span>
+                          </div>
+                        </div>
+                      </div>
                     )}
                     {interviewLocked && (
                       <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide md:max-w-[320px] md:text-right flex items-center justify-end gap-1.5 pt-1.5">
                          <CheckCircle className="w-3.5 h-3.5" />
-                         Your interview is under review
+                         Your interview is being evaluated
                       </span>
                     )}
                     {!interviewLocked && beforeStart && (
@@ -255,14 +280,25 @@ const ApplicationDetails = () => {
                         Starts at {formatDateTime(start)}
                       </span>
                     )}
-                    {!enrollmentsReady && !interviewLocked && (
+                    {!interviewLocked && afterDeadline && (
+                      <div className="flex flex-col gap-2 mt-1 w-full md:w-auto items-end">
+                        <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200/60 px-3 py-2 rounded-lg text-center md:max-w-[320px] md:text-right tracking-wide">
+                          You missed this interview. The employer will decide the next steps.
+                        </span>
+                        <button disabled className="inline-flex justify-center items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-zinc-400 bg-zinc-100 border border-zinc-200/60 cursor-not-allowed shadow-none transition-all">
+                          <Lock className="w-4 h-4" />
+                          Window Closed
+                        </button>
+                      </div>
+                    )}
+                    {!enrollmentsReady && !interviewLocked && !afterDeadline && (
                       <span className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-zinc-200/60 bg-zinc-50 uppercase tracking-wide md:max-w-[320px] md:text-right flex items-start gap-1.5 mt-1">
                         {enrollmentFailed
                           ? <span className="flex text-rose-600 gap-1.5"><AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" /> Setup Failed. Contact support.</span>
                           : <span className="flex text-zinc-500 gap-1.5"><RefreshCw className="w-3.5 h-3.5 flex-shrink-0 mt-px animate-spin" /> Setup in progress...</span>}
                       </span>
                     )}
-                    {enrollmentsReady && (
+                    {enrollmentsReady && !afterDeadline && (
                       <button
                         disabled={ctaDisabled}
                         onClick={() =>
@@ -293,10 +329,10 @@ const ApplicationDetails = () => {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        {application.status === 'Job Closed' && (
+        {isJobClosed && (
           <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50/80 p-4 text-sm font-medium text-amber-800 flex items-start gap-3 shadow-sm">
             <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-600 mt-0.5" />
-            This role has been closed by the employer. Hiring is paused for this job.
+            This role has been closed by the employer{closedAtLabel ? ` on ${closedAtLabel}` : ''}. Hiring is paused for this job.
           </div>
         )}
 
@@ -307,7 +343,7 @@ const ApplicationDetails = () => {
           </div>
         )}
 
-        {application.status === 'Interview Scheduled' && application.jobId?.status === 'closed' && (
+        {application.status === 'Interview Scheduled' && isJobClosed && (
           <div className="mb-6 rounded-xl border border-cyan-200/60 bg-cyan-50/80 p-4 text-sm font-medium text-cyan-800 flex items-start gap-3 shadow-sm">
              <Calendar className="w-5 h-5 flex-shrink-0 text-cyan-600 mt-0.5" />
              The job is closed for new applicants, but your scheduled interview is still active.
@@ -332,7 +368,21 @@ const ApplicationDetails = () => {
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-xl sm:text-2xl font-extrabold text-zinc-900 tracking-tight mb-1">{application.jobId.title}</h3>
-                    <p className="text-zinc-600 font-medium">{application.jobId.company}</p>
+                    <div className="text-zinc-600 font-medium flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-zinc-200 overflow-hidden flex items-center justify-center text-[11px] font-extrabold text-zinc-700 border border-zinc-300">
+                        {companyLogoUrl && !companyLogoLoadFailed ? (
+                          <img
+                            src={companyLogoUrl}
+                            alt={`${companyName} logo`}
+                            className="w-full h-full object-cover"
+                            onError={() => setCompanyLogoLoadFailed(true)}
+                          />
+                        ) : (
+                          companyInitial
+                        )}
+                      </div>
+                      <span>{companyName}</span>
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-zinc-500 uppercase tracking-wider">
@@ -421,8 +471,8 @@ const ApplicationDetails = () => {
                   <FileText className="w-4 h-4 text-zinc-400" />
                   Cover Letter
                 </h2>
-                <div className="bg-zinc-50/80 border border-zinc-200/60 p-5 rounded-xl">
-                  <p className="text-zinc-700 text-sm leading-relaxed whitespace-pre-wrap font-medium">{application.coverLetter}</p>
+                <div className="bg-zinc-50/80 border border-zinc-200/60 p-5 rounded-xl overflow-hidden">
+                  <p className="text-zinc-700 text-sm leading-relaxed whitespace-pre-wrap font-medium break-words overflow-wrap-anywhere">{application.coverLetter}</p>
                 </div>
               </motion.div>
             )}
@@ -455,7 +505,7 @@ const ApplicationDetails = () => {
                   <div className="flex items-start gap-3">
                     <div className="w-2.5 h-2.5 bg-amber-500 rounded-full mt-1.5 shadow-sm border-2 border-white ring-1 ring-amber-500/30"></div>
                     <div>
-                      <p className="font-bold text-zinc-900 text-sm">Under Review</p>
+                      <p className="font-bold text-zinc-900 text-sm">Application Reviewed</p>
                       <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5">{formatDate(application.reviewedAt)}</p>
                     </div>
                   </div>
@@ -543,8 +593,8 @@ const ApplicationDetails = () => {
                 className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6"
               >
                 <h2 className="text-sm font-bold text-zinc-900 mb-5 tracking-widest uppercase">Employer Notes</h2>
-                <div className="bg-amber-50/80 border border-amber-200/60 p-4 rounded-xl">
-                  <p className="text-amber-900 text-sm leading-relaxed whitespace-pre-wrap font-medium">{application.employerNotes}</p>
+                <div className="bg-amber-50/50 border border-amber-200/60 p-5 rounded-xl overflow-hidden">
+                  <p className="text-amber-900 text-sm leading-relaxed whitespace-pre-wrap font-medium break-words overflow-wrap-anywhere">{application.employerNotes}</p>
                 </div>
               </motion.div>
             )}

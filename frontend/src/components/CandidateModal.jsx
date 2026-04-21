@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Mail, Phone, MapPin } from 'lucide-react';
+import { resolveUploadUrl } from '../utils/mediaUrl';
 
 const Section = ({ title, children }) => (
   <div>
@@ -9,15 +10,21 @@ const Section = ({ title, children }) => (
 );
 
 const CandidateModal = ({ open, onClose, application }) => {
-  if (!open) return null;
   const candidate = application?.candidate;
   const user = candidate?.user;
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+  const candidatePhotoUrl = resolveUploadUrl(candidate?.profilePhotoUrl || null);
+
+  useEffect(() => {
+    setPhotoLoadFailed(false);
+  }, [candidatePhotoUrl]);
+
+  if (!open) return null;
 
   // Construct resume URL
   const resumePath = candidate?.resume?.filePath || candidate?.resume?.fileUrl || 
                       application?.resume?.filePath || application?.resume?.fileUrl;
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-  const resumeUrl = resumePath ? (resumePath.startsWith('http') ? resumePath : `${API_BASE_URL}${resumePath.startsWith('/') ? '' : '/'}${resumePath}`) : '#';
+  const resumeUrl = resolveUploadUrl(resumePath) || '#';
   const resumeName = candidate?.resume?.fileName || application?.resume?.fileName || 
                      application?.resume?.originalName || 'View resume';
 
@@ -27,10 +34,19 @@ const CandidateModal = ({ open, onClose, application }) => {
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-slate-100 bg-slate-50/50 shrink-0">
           <div className="flex items-center gap-4">
-            <div className="h-14 w-14 rounded-full bg-blue-100 border-2 border-white shadow-sm flex items-center justify-center shrink-0">
-              <span className="text-xl font-bold text-blue-700">
-                {user?.fullName?.charAt(0) || 'C'}
-              </span>
+            <div className="h-14 w-14 rounded-full border-2 border-white shadow-sm flex items-center justify-center shrink-0 overflow-hidden bg-blue-100">
+              {candidatePhotoUrl && !photoLoadFailed ? (
+                <img
+                  src={candidatePhotoUrl}
+                  alt={user?.fullName || 'Candidate'}
+                  className="h-full w-full object-cover"
+                  onError={() => setPhotoLoadFailed(true)}
+                />
+              ) : (
+                <span className="text-xl font-bold text-blue-700">
+                  {user?.fullName?.charAt(0) || 'C'}
+                </span>
+              )}
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-900 tracking-tight">{user?.fullName || 'Candidate'}</h3>

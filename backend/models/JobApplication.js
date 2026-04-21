@@ -18,7 +18,7 @@ const jobApplicationSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Applied', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Rejected', 'Hired', 'Withdrawn', 'Job Closed', 'Job Deleted'],
+    enum: ['Applied', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Finalist', 'Rejected', 'Hired', 'Withdrawn', 'Job Deleted'],
     default: 'Applied'
   },
   // Application-specific profile data (can be different from main profile)
