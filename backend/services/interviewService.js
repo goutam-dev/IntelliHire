@@ -28,6 +28,75 @@ const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const MAX_REASK_ATTEMPTS = Number(process.env.INTERVIEW_MAX_REASK_ATTEMPTS || 2);
 
+const INTEGRITY_SNAPSHOT_DIR = path.join(__dirname, '..', 'uploads', 'integrity-violations');
+
+function sanitizeToken(value, fallback = 'event') {
+  const token = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  return token || fallback;
+}
+
+function saveIntegritySnapshotFromDataUrl(sessionId, eventType, dataUrl, eventIndex, shotIndex) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return null;
+
+  const match = dataUrl.match(/^data:image\/(png|jpe?g);base64,(.+)$/i);
+  if (!match) return null;
+
+  const ext = match[1].toLowerCase().startsWith('jp') ? 'jpg' : 'png';
+  const base64Body = match[2];
+  if (!base64Body) return null;
+
+  const buffer = Buffer.from(base64Body, 'base64');
+  if (!buffer || buffer.length === 0) return null;
+
+  const safeSession = sanitizeToken(sessionId, 'session');
+  const safeEvent = sanitizeToken(eventType, 'event');
+  const sessionDir = path.join(INTEGRITY_SNAPSHOT_DIR, safeSession);
+  fs.mkdirSync(sessionDir, { recursive: true });
+
+  const fileName = `${safeEvent}-${eventIndex + 1}-${shotIndex + 1}-${Date.now()}.${ext}`;
+  const absolutePath = path.join(sessionDir, fileName);
+  fs.writeFileSync(absolutePath, buffer);
+
+  return `/uploads/integrity-violations/${safeSession}/${fileName}`;
+}
+
+function normalizeCheatingEventsWithSnapshots(sessionId, cheatingEvents = []) {
+  return (Array.isArray(cheatingEvents) ? cheatingEvents : []).map((event, eventIndex) => {
+    const raw = event && typeof event === 'object' ? event : {};
+    const shotSources = [
+      ...(Array.isArray(raw.snapshotDataUrls) ? raw.snapshotDataUrls : []),
+      ...(Array.isArray(raw.screenshotDataUrls) ? raw.screenshotDataUrls : []),
+      ...(Array.isArray(raw.snapshotPaths) ? raw.snapshotPaths : []),
+      ...(raw.snapshotUrl ? [raw.snapshotUrl] : []),
+    ];
+
+    const persistedShots = [];
+    shotSources.forEach((shot, shotIndex) => {
+      if (typeof shot !== 'string' || !shot) return;
+      if (shot.startsWith('/uploads/') || /^https?:\/\//i.test(shot)) {
+        persistedShots.push(shot);
+        return;
+      }
+
+      const saved = saveIntegritySnapshotFromDataUrl(sessionId, raw.eventType, shot, eventIndex, shotIndex);
+      if (saved) persistedShots.push(saved);
+    });
+
+    return {
+      eventType: raw.eventType,
+      label: raw.label,
+      message: raw.message,
+      count: raw.count,
+      points: raw.points,
+      totalPoints: raw.totalPoints,
+      firstAt: raw.firstAt,
+      lastAt: raw.lastAt,
+      snapshotUrl: persistedShots[0] || null,
+      snapshotPaths: persistedShots,
+    };
+  });
+}
+
 function parseValidDate(value) {
   if (!value) return null;
   const parsed = new Date(value);
@@ -714,8 +783,10 @@ async function completeSession(
 
   session.completedAt = new Date();
 
+  const normalizedCheatingEvents = normalizeCheatingEventsWithSnapshots(sessionId, cheatingEvents);
+
   // Store integrity data
-  session.integrity.cheatingEvents = cheatingEvents;
+  session.integrity.cheatingEvents = normalizedCheatingEvents;
   session.integrity.totalCheatingScore = totalCheatingScore;
   if (terminationReason) {
     session.integrity.terminationReason = terminationReason;

@@ -113,6 +113,7 @@ export function useInterviewEngine({
   const engineStateRef = useRef(ENGINE_STATE.IDLE); // NEW: live engine state
   const currentQuestionRef = useRef('');           // NEW: live current question
   const activeUtteranceIdRef = useRef(0);          // Guard against stale TTS events
+  const completionPayloadProviderRef = useRef(null);
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -287,7 +288,19 @@ export function useInterviewEngine({
 
     // Get full summary from backend
     try {
-      const result = await interviewApi.completeSession(sessionIdRef.current, cheatingData);
+      let externalCompletionPayload = {};
+      try {
+        externalCompletionPayload = completionPayloadProviderRef.current?.() || {};
+      } catch {
+        externalCompletionPayload = {};
+      }
+
+      const completionPayload = {
+        ...externalCompletionPayload,
+        ...cheatingData,
+      };
+
+      const result = await interviewApi.completeSession(sessionIdRef.current, completionPayload);
       setSummary(result);
     } catch (err) {
       console.warn('[Interview] Complete session failed:', err.message);
@@ -431,6 +444,10 @@ export function useInterviewEngine({
     });
   }, [stopVAD, finishInterview]);
 
+  const setCompletionPayloadProvider = useCallback((provider) => {
+    completionPayloadProviderRef.current = typeof provider === 'function' ? provider : null;
+  }, []);
+
   // ── Cleanup ────────────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -463,6 +480,7 @@ export function useInterviewEngine({
     terminate,
     finishInterview,
     completeCurrentAnswer,
+    setCompletionPayloadProvider,
   };
 }
 

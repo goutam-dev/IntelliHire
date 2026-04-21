@@ -54,6 +54,7 @@ const getCandidateOrigins = () => {
 
 const resolveAssetCandidates = (input) => {
   if (!input) return [];
+  if (/^data:/i.test(input)) return [input];
   if (/^https?:\/\//i.test(input)) return [input];
   const normalized = input.startsWith('/') ? input : `/${input}`;
   return getCandidateOrigins().map((origin) => `${origin}${normalized}`);
@@ -241,6 +242,7 @@ const TABS = [
 
 const PROCTOR_FILTERS = [
   { id: 'all', label: 'All' },
+  { id: 'screen', label: 'Screen' },
   { id: 'voice', label: 'Voice' },
   { id: 'face', label: 'Face' },
   { id: 'object', label: 'Object' },
@@ -264,9 +266,36 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
   const faceAlerts = face.faceAlerts || [];
   const faceObservations = face.faceObservations || [];
   const objectAlerts = face.objectAlerts || [];
+  const integrityEvents = integrity.events || [];
 
   const timelineEvents = useMemo(() => {
+    const startedAtMs = report?.startedAt ? new Date(report.startedAt).getTime() : null;
+    const toRelativeSeconds = (isoValue) => {
+      if (!isoValue || !startedAtMs) return null;
+      const eventMs = new Date(isoValue).getTime();
+      if (!Number.isFinite(eventMs)) return null;
+      return Math.max(0, Math.round((eventMs - startedAtMs) / 1000));
+    };
+
     const all = [
+      ...integrityEvents.map((item, idx) => {
+        const snapshotCandidates = [
+          ...(Array.isArray(item.snapshotPaths) ? item.snapshotPaths : []),
+          ...(item.snapshotUrl ? [item.snapshotUrl] : []),
+        ].flatMap((entry) => resolveAssetCandidates(entry));
+
+        return {
+          id: `screen-${idx}`,
+          type: 'screen',
+          timestamp: toRelativeSeconds(item.lastAt || item.firstAt),
+          title: item.label || item.eventType || 'Screen integrity violation',
+          description: `Count: ${item.count ?? 1} · Penalty: ${item.totalPoints ?? item.points ?? 0}`,
+          mediaCandidates: snapshotCandidates,
+          mediaLabel: 'View screenshot',
+          mediaKind: 'image',
+          color: '#3b82f6',
+        };
+      }),
       ...voiceMismatches.map((item, idx) => ({
         id: `voice-${idx}`,
         type: 'voice',
@@ -317,7 +346,7 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
     return all
       .filter((event) => proctorFilter === 'all' || event.type === proctorFilter)
       .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
-  }, [voiceMismatches, faceAlerts, faceObservations, objectAlerts, proctorFilter]);
+  }, [integrityEvents, report?.startedAt, voiceMismatches, faceAlerts, faceObservations, objectAlerts, proctorFilter]);
 
   if (!isOpen || !report) return null;
 

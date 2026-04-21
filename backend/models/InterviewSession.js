@@ -57,6 +57,8 @@ const cheatingEventSchema = new mongoose.Schema({
   totalPoints: { type: Number, default: 1 },
   firstAt: { type: Date },
   lastAt: { type: Date },
+  snapshotUrl: { type: String, default: null },
+  snapshotPaths: [{ type: String }],
 }, { _id: false });
 
 const interviewSessionSchema = new mongoose.Schema({

@@ -62,6 +62,8 @@ const FACE_PROCTORING_FRAME_INTERVAL_MS = 2000;
 const FACE_PROCTORING_MAX_WIDTH = 640;
 const FACE_PROCTORING_JPEG_QUALITY = 0.85;
 const FACE_PROCTORING_LOG_PREFIX = '[FaceProctoring:UI]';
+const INTEGRITY_SCREENSHOT_DELAY_MS = 1000;
+const INTEGRITY_SCREENSHOT_JPEG_QUALITY = 0.72;
 
 const TERMS_LIST = [
   { id: 1, title: 'Recording Consent', body: 'By proceeding you give IntelliHire irrevocable consent to record your audio, video, and screen activity for the entire duration of this interview session.' },
@@ -763,11 +765,11 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       const imageCapture = new ImageCapture(track);
       const bitmap = await imageCapture.grabFrame();
       const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      canvas.getContext('2d').drawImage(bitmap, 0, 0);
+      canvas.width = Math.max(1, bitmap.width || 1920);
+      canvas.height = Math.max(1, bitmap.height || 1080);
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       bitmap.close();
-      return canvas.toDataURL('image/jpeg', 0.6);
+      return canvas.toDataURL('image/jpeg', INTEGRITY_SCREENSHOT_JPEG_QUALITY);
     } catch {
       return null;
     }
@@ -1139,6 +1141,29 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
   }, [engine.sessionId]);
 
   // ── Anti-cheating: recordCheatingEvent ─────────────────────────────────────
+  const attachScreenshotsToReport = useCallback((report) => {
+    return (Array.isArray(report) ? report : []).map((entry) => {
+      const screenshotsForType = screenshotCapturesRef.current[entry.eventType] || [];
+      return {
+        ...entry,
+        snapshotDataUrls: screenshotsForType,
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof engine.setCompletionPayloadProvider !== 'function') return undefined;
+
+    engine.setCompletionPayloadProvider(() => ({
+      cheatingEvents: attachScreenshotsToReport(cheatingReportRef.current),
+      totalCheatingScore: totalCheatingScoreRef.current,
+    }));
+
+    return () => {
+      engine.setCompletionPayloadProvider(null);
+    };
+  }, [engine, attachScreenshotsToReport]);
+
   const recordCheatingEvent = useCallback((eventType, message) => {
     if (isTerminatingRef.current) return;
     const points = CHEATING_SCORES[eventType] ?? 1;
@@ -1158,9 +1183,17 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
             ...screenshotCapturesRef.current,
             [eventType]: [...prev, dataUrl],
           };
+
+          const withSnapshots = cheatingReportRef.current.map((row) =>
+            row.eventType === eventType
+              ? { ...row, snapshotDataUrls: screenshotCapturesRef.current[eventType] || [] }
+              : row
+          );
+          cheatingReportRef.current = withSnapshots;
+          setCheatingReport([...withSnapshots]);
         }
       });
-    }, 1000);
+    }, INTEGRITY_SCREENSHOT_DELAY_MS);
 
     const existingIndex = cheatingReportRef.current.findIndex(r => r.eventType === eventType);
     let updatedReport;
@@ -1174,6 +1207,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       updatedReport = [...cheatingReportRef.current, {
         eventType, label: CHEATING_LABELS[eventType] ?? eventType, message,
         count: 1, points, totalPoints: points, firstAt: nowIso, lastAt: nowIso,
+        snapshotDataUrls: screenshotCapturesRef.current[eventType] || [],
       }];
     }
     cheatingReportRef.current = updatedReport;
@@ -1183,8 +1217,9 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
     if (newTotal >= CHEATING_THRESHOLD) {
       setProctoringViolation({ count: newTotal, message });
       isTerminatingRef.current = true;
+      const reportWithSnapshots = attachScreenshotsToReport(updatedReport);
       engine.terminate({
-        cheatingEvents: updatedReport,
+        cheatingEvents: reportWithSnapshots,
         totalCheatingScore: newTotal,
         terminationReason: `Integrity threshold exceeded (${newTotal}/${CHEATING_THRESHOLD})`,
       });
@@ -1192,7 +1227,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       setCheatingWarning({ score: newTotal, message, eventType, points });
       setTimeout(() => setCheatingWarning(null), 4500);
     }
-  }, [engine.terminate, captureScreenshot]);
+  }, [engine.terminate, captureScreenshot, attachScreenshotsToReport]);
 
   useEffect(() => { recordCheatingEventRef.current = recordCheatingEvent; }, [recordCheatingEvent]);
 
@@ -1244,8 +1279,9 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       if (!isTerminatingRef.current) {
         setProctoringViolation({ count: CHEATING_THRESHOLD, message: 'Screen sharing stopped' });
         isTerminatingRef.current = true;
+        const reportWithSnapshots = attachScreenshotsToReport(cheatingReportRef.current);
         engine.terminate({
-          cheatingEvents: cheatingReportRef.current,
+          cheatingEvents: reportWithSnapshots,
           totalCheatingScore: CHEATING_THRESHOLD,
           terminationReason: 'Screen sharing was stopped',
         });
@@ -1281,7 +1317,7 @@ function InterviewInterface({ streams, applicationId, onComplete }) {
       if (screenTrack) screenTrack.removeEventListener('ended', handleScreenShareEnded);
       clearInterval(monitorId);
     };
-  }, [streams.screen, engine.terminate, pauseInterview]);
+  }, [streams.screen, engine.terminate, pauseInterview, attachScreenshotsToReport]);
 
   // ── Keyboard / clipboard lockdown ──────────────────────────────────────────
   useEffect(() => {
