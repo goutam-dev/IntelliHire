@@ -35,6 +35,7 @@ import {
 import { getCurrencySymbol } from '../../constants/jobConstants';
 import jobApi from '../../services/api/jobApi';
 import { resolveUploadUrl } from '../../utils/mediaUrl';
+import { isApplicationDeadlinePassed } from '../../utils/jobAvailability';
 
 const scaleIn = {
   hidden: { opacity: 0, scale: 0.9 },
@@ -241,6 +242,8 @@ const JobCard = ({ job, index }) => {
   const deadlineStatus = getDeadlineStatus();
   const jobStatus = getJobStatus();
   const isJobClosed = job.status === 'closed';
+  const isDeadlinePassed = isApplicationDeadlinePassed(job.applicationDeadline);
+  const isApplyBlocked = isJobClosed || isDeadlinePassed;
   const companyName = job.company || job.employer?.companyName || job.employer?.name || 'Company Name';
   const companyInitial = (companyName[0] || 'C').toUpperCase();
   const companyLogoUrl = resolveUploadUrl(job.companyLogoUrl || job.employer?.logoUrl || null);
@@ -455,27 +458,27 @@ const JobCard = ({ job, index }) => {
                 } else {
                   navigate('/candidate/applications');
                 }
-              } else if (!isJobClosed && completion && isComplete && completion.percentage === 100) {
+              } else if (!isApplyBlocked && completion && isComplete && completion.percentage === 100) {
                 await handleApplyNow();
               }
             }}
-            disabled={(isJobClosed || !completion || !isComplete || completion.percentage < 100) && !applicationStatus?.hasApplied}
+            disabled={(isApplyBlocked || !completion || !isComplete || completion.percentage < 100) && !applicationStatus?.hasApplied}
             className={`flex-1 px-5 py-3 rounded-xl transition-all text-sm font-bold flex items-center justify-center gap-2 shadow-sm ${
               applicationStatus?.hasApplied
                 ? 'bg-zinc-900 text-white shadow-zinc-900/20 cursor-pointer'
-                : isJobClosed
+                : isApplyBlocked
                 ? 'bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed'
                 : completion && isComplete && completion.percentage === 100
                 ? 'bg-zinc-900 text-white hover:bg-zinc-800 hover:shadow-lg hover:shadow-zinc-900/20 cursor-pointer border border-zinc-900'
                 : 'bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed'
             }`}
             whileHover={
-              applicationStatus?.hasApplied || (!isJobClosed && completion && isComplete && completion.percentage === 100) 
+              applicationStatus?.hasApplied || (!isApplyBlocked && completion && isComplete && completion.percentage === 100) 
                 ? { scale: 1.02 } 
                 : {}
             }
             whileTap={
-              applicationStatus?.hasApplied || (!isJobClosed && completion && isComplete && completion.percentage === 100) 
+              applicationStatus?.hasApplied || (!isApplyBlocked && completion && isComplete && completion.percentage === 100) 
                 ? { scale: 0.98 } 
                 : {}
             }
@@ -489,6 +492,11 @@ const JobCard = ({ job, index }) => {
               <>
                 <AlertCircle className="w-5 h-5" />
                 Position Closed
+              </>
+            ) : isDeadlinePassed ? (
+              <>
+                <AlertCircle className="w-5 h-5" />
+                Deadline Passed
               </>
             ) : completion && isComplete && completion.percentage === 100 ? (
               <>

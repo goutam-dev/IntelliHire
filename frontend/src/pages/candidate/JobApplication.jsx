@@ -36,6 +36,7 @@ import {
 } from "../../store/slices/jobApplicationsSlice";
 import { fetchJobById } from "../../store/slices/jobSlice";
 import { getCurrencySymbol } from "../../constants/jobConstants";
+import { isApplicationDeadlinePassed } from "../../utils/jobAvailability";
 
 // Import form components
 // ResumeUpload removed - using inline file picker for job applications
@@ -368,6 +369,7 @@ const JobApplication = () => {
   const hasApplied = applicationStatus?.hasApplied || false;
   const existingApplication = applicationStatus?.application;
   const requirementMatch = profileData?.jobRequirementMatch;
+  const isDeadlinePassed = isApplicationDeadlinePassed(currentJob?.applicationDeadline);
 
   // Load data on component mount
   useEffect(() => {
@@ -785,6 +787,11 @@ const JobApplication = () => {
 
     if (!applicationForm.profileAccuracyConfirmed) {
       alert("Please confirm that your profile information is accurate.");
+      return;
+    }
+
+    if (isDeadlinePassed) {
+      alert("Application deadline has passed for this job.");
       return;
     }
 
@@ -2159,6 +2166,12 @@ const JobApplication = () => {
           <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 overflow-hidden">
             <div className="p-5 sm:p-6">
               <div className="space-y-6">
+                {isDeadlinePassed && !hasApplied && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    Application deadline has passed for this job. You can no longer submit a new application.
+                  </div>
+                )}
+
                 <label className="flex items-start gap-4 cursor-pointer group rounded-xl hover:bg-zinc-50/50 p-2 -m-2 transition-colors">
                   <div className="relative flex items-center justify-center mt-0.5">
                     <input
@@ -2216,6 +2229,7 @@ const JobApplication = () => {
                     <button
                       onClick={handleSubmitApplication}
                       disabled={
+                        isDeadlinePassed ||
                         !applicationForm.profileAccuracyConfirmed ||
                         isSubmitting ||
                         loading.submitting

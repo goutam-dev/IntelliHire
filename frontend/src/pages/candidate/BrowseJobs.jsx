@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -26,15 +26,16 @@ import {
   fetchJobs, 
   fetchFilterOptions, 
   setFilters, 
-  resetFilters, 
-  setCurrentPage 
+  resetFilters
 } from '../../store/slices/jobSlice';
 import { 
+  fetchMyApplications,
   checkApplicationStatus, 
   forceRefreshApplicationStatus 
 } from '../../store/slices/jobApplicationsSlice';
 import { fetchProfileCompletion } from '../../store/slices/profileCompletionSlice';
 import JobCard from '../../components/candidate/JobCard';
+import { isApplicationDeadlinePassed } from '../../utils/jobAvailability';
 // CandidateHeader is now handled by CandidateLayout
 const fadeUp = {
   hidden: { opacity: 0, y: 32 },
@@ -112,7 +113,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
     // Apply filters immediately for desktop, or wait for mobile apply button
     if (isDesktop) {
       dispatch(setFilters(newFilters));
-      const filterPromise = dispatch(fetchJobs({ ...newFilters, page: 1, includeClosed: true }));
+      const filterPromise = dispatch(fetchJobs({ ...newFilters, page: 1, limit: 1000, includeClosed: true }));
       
       // Scroll to top when filters change
       if (jobsContainerRef && jobsContainerRef.current) {
@@ -128,7 +129,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
 
   const applyFilters = () => {
     dispatch(setFilters(localFilters));
-    dispatch(fetchJobs({ ...localFilters, page: 1, includeClosed: true }));
+    dispatch(fetchJobs({ ...localFilters, page: 1, limit: 1000, includeClosed: true }));
     onClose();
   };
 
@@ -147,7 +148,7 @@ const FiltersSidebar = ({ isOpen, onClose, jobsContainerRef, isDesktop = false }
     };
     dispatch(resetFilters());
     setLocalFilters(clearedFilters);
-    dispatch(fetchJobs({ page: 1, includeClosed: true }));
+    dispatch(fetchJobs({ page: 1, limit: 1000, includeClosed: true }));
     if (onClose) onClose();
   };
 
@@ -608,16 +609,63 @@ const useDebounce = (value, delay) => {
 
 // Main Browse Jobs Component
 const BrowseJobs = () => {
+  const CLIENT_PAGE_SIZE = 10;
+  const FETCH_LIMIT = 1000;
+
   const dispatch = useDispatch();
   const location = useLocation();
   const { 
     jobs, 
     loading, 
     error, 
-    pagination, 
     filters 
   } = useSelector(state => state.jobs);
-  const { applicationStatuses } = useSelector(state => state.jobApplications);
+  const { applicationStatuses, myApplications, loading: applicationLoading } = useSelector(state => state.jobApplications);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [initialHydrationDone, setInitialHydrationDone] = useState(false);
+
+  const appliedJobIds = useMemo(() => {
+    const ids = new Set();
+
+    (myApplications || []).forEach((application) => {
+      if (application?.status === 'Withdrawn') return;
+      const jobId = application?.jobId?._id || application?.jobId;
+      if (jobId) ids.add(String(jobId));
+    });
+
+    Object.entries(applicationStatuses || {}).forEach(([jobId, status]) => {
+      if (status?.hasApplied) {
+        ids.add(String(jobId));
+      }
+    });
+
+    return ids;
+  }, [myApplications, applicationStatuses]);
+
+  const visibleJobs = useMemo(() => jobs.filter((job) => {
+    if (!isApplicationDeadlinePassed(job?.applicationDeadline)) {
+      return true;
+    }
+
+    return appliedJobIds.has(String(job?._id));
+  }), [jobs, appliedJobIds]);
+
+  const totalPages = Math.max(1, Math.ceil(visibleJobs.length / CLIENT_PAGE_SIZE));
+  const paginatedJobs = useMemo(() => {
+    const start = (currentPage - 1) * CLIENT_PAGE_SIZE;
+    return visibleJobs.slice(start, start + CLIENT_PAGE_SIZE);
+  }, [visibleJobs, currentPage]);
+
+  const hasExpiredJobsInFetchedResults = useMemo(
+    () => jobs.some((job) => isApplicationDeadlinePassed(job?.applicationDeadline)),
+    [jobs]
+  );
+
+  const isHydratingVisibility =
+    !loading &&
+    hasExpiredJobsInFetchedResults &&
+    applicationLoading.fetchingApplications;
   
   const [searchTerm, setSearchTerm] = useState(filters.search || '');
   const [showFilters, setShowFilters] = useState(false);
@@ -627,23 +675,38 @@ const BrowseJobs = () => {
   // Ref for jobs container to control scrolling
   const jobsContainerRef = useRef(null);
 
+  const fetchCompactJobs = (query = filters) => {
+    return dispatch(fetchJobs({ ...query, page: 1, limit: FETCH_LIMIT, includeClosed: true }));
+  };
+
   useEffect(() => {
+    setInitialHydrationDone(false);
     dispatch(fetchFilterOptions());
-    dispatch(fetchJobs({ page: 1, includeClosed: true }));
+    const jobsPromise = fetchCompactJobs();
+    const applicationsPromise = dispatch(fetchMyApplications({ page: 1, limit: FETCH_LIMIT }));
     dispatch(fetchProfileCompletion());
+
+    Promise.allSettled([jobsPromise, applicationsPromise]).finally(() => {
+      setInitialHydrationDone(true);
+    });
   }, [dispatch]);
 
-  // Check application statuses for all jobs when they're loaded
   useEffect(() => {
-    if (!jobs || jobs.length === 0) return;
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
-    // Check only missing statuses to avoid re-request storms.
-    jobs.forEach(job => {
+  // Check application statuses for currently visible page jobs.
+  useEffect(() => {
+    if (!paginatedJobs || paginatedJobs.length === 0) return;
+
+    paginatedJobs.forEach(job => {
       if (job?._id && !applicationStatuses[job._id]) {
         dispatch(checkApplicationStatus(job._id));
       }
     });
-  }, [dispatch, jobs]);
+  }, [dispatch, paginatedJobs, applicationStatuses]);
 
   // Handle force refresh when returning from application page
   useEffect(() => {
@@ -654,6 +717,7 @@ const BrowseJobs = () => {
       // Force refresh the specific job's application status by clearing cache first
       dispatch(forceRefreshApplicationStatus({ jobId: appliedJobId }));
       dispatch(checkApplicationStatus(appliedJobId));
+      dispatch(fetchMyApplications({ page: 1, limit: FETCH_LIMIT }));
       
       // Clear the location state to prevent repeated refreshes
       window.history.replaceState({}, document.title);
@@ -664,10 +728,11 @@ const BrowseJobs = () => {
   useEffect(() => {
     if (debouncedSearchTerm !== filters.search) {
       setIsSearching(true);
+      setCurrentPage(1);
       dispatch(setFilters({ search: debouncedSearchTerm }));
       
       const abortController = new AbortController();
-      const searchPromise = dispatch(fetchJobs({ ...filters, search: debouncedSearchTerm, page: 1, includeClosed: true }));
+      const searchPromise = fetchCompactJobs({ ...filters, search: debouncedSearchTerm });
       
       // Scroll to top when search results change
       if (jobsContainerRef?.current) {
@@ -697,7 +762,7 @@ const BrowseJobs = () => {
   }, [debouncedSearchTerm, dispatch, filters]);
 
   const handlePageChange = (page) => {
-    dispatch(setCurrentPage(page));
+    setCurrentPage(page);
     
     // Scroll to top immediately before fetching new data
     if (jobsContainerRef.current) {
@@ -706,17 +771,15 @@ const BrowseJobs = () => {
       window.scrollTo(0, 0);
     }
     
-    // Then fetch the new jobs
-    dispatch(fetchJobs({ ...filters, page, includeClosed: true }));
   };
 
   const renderPagination = () => {
-    if (pagination.totalPages <= 1) return null;
+    if (totalPages <= 1) return null;
 
     const pages = [];
     const maxVisiblePages = 5;
-    let startPage = Math.max(1, pagination.currentPage - Math.floor(maxVisiblePages / 2));
-    let endPage = Math.min(pagination.totalPages, startPage + maxVisiblePages - 1);
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
     if (endPage - startPage + 1 < maxVisiblePages) {
       startPage = Math.max(1, endPage - maxVisiblePages + 1);
@@ -729,8 +792,8 @@ const BrowseJobs = () => {
     return (
       <div className="flex items-center justify-center gap-2 mt-8">
         <button
-          onClick={() => handlePageChange(pagination.currentPage - 1)}
-          disabled={!pagination.hasPrevPage}
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={currentPage <= 1}
           className="p-2 rounded-lg border border-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-zinc-50 text-zinc-600 transition-colors shadow-sm"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -741,7 +804,7 @@ const BrowseJobs = () => {
             key={page}
             onClick={() => handlePageChange(page)}
             className={`px-4 py-2 font-medium rounded-lg border shadow-sm transition-colors ${
-              page === pagination.currentPage
+              page === currentPage
                 ? 'bg-zinc-900 text-white border-zinc-900'
                 : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
             }`}
@@ -751,8 +814,8 @@ const BrowseJobs = () => {
         ))}
         
         <button
-          onClick={() => handlePageChange(pagination.currentPage + 1)}
-          disabled={!pagination.hasNextPage}
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={currentPage >= totalPages}
           className="p-2 rounded-lg border border-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-zinc-50 text-zinc-600 transition-colors shadow-sm"
         >
           <ChevronRight className="w-5 h-5" />
@@ -768,7 +831,7 @@ const BrowseJobs = () => {
           <div className="text-red-500 text-lg mb-4">Error loading jobs</div>
           <p className="text-slate-600 mb-4">{error}</p>
           <button 
-            onClick={() => dispatch(fetchJobs({ page: 1, includeClosed: true }))}
+            onClick={() => fetchCompactJobs()}
             className="bg-slate-900 text-white px-6 py-2 rounded-lg hover:bg-slate-800"
           >
             Try Again
@@ -802,7 +865,7 @@ const BrowseJobs = () => {
                 Find Your <span className="text-zinc-400">Dream Job</span>
               </h1>
               <p className="text-lg font-medium text-zinc-400">
-                Discover {pagination.totalJobs > 0 ? pagination.totalJobs : 'many'} exciting career opportunities curated just for you.
+                Discover {visibleJobs.length > 0 ? visibleJobs.length : 'many'} exciting career opportunities curated just for you.
               </p>
             </motion.div>
 
@@ -849,7 +912,7 @@ const BrowseJobs = () => {
                         Searching...
                       </span>
                     ) : (
-                      `Found ${pagination.totalJobs} jobs matching "${searchTerm}"`
+                      `Found ${visibleJobs.length} jobs matching "${searchTerm}"`
                     )}
                   </motion.div>
                 )}
@@ -872,7 +935,7 @@ const BrowseJobs = () => {
             ref={jobsContainerRef}
             className="lg:col-span-9 flex flex-col gap-6"
           >
-            {loading && !isSearching ? (
+            {(!initialHydrationDone || (loading && !isSearching) || isHydratingVisibility) ? (
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -882,7 +945,7 @@ const BrowseJobs = () => {
                   <JobCardSkeleton key={index} index={index} />
                 ))}
               </motion.div>
-            ) : jobs.length === 0 ? (
+            ) : visibleJobs.length === 0 ? (
               <motion.div 
                 variants={fadeUp}
                 className="text-center py-20 bg-white border border-zinc-200 rounded-2xl shadow-sm"
@@ -897,7 +960,19 @@ const BrowseJobs = () => {
                 <button
                   onClick={() => {
                     dispatch(resetFilters());
-                    dispatch(fetchJobs({ page: 1, includeClosed: true }));
+                    setCurrentPage(1);
+                    fetchCompactJobs({
+                      search: '',
+                      location: '',
+                      department: '',
+                      experienceLevel: '',
+                      employmentType: '',
+                      salaryMin: '',
+                      salaryMax: '',
+                      postedDate: '',
+                      sortBy: 'createdAt',
+                      sortOrder: 'desc'
+                    });
                     setSearchTerm('');
                   }}
                   className="px-6 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors shadow-sm text-sm font-medium"
@@ -914,7 +989,7 @@ const BrowseJobs = () => {
                 variants={staggerChildren}
                 className="grid grid-cols-1 gap-6"
               >
-                {jobs.map((job, index) => (
+                {paginatedJobs.map((job, index) => (
                   <JobCard key={job._id} job={job} index={index} />
                 ))}
               </motion.div>

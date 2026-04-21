@@ -22,6 +22,7 @@ import {
 import api from '../../lib/api';
 import { getCurrencySymbol } from '../../constants/jobConstants';
 import { resolveUploadUrl } from '../../utils/mediaUrl';
+import { isApplicationDeadlinePassed } from '../../utils/jobAvailability';
 
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 
@@ -114,6 +115,8 @@ const JobDetails = () => {
   const companyName = job?.company || 'Company Name';
   const companyInitial = (companyName[0] || 'C').toUpperCase();
   const companyLogoUrl = resolveUploadUrl(job?.companyLogoUrl || job?.employer?.logoUrl || null);
+  const isDeadlinePassed = isApplicationDeadlinePassed(job?.applicationDeadline);
+  const isApplyBlocked = job?.status !== 'active' || isDeadlinePassed;
 
   if (loading) {
     return <SkeletonLoader type="layout-profile" />;
@@ -351,10 +354,20 @@ const JobDetails = () => {
                 <div className="space-y-4">
                   <button
                     onClick={handleApplyClick}
-                    className="w-full px-4 py-3 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-colors font-medium"
+                    disabled={isApplyBlocked}
+                    className={`w-full px-4 py-3 rounded-xl transition-colors font-medium ${
+                      isApplyBlocked
+                        ? 'bg-zinc-100 text-zinc-500 border border-zinc-200 cursor-not-allowed'
+                        : 'bg-zinc-900 text-white hover:bg-zinc-800'
+                    }`}
                   >
-                    Apply Now
+                    {isDeadlinePassed ? 'Deadline Passed' : 'Apply Now'}
                   </button>
+                  {isDeadlinePassed && (
+                    <p className="text-xs text-rose-600 text-center">
+                      Application deadline has passed for this job.
+                    </p>
+                  )}
                   <p className="text-xs text-zinc-500 text-center">
                     By applying, you agree to our terms and conditions
                   </p>
