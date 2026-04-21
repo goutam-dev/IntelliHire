@@ -156,17 +156,11 @@ const EmployerAccountSettings = () => {
         <div className="px-6 py-5 bg-gradient-to-r from-zinc-900 to-indigo-900 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-white/10 rounded-xl backdrop-blur-sm shadow-inner ring-1 ring-white/20">
-              <Shield className="w-5 h-5 text-white" />
+               {/* User Info Icon */}
             </div>
             <div>
-              <h3 className="text-sm font-extrabold text-white uppercase tracking-widest">Security & Authentication</h3>
-              <p className="text-indigo-200 text-xs font-medium mt-0.5">Manage your credentials and identity</p>
-            </div>
-          </div>
-          <div className="hidden sm:block">
-            <div className="flex items-center gap-2 bg-indigo-500/20 px-3 py-1.5 rounded-full border border-indigo-400/30">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-              <span className="text-xs font-bold text-indigo-100 tracking-wider">SECURE</span>
+              <h3 className="text-sm font-extrabold text-white uppercase tracking-widest">Account Details</h3>
+              <p className="text-indigo-200 text-xs font-medium mt-0.5">Manage your personal information</p>
             </div>
           </div>
         </div>
@@ -180,6 +174,7 @@ const EmployerAccountSettings = () => {
                   name="firstName"
                   value={nameData.firstName}
                   onChange={handleNameChange}
+                  autoComplete="off"
                   className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900"
                   required
                 />
@@ -192,6 +187,7 @@ const EmployerAccountSettings = () => {
                   name="lastName"
                   value={nameData.lastName}
                   onChange={handleNameChange}
+                  autoComplete="off"
                   className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900"
                 />
               </div>

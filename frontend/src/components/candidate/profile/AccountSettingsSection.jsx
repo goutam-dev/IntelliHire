@@ -118,14 +118,8 @@ const AccountSettingsSection = ({ profile }) => {
               <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-sm font-extrabold text-white uppercase tracking-widest">Security & Identity</h3>
-              <p className="text-indigo-200 text-xs font-medium mt-0.5">Manage your credentials and identity</p>
-            </div>
-          </div>
-          <div className="hidden sm:block">
-            <div className="flex items-center gap-2 bg-indigo-500/20 px-3 py-1.5 rounded-full border border-indigo-400/30">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-              <span className="text-xs font-bold text-indigo-100 tracking-wider">SECURE</span>
+              <h3 className="text-sm font-extrabold text-white uppercase tracking-widest">Account Details</h3>
+              <p className="text-indigo-200 text-xs font-medium mt-0.5">Manage your personal information</p>
             </div>
           </div>
         </div>
@@ -134,11 +128,11 @@ const AccountSettingsSection = ({ profile }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs font-extrabold text-zinc-900 uppercase tracking-widest mb-1.5">First Name</label>
-                <input type="text" name="firstName" value={nameData.firstName} onChange={handleNameChange} className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900" required />
+                <input type="text" name="firstName" value={nameData.firstName} onChange={handleNameChange} autoComplete="off" className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900" required />
               </div>
               <div>
                 <label className="block text-xs font-extrabold text-zinc-900 uppercase tracking-widest mb-1.5">Last Name</label>
-                <input type="text" name="lastName" value={nameData.lastName} onChange={handleNameChange} className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900" />
+                <input type="text" name="lastName" value={nameData.lastName} onChange={handleNameChange} autoComplete="off" className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-zinc-900" />
               </div>
             </div>
             <div className="flex justify-end">
@@ -148,71 +142,6 @@ const AccountSettingsSection = ({ profile }) => {
               </button>
             </div>
           </form>
-
-          <hr className="border-t border-zinc-100" />
-
-          {hasPassword ? (
-            <form onSubmit={handlePasswordSubmit} className="space-y-5">
-              <div className="bg-indigo-50/50 rounded-2xl p-6 border border-indigo-100/60 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                  <Shield className="w-24 h-24 text-indigo-500" />
-                </div>
-                <div className="relative z-10">
-                  <h4 className="text-[13px] font-extrabold text-indigo-900 uppercase tracking-widest mb-1">Update Password</h4>
-                  <p className="text-xs font-semibold text-indigo-600 mb-5">Change your password to keep your account secure.</p>
-                  
-                  <div className="space-y-5 flex max-w-2xl flex-col">
-                    <div>
-                      <label className="block text-xs font-extrabold text-indigo-900 uppercase tracking-widest mb-1.5">Current Password</label>
-                      <div className="relative">
-                        <input type={showPasswords.currentPassword ? "text" : "password"} name="currentPassword" value={passwordData.currentPassword} onChange={handlePasswordChange} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors font-medium text-zinc-900 placeholder:text-zinc-300" placeholder="••••••••" required />
-                        <button type="button" onClick={() => setShowPasswords(p => ({ ...p, currentPassword: !p.currentPassword }))} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-600 transition-colors">
-                          {showPasswords.currentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div>
-                        <label className="block text-xs font-extrabold text-indigo-900 uppercase tracking-widest mb-1.5">New Password</label>
-                        <div className="relative">
-                          <input type={showPasswords.newPassword ? "text" : "password"} name="newPassword" value={passwordData.newPassword} onChange={handlePasswordChange} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors font-medium text-zinc-900 placeholder:text-zinc-300" placeholder="••••••••" required minLength={8} />
-                          <button type="button" onClick={() => setShowPasswords(p => ({ ...p, newPassword: !p.newPassword }))} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-600 transition-colors">
-                            {showPasswords.newPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-extrabold text-indigo-900 uppercase tracking-widest mb-1.5">Confirm Password</label>
-                        <div className="relative">
-                          <input type={showPasswords.confirmPassword ? "text" : "password"} name="confirmPassword" value={passwordData.confirmPassword} onChange={handlePasswordChange} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors font-medium text-zinc-900 placeholder:text-zinc-300" placeholder="••••••••" required minLength={8} />
-                          <button type="button" onClick={() => setShowPasswords(p => ({ ...p, confirmPassword: !p.confirmPassword }))} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-600 transition-colors">
-                            {showPasswords.confirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between mt-6">
-                    <p className="text-xs font-semibold text-indigo-500 bg-indigo-100/50 px-3 py-1 rounded-full border border-indigo-200/50">Minimum 8 characters</p>
-                    <button type="submit" disabled={changingPassword} className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 flex items-center gap-2">
-                      {changingPassword ? <Loader2 className="animate-spin w-4 h-4" /> : <Shield className="w-4 h-4" />}
-                      {changingPassword ? 'Updating Vault...' : 'Set New Password'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </form>
-          ) : (
-            <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-5 flex items-start gap-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Shield className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-blue-900 text-sm tracking-wide">Federated Login Active</h3>
-                <p className="text-sm font-medium text-blue-800/80 mt-1">Authenticated through <span className="font-bold capitalize">{oauthProvider}</span>. Password policies are delegated upstream to your identity provider.</p>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
