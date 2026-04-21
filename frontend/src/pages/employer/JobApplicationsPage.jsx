@@ -77,6 +77,36 @@ const normalizeInterviewPayload = (payload = {}) => ({
   interviewWindowEnd: normalizeInterviewDateTime(payload.interviewWindowEnd),
 });
 
+const generateTimeOptions = (selectedDateStr) => {
+  const options = [];
+  const now = new Date();
+  const todayStr = getLocalDateTimeInputValue().split('T')[0];
+  const currentHours = now.getHours();
+  const currentMinutes = now.getMinutes();
+
+  for (let h = 0; h < 24; h += 1) {
+    for (let m = 0; m < 60; m += 30) {
+      if (selectedDateStr === todayStr) {
+        if (h < currentHours || (h === currentHours && m < currentMinutes)) {
+          continue;
+        }
+      }
+
+      const hh = h.toString().padStart(2, '0');
+      const mm = m.toString().padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+
+      options.push({
+        value: `${hh}:${mm}`,
+        label: `${displayH}:${mm} ${ampm}`,
+      });
+    }
+  }
+
+  return options;
+};
+
 const StatCard = ({ title, value, icon: Icon, color, delay, isLoading }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
@@ -167,6 +197,9 @@ const JobApplicationsPage = () => {
       if (type === 'interview') {
         return allowed.includes('interview') || allowed.includes('reschedule');
       }
+      if (type === 'reschedule') {
+        return allowed.includes('reschedule');
+      }
       return allowed.includes(type);
     });
   };
@@ -200,6 +233,22 @@ const JobApplicationsPage = () => {
 
     return `Some actions are disabled for the selected candidates (${disabledActions.join(', ')}). Select candidates from the same lifecycle stage to enable those actions.`;
   }, [hasSelection, bulkActionAvailability]);
+
+  const bulkInterviewMode = useMemo(() => {
+    if (!selectedApplications.length) return 'interview';
+
+    const interviewEligible = selectedApplications.filter((app) => {
+      const allowed = getLifecycleActions(app);
+      return allowed.includes('interview') || allowed.includes('reschedule');
+    });
+
+    if (interviewEligible.length !== selectedApplications.length) {
+      return 'interview';
+    }
+
+    const allReschedule = selectedApplications.every((app) => getLifecycleActions(app).includes('reschedule'));
+    return allReschedule ? 'reschedule' : 'interview';
+  }, [selectedApplications]);
 
   useEffect(() => {
     return () => {
@@ -425,7 +474,7 @@ const JobApplicationsPage = () => {
         return false;
       }
 
-      if (type === 'interview') {
+      if (type === 'interview' || type === 'reschedule') {
         const interviewPayload = normalizeInterviewPayload(payload);
         const validationError = validateInterviewWindow(interviewPayload);
         if (validationError) {
@@ -450,10 +499,11 @@ const JobApplicationsPage = () => {
 
         const successCount = results.filter((r) => r.ok).length;
         const failedCount = results.length - successCount;
+        const actionLabel = type === 'reschedule' ? 'rescheduled' : 'scheduled';
         if (failedCount === 0) {
-          toast.success(`Interview schedule updated for ${successCount} candidate(s).`);
+          toast.success(`Interview ${actionLabel} for ${successCount} candidate(s).`);
         } else if (successCount > 0) {
-          toast.warn(`Interview action finished: ${successCount} updated, ${failedCount} failed.`);
+          toast.warn(`Interview action finished: ${successCount} ${actionLabel}, ${failedCount} failed.`);
         } else {
           toast.error(`Interview action failed for all selected candidates (${failedCount} failed).`);
         }
@@ -689,6 +739,7 @@ const JobApplicationsPage = () => {
       <button
         onClick={() => {
           setInterviewFormError('');
+          setInterviewData({ startDate: getInitialInterviewStart(), endDate: '', instructions: '' });
           setInterviewDialog(true);
         }}
         className="inline-flex items-center gap-1 rounded-lg bg-amber-600 text-white px-3 py-2 text-sm hover:bg-amber-700 shadow-sm hover:shadow transition-all disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
@@ -1073,86 +1124,148 @@ const JobApplicationsPage = () => {
         </ConfirmDialog>
 
         {/* Bulk Interview Dialog */}
-        <ConfirmDialog
-          open={interviewDialog}
-          title="Schedule Interviews"
-          message={`Schedule or reschedule interviews for ${selectedIds.length} candidate(s).`}
-          confirmLabel="Schedule"
-          cancelLabel="Cancel"
-          variant="info"
-          onConfirm={async () => {
-            const payload = {
-              interviewWindowStart: interviewData.startDate,
-              interviewWindowEnd: interviewData.endDate,
-              instructions: interviewData.instructions,
-            };
-
-            const validationError = validateInterviewWindow(payload);
-            if (validationError) {
-              setInterviewFormError(validationError);
-              return;
-            }
-
-            const success = await bulkAction('interview', payload);
-            if (success) {
-              setInterviewDialog(false);
-              setInterviewFormError('');
-              setInterviewData({ startDate: getInitialInterviewStart(), endDate: '', instructions: '' });
-            }
-          }}
-          onCancel={() => {
-            setInterviewDialog(false);
-            setInterviewFormError('');
-            setInterviewData({ startDate: getInitialInterviewStart(), endDate: '', instructions: '' });
-          }}
-        >
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Interview Start</label>
-              <input
-                type="datetime-local"
-                value={interviewData.startDate}
-                onChange={(e) => {
-                  setInterviewFormError('');
-                  setInterviewData(prev => ({ ...prev, startDate: e.target.value }));
-                }}
-                min={getLocalDateTimeInputValue()}
-                className="w-full rounded-lg border border-slate-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Interview End</label>
-              <input
-                type="datetime-local"
-                value={interviewData.endDate}
-                onChange={(e) => {
-                  setInterviewFormError('');
-                  setInterviewData(prev => ({ ...prev, endDate: e.target.value }));
-                }}
-                min={interviewData.startDate || getLocalDateTimeInputValue()}
-                className="w-full rounded-lg border border-slate-300 p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Instructions</label>
-              <textarea
-                value={interviewData.instructions}
-                onChange={(e) => {
-                  setInterviewFormError('');
-                  setInterviewData(prev => ({ ...prev, instructions: e.target.value }));
-                }}
-                placeholder="Interview instructions for the candidates..."
-                className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                rows={3}
-              />
-            </div>
-            {interviewFormError && (
-              <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {interviewFormError}
+        {interviewDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+            <div className="w-full max-w-md rounded-xl bg-white p-6 border border-zinc-200 shadow-xl mx-4">
+              <h3 className="text-base font-semibold text-zinc-900 mb-1">
+                {bulkInterviewMode === 'reschedule' ? 'Reschedule Interviews' : 'Schedule Interviews'}
+              </h3>
+              <p className="text-sm text-zinc-500 mb-4">
+                {bulkInterviewMode === 'reschedule'
+                  ? `Set a new interview window for ${selectedIds.length} candidate(s).`
+                  : `Set an interview window for ${selectedIds.length} candidate(s).`}
               </p>
-            )}
+
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-zinc-700 mb-1">Interview Start <span className="text-rose-500">*</span></label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    className="w-2/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    value={interviewData.startDate ? interviewData.startDate.split('T')[0] : ''}
+                    onChange={(e) => {
+                      setInterviewFormError('');
+                      const newDate = e.target.value;
+                      const currentTime = interviewData.startDate ? interviewData.startDate.split('T')[1] : '09:00';
+                      setInterviewData((prev) => ({ ...prev, startDate: newDate ? `${newDate}T${currentTime}` : '' }));
+                    }}
+                    min={getLocalDateTimeInputValue().split('T')[0]}
+                  />
+                  <select
+                    className="w-1/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    value={interviewData.startDate ? interviewData.startDate.split('T')[1] : ''}
+                    onChange={(e) => {
+                      setInterviewFormError('');
+                      const newTime = e.target.value;
+                      const currentDate = (interviewData.startDate && interviewData.startDate.split('T')[0]) || getLocalDateTimeInputValue().split('T')[0];
+                      setInterviewData((prev) => ({ ...prev, startDate: `${currentDate}T${newTime}` }));
+                    }}
+                  >
+                    <option value="" disabled>Time</option>
+                    {generateTimeOptions(interviewData.startDate ? interviewData.startDate.split('T')[0] : '').map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-zinc-700 mb-1">Interview End <span className="text-rose-500">*</span></label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    className="w-2/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    value={interviewData.endDate ? interviewData.endDate.split('T')[0] : ''}
+                    onChange={(e) => {
+                      setInterviewFormError('');
+                      const newDate = e.target.value;
+                      const currentTime = interviewData.endDate ? interviewData.endDate.split('T')[1] : '17:00';
+                      setInterviewData((prev) => ({ ...prev, endDate: newDate ? `${newDate}T${currentTime}` : '' }));
+                    }}
+                    min={interviewData.startDate ? interviewData.startDate.split('T')[0] : getLocalDateTimeInputValue().split('T')[0]}
+                  />
+                  <select
+                    className="w-1/3 rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    value={interviewData.endDate ? interviewData.endDate.split('T')[1] : ''}
+                    onChange={(e) => {
+                      setInterviewFormError('');
+                      const newTime = e.target.value;
+                      const currentDate =
+                        (interviewData.endDate && interviewData.endDate.split('T')[0]) ||
+                        (interviewData.startDate ? interviewData.startDate.split('T')[0] : getLocalDateTimeInputValue().split('T')[0]);
+                      setInterviewData((prev) => ({ ...prev, endDate: `${currentDate}T${newTime}` }));
+                    }}
+                  >
+                    <option value="" disabled>Time</option>
+                    {generateTimeOptions(interviewData.endDate ? interviewData.endDate.split('T')[0] : '').map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mb-1">
+                <label className="block text-xs font-medium text-zinc-700 mb-1">Instructions (optional)</label>
+                <textarea
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                  rows={3}
+                  value={interviewData.instructions}
+                  onChange={(e) => {
+                    setInterviewFormError('');
+                    setInterviewData((prev) => ({ ...prev, instructions: e.target.value }));
+                  }}
+                  placeholder="Add any notes or instructions for the candidate..."
+                />
+              </div>
+
+              {interviewFormError && (
+                <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {interviewFormError}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  className="rounded-lg border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
+                  onClick={() => {
+                    setInterviewDialog(false);
+                    setInterviewFormError('');
+                    setInterviewData({ startDate: getInitialInterviewStart(), endDate: '', instructions: '' });
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-lg bg-amber-600 text-white px-3 py-2 text-sm hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!interviewData.startDate || !interviewData.endDate}
+                  onClick={async () => {
+                    const payload = {
+                      interviewWindowStart: interviewData.startDate,
+                      interviewWindowEnd: interviewData.endDate,
+                      instructions: interviewData.instructions,
+                    };
+
+                    const validationError = validateInterviewWindow(payload);
+                    if (validationError) {
+                      setInterviewFormError(validationError);
+                      return;
+                    }
+
+                    const actionType = bulkInterviewMode === 'reschedule' ? 'reschedule' : 'interview';
+                    const success = await bulkAction(actionType, payload);
+                    if (success) {
+                      setInterviewDialog(false);
+                      setInterviewFormError('');
+                      setInterviewData({ startDate: getInitialInterviewStart(), endDate: '', instructions: '' });
+                    }
+                  }}
+                >
+                  {bulkInterviewMode === 'reschedule' ? 'Reschedule' : 'Schedule'}
+                </button>
+              </div>
+            </div>
           </div>
-        </ConfirmDialog>
+        )}
       </main>
     </div>
   );
