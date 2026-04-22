@@ -545,23 +545,39 @@ const shouldRecoverInterviewEnrollment = (application) => {
   return true;
 };
 
-const queueInterviewEnrollmentRecovery = (jobApplicationId) => {
+const launchInterviewEnrollmentPipeline = (
+  jobApplicationId,
+  { source = 'unknown', respectCooldown = false } = {}
+) => {
   const key = String(jobApplicationId);
   const existingState = enrollmentRecoveryState.get(key) || {};
 
-  if (existingState.inFlight) return;
+  if (existingState.inFlight) {
+    logger.info(
+      `[interviewEnrollmentRecovery] Skip duplicate launch for application ${jobApplicationId} (source=${source})`
+    );
+    return false;
+  }
+
+  if (respectCooldown && existingState.lastAttemptAt) {
+    const elapsedMs = Date.now() - existingState.lastAttemptAt;
+    if (elapsedMs < ENROLLMENT_RECOVERY_COOLDOWN_MS) {
+      return false;
+    }
+  }
 
   enrollmentRecoveryState.set(key, {
     ...existingState,
     inFlight: true,
     lastAttemptAt: Date.now(),
+    lastSource: source,
   });
 
   setImmediate(() => {
     processInterviewEnrollmentArtifacts(jobApplicationId)
       .catch((err) => {
         logger.warn(
-          `[interviewEnrollmentRecovery] Retry failed for application ${jobApplicationId}: ${err.message}`
+          `[interviewEnrollmentRecovery] Pipeline failed for application ${jobApplicationId} (source=${source}): ${err.message}`
         );
       })
       .finally(() => {
@@ -570,8 +586,18 @@ const queueInterviewEnrollmentRecovery = (jobApplicationId) => {
           ...currentState,
           inFlight: false,
           lastAttemptAt: Date.now(),
+          lastSource: source,
         });
       });
+  });
+
+  return true;
+};
+
+const queueInterviewEnrollmentRecovery = (jobApplicationId) => {
+  launchInterviewEnrollmentPipeline(jobApplicationId, {
+    source: 'recovery-poll',
+    respectCooldown: true,
   });
 };
 
@@ -1123,10 +1149,9 @@ const scheduleInterview = async (applicationId, interviewData, userId) => {
 
   if (!enrollmentsReady) {
     setImmediate(() => {
-      processInterviewEnrollmentArtifacts(application._id).catch((err) => {
-        logger.error(
-          `[scheduleInterview] Enrollment pipeline failed for application ${application._id}: ${err.message}`
-        );
+      launchInterviewEnrollmentPipeline(application._id, {
+        source: 'scheduleInterview',
+        respectCooldown: false,
       });
     });
   }
@@ -1904,8 +1929,9 @@ const approveReInterview = async (applicationId, interviewData, userId) => {
 
   // Kick off enrollment pipeline
   setImmediate(() => {
-    processInterviewEnrollmentArtifacts(application._id).catch((err) => {
-      logger.error(`[approveReInterview] Enrollment pipeline failed for ${application._id}: ${err.message}`);
+    launchInterviewEnrollmentPipeline(application._id, {
+      source: 'approveReInterview',
+      respectCooldown: false,
     });
   });
 
