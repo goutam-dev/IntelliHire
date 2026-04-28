@@ -1736,6 +1736,20 @@ const getInterviewReport = async (applicationId, userId) => {
     throw new NotFoundError('No completed interview found for this application');
   }
 
+  // Build the registration video info — this is the video the candidate submitted when
+  // applying for the job and was used to generate face/voice enrollment embeddings.
+  // Employers can use it as a baseline to cross-verify face/voice alerts.
+  let registrationVideo = null;
+  if (application.video && application.video.filePath) {
+    registrationVideo = {
+      filePath: application.video.filePath,
+      filename: application.video.filename || application.video.originalName || null,
+      originalName: application.video.originalName || null,
+      uploadDate: application.video.uploadDate || null,
+      fileSize: application.video.fileSize || null,
+    };
+  }
+
   // Format the report (mirrors formatSessionSummary in interviewService)
   return {
     sessionId: session._id,
@@ -1764,6 +1778,9 @@ const getInterviewReport = async (applicationId, userId) => {
     })),
     startedAt: session.startedAt,
     completedAt: session.completedAt,
+    // Registration video submitted during job application (used for embedding creation).
+    // Employers use this as a baseline to cross-verify face/voice alert authenticity.
+    registrationVideo,
   };
 };
 

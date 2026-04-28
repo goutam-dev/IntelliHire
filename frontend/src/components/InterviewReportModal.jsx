@@ -16,6 +16,8 @@ import {
   ChevronRight,
   Eye,
   Zap,
+  Video,
+  Info,
 } from 'lucide-react';
 
 const CHEATING_THRESHOLD = 10;
@@ -247,6 +249,43 @@ const PROCTOR_FILTERS = [
   { id: 'face', label: 'Face' },
   { id: 'object', label: 'Object' },
 ];
+
+/**
+ * Video player that tries multiple origin candidates for the registration video URL,
+ * falling back gracefully if one origin fails (same pattern used for snapshots/audio).
+ */
+function RegistrationVideoPlayer({ filePath }) {
+  const [srcIndex, setSrcIndex] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const candidates = useMemo(() => resolveAssetCandidates(filePath), [filePath]);
+
+  if (failed || candidates.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 p-8 bg-slate-800 text-slate-400">
+        <AlertTriangle className="h-8 w-8 text-rose-400" />
+        <p className="text-sm font-bold text-rose-300">Failed to load registration video</p>
+      </div>
+    );
+  }
+
+  return (
+    <video
+      controls
+      preload="metadata"
+      className="w-full max-h-[480px] object-contain"
+      src={candidates[srcIndex]}
+      onError={() => {
+        if (srcIndex < candidates.length - 1) {
+          setSrcIndex((prev) => prev + 1);
+        } else {
+          setFailed(true);
+        }
+      }}
+    >
+      Your browser does not support the video tag.
+    </video>
+  );
+}
 
 export default function InterviewReportModal({ isOpen, onClose, report, candidateName }) {
   const [activeTab, setActiveTab] = useState('overview');
@@ -567,6 +606,61 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
                       )}
                     </div>
                   </div>
+
+                  {/* Registration Video — Baseline Reference */}
+                  {report.registrationVideo ? (
+                    <div className="bg-white rounded-[24px] p-6 ring-1 ring-slate-900/5 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-600 ring-1 ring-violet-500/20">
+                          <Video className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold uppercase tracking-widest text-slate-700">Registration Video</h3>
+                          <p className="text-xs text-slate-400 mt-0.5 font-medium">Submitted during job application · Used for face &amp; voice enrollment baseline</p>
+                        </div>
+                      </div>
+
+                      {/* Info callout */}
+                      <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-violet-50/60 ring-1 ring-violet-200/60 mb-4">
+                        <Info className="h-4 w-4 text-violet-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-xs font-medium text-violet-700 leading-relaxed">
+                          This is the original video the candidate recorded when registering their application.
+                          The face and voice embeddings used during proctoring were generated from this video.
+                          Use it as a baseline to cross-verify any face or voice alerts flagged during the interview.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl overflow-hidden bg-slate-900 ring-1 ring-slate-900/10 shadow-inner">
+                        <RegistrationVideoPlayer filePath={report.registrationVideo.filePath} />
+                      </div>
+
+                      {report.registrationVideo.uploadDate && (
+                        <p className="mt-3 text-xs text-slate-400 font-medium">
+                          Uploaded: {new Date(report.registrationVideo.uploadDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {report.registrationVideo.originalName && (
+                            <span className="ml-2 opacity-60">· {report.registrationVideo.originalName}</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-[24px] p-6 ring-1 ring-slate-900/5 shadow-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-400 ring-1 ring-slate-200">
+                          <Video className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Registration Video</h3>
+                          <p className="text-xs text-slate-400 mt-0.5 font-medium">Application baseline video</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-center justify-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center gap-2">
+                        <Video className="h-7 w-7 text-slate-300" />
+                        <p className="text-sm font-semibold text-slate-400">Registration video not available</p>
+                        <p className="text-xs text-slate-400 font-medium">The candidate's registration video could not be found.</p>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
 
