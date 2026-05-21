@@ -130,7 +130,7 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
         <table className="min-w-[1000px] w-full divide-y divide-zinc-200">
           <thead className="bg-zinc-50 border-b border-zinc-200">
             <tr>
-              <th className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest pl-4">
+              <th rowSpan="2" className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest pl-4">
                 <input 
                   type="checkbox" 
                   checked={allSelected} 
@@ -138,30 +138,28 @@ const ApplicationsTable = ({ applications = [], selectedIds = [], setSelectedIds
                   className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
                 />
               </th>
-              <th className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Candidate</th>
-              <th className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Contact</th>
-              <th className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Applied</th>
-              <th className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
-                <div className="flex items-center gap-1.5">
+              <th rowSpan="2" className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Candidate</th>
+              <th rowSpan="2" className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Contact</th>
+              <th rowSpan="2" className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Applied</th>
+              <th colSpan="2" className="p-3 text-center text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
+                <div className="flex items-center justify-center gap-1.5">
                   <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
                   AI Score
                 </div>
               </th>
-              <th className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-teal-500" />
-                  Interview
-                </div>
-              </th>
-              <th className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Resume</th>
-              <th className="p-3 text-center text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
+              <th rowSpan="2" className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Resume</th>
+              <th rowSpan="2" className="p-3 text-center text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
                 <div className="flex items-center justify-center gap-1.5">
                   <Zap className="h-3.5 w-3.5 text-amber-500" />
                   Analyze
                 </div>
               </th>
-              <th className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Status</th>
-              <th className="p-3 text-right text-[11px] font-bold text-zinc-500 uppercase tracking-widest pr-4">Actions</th>
+              <th rowSpan="2" className="p-3 text-left text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Status</th>
+              <th rowSpan="2" className="p-3 text-right text-[11px] font-bold text-zinc-500 uppercase tracking-widest pr-4">Actions</th>
+            </tr>
+            <tr className="border-t border-zinc-200">
+              <th className="p-2 text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Resume</th>
+              <th className="p-2 text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Interview</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 bg-white">

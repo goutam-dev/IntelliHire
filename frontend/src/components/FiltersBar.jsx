@@ -15,7 +15,7 @@ const statusOptions = [
 ];
 
 const sortOptions = [
-  { value: 'ai_score', label: 'AI score high-low' },
+  { value: 'ai_score', label: 'AI resume score high-low' },
   { value: 'newest', label: 'Newest first' },
   { value: 'oldest', label: 'Oldest first' },
   { value: 'name', label: 'Name A→Z' },

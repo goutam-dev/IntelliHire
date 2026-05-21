@@ -201,7 +201,7 @@ const ApplicationDetailsModal = ({
                 
                 {/* AI Score */}
                 <MetricCard 
-                  title="Resume Match" 
+                  title="AI Resume Score" 
                   icon={Sparkles}
                   value={application?.aiScore}
                   max={100}
@@ -228,7 +228,7 @@ const ApplicationDetailsModal = ({
 
                 {/* Interview Score */}
                 <MetricCard 
-                  title="Interview Performance" 
+                  title="AI Interview Score" 
                   icon={Award}
                   value={application?.interviewScore}
                   max={10}
