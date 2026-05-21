@@ -146,7 +146,7 @@ const AccountSettingsSection = ({ profile }) => {
       </div>
 
       {/* Notifications */}
-      <div className="bg-white border border-zinc-200 shadow-sm rounded-[24px] overflow-hidden">
+      {/* <div className="bg-white border border-zinc-200 shadow-sm rounded-[24px] overflow-hidden">
         <div className="px-6 py-4 bg-zinc-50 border-b border-zinc-100 flex items-center gap-3">
           <Bell className="w-5 h-5 text-zinc-900" />
           <h3 className="text-sm font-extrabold text-zinc-900 uppercase tracking-widest">Notifications</h3>
@@ -179,7 +179,7 @@ const AccountSettingsSection = ({ profile }) => {
             </div>
           </form>
         </div>
-      </div>
+      </div> */}
 
       {/* Danger Zone */}
       <div className="bg-rose-50/50 border border-rose-200 shadow-sm rounded-[24px] overflow-hidden group">
