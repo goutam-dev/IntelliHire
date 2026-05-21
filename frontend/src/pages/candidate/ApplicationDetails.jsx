@@ -96,6 +96,12 @@ const ApplicationDetails = () => {
     });
   };
 
+  const formatEmployerNote = (note) => {
+    if (!note || typeof note !== 'string') return note;
+    const normalized = note.replace(/\bInterview\s+Window:/gi, 'Interview Schedule:');
+    return normalized.replace(/\bWindow:/gi, 'Interview Schedule:');
+  };
+
   const applicationJobId = typeof application?.jobId === 'string'
     ? application.jobId
     : application?.jobId?._id;
@@ -594,7 +600,9 @@ const ApplicationDetails = () => {
               >
                 <h2 className="text-sm font-bold text-zinc-900 mb-5 tracking-widest uppercase">Employer Notes</h2>
                 <div className="bg-amber-50/50 border border-amber-200/60 p-5 rounded-xl overflow-hidden">
-                  <p className="text-amber-900 text-sm leading-relaxed whitespace-pre-wrap font-medium break-words overflow-wrap-anywhere">{application.employerNotes}</p>
+                  <p className="text-amber-900 text-sm leading-relaxed whitespace-pre-wrap font-medium break-words overflow-wrap-anywhere">
+                    {formatEmployerNote(application.employerNotes)}
+                  </p>
                 </div>
               </motion.div>
             )}

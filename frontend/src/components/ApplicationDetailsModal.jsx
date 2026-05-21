@@ -72,6 +72,12 @@ const MetricCard = ({ title, icon: Icon, value, max, verdict, colorClass, border
   </div>
 );
 
+const formatInterviewLabel = (note) => {
+  if (!note || typeof note !== 'string') return note;
+  const normalized = note.replace(/\bInterview\s+Window:/gi, 'Interview Schedule:');
+  return normalized.replace(/\bWindow:/gi, 'Interview Schedule:');
+};
+
 const ApplicationDetailsModal = ({ 
   open, 
   onClose, 
@@ -87,6 +93,8 @@ const ApplicationDetailsModal = ({
   const candidateName = application?.candidate?.user?.fullName || 'Candidate';
   const appliedDate = application?.createdAt ? new Date(application.createdAt).toLocaleString() : 'Date N/A';
   const isAnalyzing = analyzingIds.has(application?._id);
+  const employerNote = application?.employerNotes || application?.feedback;
+  const formattedEmployerNote = formatInterviewLabel(employerNote);
 
   return (
     <AnimatePresence>
@@ -250,14 +258,14 @@ const ApplicationDetailsModal = ({
               </div>
 
               {/* Employer Notes */}
-              {(application?.employerNotes || application?.feedback) && (
+              {employerNote && (
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                   <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
                     <MessageSquare className="w-5 h-5 text-slate-400" />
                     Employer Notes & Feedback
                   </h3>
                   <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap font-medium break-words overflow-wrap-anywhere">
-                    {application.employerNotes || application.feedback}
+                    {formattedEmployerNote}
                   </div>
                 </div>
               )}
