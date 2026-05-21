@@ -81,14 +81,14 @@ const getScoreColor = (score) => {
   return { text: '#dc2626', ring: '#ef4444', bg: '#fef2f2' }; // rose
 };
 
-const ScoreRing = ({ score, size = 80, label }) => {
+const ScoreRing = ({ score, size = 80, label, description }) => {
   const colors = getScoreColor(score);
   const radius = (size - 10) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = score != null ? (score / 10) * circumference : 0;
 
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="flex flex-col items-center gap-1.5 text-center">
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="rotate-[-90deg] drop-shadow-md">
           <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#e2e8f0" strokeWidth="6" />
@@ -108,6 +108,11 @@ const ScoreRing = ({ score, size = 80, label }) => {
         </div>
       </div>
       {label && <span className="text-xs text-slate-500 font-semibold tracking-wide uppercase">{label}</span>}
+      {description && (
+        <span className="text-[11px] leading-snug text-slate-500/90 font-medium max-w-[140px]">
+          {description}
+        </span>
+      )}
     </div>
   );
 };
@@ -397,9 +402,24 @@ export default function InterviewReportModal({ isOpen, onClose, report, candidat
                       </p>
                     </div>
                     <div className="flex items-center gap-6 z-10 bg-white/60 backdrop-blur-md p-4 rounded-3xl ring-1 ring-slate-900/5 shadow-sm">
-                      <ScoreRing score={scoring.technicalScore} size={64} label="Technical" />
-                      <ScoreRing score={scoring.communicationScore} size={64} label="Comms" />
-                      <ScoreRing score={scoring.problemSolvingScore} size={64} label="Logic" />
+                      <ScoreRing
+                        score={scoring.technicalScore}
+                        size={64}
+                        label="Technical"
+                        description="Depth of domain knowledge and accuracy."
+                      />
+                      <ScoreRing
+                        score={scoring.communicationScore}
+                        size={64}
+                        label="Comms"
+                        description="Clarity, structure, and articulation of ideas."
+                      />
+                      <ScoreRing
+                        score={scoring.problemSolvingScore}
+                        size={64}
+                        label="Logic"
+                        description="Reasoning quality and solution approach."
+                      />
                     </div>
                   </div>
 
