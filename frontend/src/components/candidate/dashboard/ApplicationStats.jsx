@@ -3,13 +3,25 @@ import React, { useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useSelector, useDispatch } from "react-redux";
 import { fetchMyApplications, clearApplicationsCache } from "../../../store/slices/jobApplicationsSlice";
-import { Briefcase, Clock, CheckCircle, XCircle, ArrowUpRight } from "lucide-react";
+import {
+  Briefcase,
+  Clock,
+  CheckCircle,
+  XCircle,
+  ArrowUpRight,
+  Calendar,
+  Video,
+  Award,
+  Handshake,
+  Ban,
+  AlertCircle
+} from "lucide-react";
 
 import SkeletonLoader from "../../common/SkeletonLoader";
 
 const StatCard = ({ number, label, icon: Icon, color, bg, borderLight, delay, isLoading }) => (
   <motion.div
-    className="group relative overflow-hidden bg-white rounded-2xl border border-zinc-200 p-6 flex items-center gap-5 transition-all duration-300 hover:shadow-lg hover:border-zinc-300"
+    className="group relative overflow-hidden bg-white rounded-2xl border border-zinc-200 p-4 sm:p-5 flex items-center gap-4 transition-all duration-300 hover:shadow-lg hover:border-zinc-300"
     initial={{ opacity: 0, y: 15 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay, duration: 0.5, ease: "easeOut" }}
@@ -30,11 +42,11 @@ const StatCard = ({ number, label, icon: Icon, color, bg, borderLight, delay, is
         <div className={`absolute inset-0 bg-gradient-to-br from-white via-white to-${bg}-100/20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
         <div className={`absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none ${bg}`} />
 
-        <div className={`shrink-0 relative z-10 h-14 w-14 rounded-2xl flex items-center justify-center transition-colors border ${borderLight} bg-zinc-50 group-hover:bg-white`}>
-          <Icon className={`w-6 h-6 ${color}`} />
+        <div className={`shrink-0 relative z-10 h-12 w-12 rounded-2xl flex items-center justify-center transition-colors border ${borderLight} bg-zinc-50 group-hover:bg-white`}>
+          <Icon className={`w-5 h-5 ${color}`} />
         </div>
         <div className="flex flex-col relative z-10">
-          <span className="text-3xl font-bold text-zinc-900 tracking-tight leading-none mb-1">
+          <span className="text-2xl sm:text-3xl font-bold text-zinc-900 tracking-tight leading-none mb-1">
             {number}
           </span>
           <span className="text-[13px] font-semibold text-zinc-500 tracking-[0.05em] uppercase">
@@ -49,9 +61,26 @@ const StatCard = ({ number, label, icon: Icon, color, bg, borderLight, delay, is
   </motion.div>
 );
 
+const STATUS_ITEMS = [
+  { key: 'Applied', label: 'Applied', icon: Clock, color: 'text-slate-600', bg: 'bg-slate-100', border: 'border-slate-200/70' },
+  { key: 'Shortlisted', label: 'Shortlisted', icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100', border: 'border-emerald-200/60' },
+  { key: 'Interview Scheduled', label: 'Interview Scheduled', icon: Calendar, color: 'text-cyan-600', bg: 'bg-cyan-100', border: 'border-cyan-200/60' },
+  { key: 'Interviewed', label: 'Interviewed', icon: Video, color: 'text-teal-600', bg: 'bg-teal-100', border: 'border-teal-200/60' },
+  { key: 'Finalist', label: 'Finalist', icon: Award, color: 'text-indigo-600', bg: 'bg-indigo-100', border: 'border-indigo-200/60' },
+  { key: 'Hired', label: 'Hired', icon: Handshake, color: 'text-emerald-700', bg: 'bg-emerald-100', border: 'border-emerald-200/60' },
+  { key: 'Rejected', label: 'Rejected', icon: XCircle, color: 'text-rose-600', bg: 'bg-rose-100', border: 'border-rose-200/60' },
+  { key: 'Withdrawn', label: 'Withdrawn', icon: Ban, color: 'text-zinc-600', bg: 'bg-zinc-100', border: 'border-zinc-200/70' },
+  { key: 'Job Deleted', label: 'Job Deleted', icon: AlertCircle, color: 'text-zinc-700', bg: 'bg-zinc-200', border: 'border-zinc-300/70' }
+];
+
+const BASE_COUNTS = STATUS_ITEMS.reduce((acc, item) => {
+  acc[item.key] = 0;
+  return acc;
+}, { all: 0 });
+
 const ApplicationStats = ({ stats }) => {
   const dispatch = useDispatch();
-  const { myApplications, loading } = useSelector((state) => state.jobApplications);
+  const { myApplications, applicationStatusCounts, loading } = useSelector((state) => state.jobApplications);
   const isLoading = loading?.fetchingApplications || false;
 
   useEffect(() => {
@@ -61,29 +90,27 @@ const ApplicationStats = ({ stats }) => {
 
   const calculatedStats = useMemo(() => {
     if (!myApplications || myApplications.length === 0) {
-      return { totalApplications: 0, pending: 0, shortlisted: 0, rejected: 0 };
+      return { ...BASE_COUNTS };
     }
 
-    const activeApplications = myApplications.filter(app => 
-      app.status?.toLowerCase() !== 'withdrawn'
-    );
-
-    const statusCounts = activeApplications.reduce((acc, app) => {
-      const status = app.status?.toLowerCase() || 'pending';
-      if (['applied', 'pending'].includes(status)) {
-        acc.pending++;
-      } else if (['shortlisted', 'interview', 'accepted', 'hired'].includes(status)) {
-        acc.shortlisted++;
-      } else if (status === 'rejected') {
-        acc.rejected++;
+    const counts = { ...BASE_COUNTS };
+    (myApplications || []).forEach((app) => {
+      const status = app?.status;
+      if (!status || counts[status] === undefined) return;
+      counts[status] += 1;
+      if (status !== 'Withdrawn') {
+        counts.all += 1;
       }
-      return acc;
-    }, { pending: 0, shortlisted: 0, rejected: 0 });
+    });
 
-    return { totalApplications: activeApplications.length, ...statusCounts };
+    return counts;
   }, [myApplications]);
 
-  const displayStats = stats || calculatedStats;
+  const statusCountsReady = applicationStatusCounts
+    ? Object.values(applicationStatusCounts).some((value) => value > 0)
+    : false;
+
+  const displayStats = stats || (statusCountsReady ? applicationStatusCounts : calculatedStats);
 
   return (
     <div className="mb-8">
@@ -99,47 +126,30 @@ const ApplicationStats = ({ stats }) => {
           </div>
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard
-          number={displayStats.totalApplications || 0}
+          number={displayStats.all || 0}
           label="Applications"
           icon={Briefcase}
           color="text-zinc-700"
           bg="bg-zinc-200"
           borderLight="border-zinc-200"
-          delay={0.1}
+          delay={0.05}
           isLoading={isLoading}
         />
-        <StatCard
-          number={displayStats.pending || 0}
-          label="In Review"
-          icon={Clock}
-          color="text-amber-600"
-          bg="bg-amber-100"
-          borderLight="border-amber-200/50"
-          delay={0.2}
-          isLoading={isLoading}
-        />
-        <StatCard
-          number={displayStats.shortlisted || 0}
-          label="Shortlisted"
-          icon={CheckCircle}
-          color="text-emerald-600"
-          bg="bg-emerald-100"
-          borderLight="border-emerald-200/50"
-          delay={0.3}
-          isLoading={isLoading}
-        />
-        <StatCard
-          number={displayStats.rejected || 0}
-          label="Rejected"
-          icon={XCircle}
-          color="text-rose-600"
-          bg="bg-rose-100"
-          borderLight="border-rose-200/50"
-          delay={0.4}
-          isLoading={isLoading}
-        />
+        {STATUS_ITEMS.map((item, index) => (
+          <StatCard
+            key={item.key}
+            number={displayStats[item.key] || 0}
+            label={item.label}
+            icon={item.icon}
+            color={item.color}
+            bg={item.bg}
+            borderLight={item.border}
+            delay={0.1 + index * 0.05}
+            isLoading={isLoading}
+          />
+        ))}
       </div>
     </div>
   );
