@@ -101,6 +101,18 @@ const initialState = {
   
   // My applications
   myApplications: [],
+  applicationStatusCounts: {
+    all: 0,
+    Applied: 0,
+    Shortlisted: 0,
+    'Interview Scheduled': 0,
+    Interviewed: 0,
+    Finalist: 0,
+    Hired: 0,
+    Rejected: 0,
+    Withdrawn: 0,
+    'Job Deleted': 0
+  },
   applicationsPagination: {
     currentPage: 1,
     totalPages: 1,
@@ -162,6 +174,18 @@ const jobApplicationsSlice = createSlice({
     clearApplicationsCache: (state) => {
       // Clear applications cache to force fresh fetch
       state.myApplications = [];
+      state.applicationStatusCounts = {
+        all: 0,
+        Applied: 0,
+        Shortlisted: 0,
+        'Interview Scheduled': 0,
+        Interviewed: 0,
+        Finalist: 0,
+        Hired: 0,
+        Rejected: 0,
+        Withdrawn: 0,
+        'Job Deleted': 0
+      };
       state.applicationsPagination = {
         currentPage: 1,
         totalPages: 1,
@@ -257,6 +281,9 @@ const jobApplicationsSlice = createSlice({
         state.loading.fetchingApplications = false;
         state.myApplications = action.payload.applications;
         state.applicationsPagination = action.payload.pagination;
+        if (action.payload.statusCounts) {
+          state.applicationStatusCounts = action.payload.statusCounts;
+        }
       })
       .addCase(fetchMyApplications.rejected, (state, action) => {
         state.loading.fetchingApplications = false;
@@ -276,6 +303,7 @@ const jobApplicationsSlice = createSlice({
         const index = state.myApplications.findIndex(
           app => app.applicationId === updatedApplication.applicationId
         );
+        const previousStatus = index !== -1 ? state.myApplications[index]?.status : null;
         if (index !== -1) {
           state.myApplications[index] = updatedApplication;
         }
@@ -284,6 +312,25 @@ const jobApplicationsSlice = createSlice({
         const jobId = updatedApplication.jobId._id;
         if (state.applicationStatuses[jobId]) {
           state.applicationStatuses[jobId].application.status = 'Withdrawn';
+        }
+
+        if (state.applicationStatusCounts) {
+          const nextStatus = updatedApplication?.status || 'Withdrawn';
+          if (previousStatus && state.applicationStatusCounts[previousStatus] !== undefined) {
+            state.applicationStatusCounts[previousStatus] = Math.max(
+              0,
+              state.applicationStatusCounts[previousStatus] - 1
+            );
+          }
+          if (state.applicationStatusCounts[nextStatus] !== undefined) {
+            state.applicationStatusCounts[nextStatus] += 1;
+          }
+          if (previousStatus !== 'Withdrawn' && nextStatus === 'Withdrawn' && state.applicationStatusCounts.all !== undefined) {
+            state.applicationStatusCounts.all = Math.max(0, state.applicationStatusCounts.all - 1);
+          }
+          if (previousStatus === 'Withdrawn' && nextStatus !== 'Withdrawn' && state.applicationStatusCounts.all !== undefined) {
+            state.applicationStatusCounts.all += 1;
+          }
         }
         
         state.successMessage = 'Application withdrawn successfully';

@@ -313,6 +313,37 @@ const normalizeLegacyPipelineStatus = (application) => {
   };
 };
 
+const buildCandidateApplicationStatusCounts = async (candidateId) => {
+  const applications = await JobApplication.find({ candidateId })
+    .select('status jobId')
+    .populate({
+      path: 'jobId',
+      select: 'isDeleted',
+    })
+    .lean();
+
+  const counts = ALLOWED_APPLICATION_STATUSES.reduce((acc, status) => {
+    acc[status] = 0;
+    return acc;
+  }, {});
+
+  applications.forEach((application) => {
+    const normalized = normalizeLegacyPipelineStatus(normalizeStatusForDeletedJob(application));
+    const status = normalized?.status || 'Applied';
+    if (counts[status] === undefined) {
+      counts[status] = 0;
+    }
+    counts[status] += 1;
+  });
+
+  const all = Object.keys(counts).reduce((sum, status) => {
+    if (status === 'Withdrawn') return sum;
+    return sum + counts[status];
+  }, 0);
+
+  return { all, ...counts };
+};
+
 const monthsBetweenDates = (start, end) => {
   const yearDiff = end.getFullYear() - start.getFullYear();
   const monthDiff = end.getMonth() - start.getMonth();
@@ -1543,19 +1574,23 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  let applications = await JobApplication.find(filter)
-    .populate({
-      path: 'jobId',
-      select: 'title location salaryRange employmentType employer status closedAt isDeleted',
-      populate: {
-        path: 'employer',
-        select: 'companyName logoUrl'
-      }
-    })
-    .sort({ appliedAt: -1 })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .lean();
+  const [applications, totalApplications, statusCounts] = await Promise.all([
+    JobApplication.find(filter)
+      .populate({
+        path: 'jobId',
+        select: 'title location salaryRange employmentType employer status closedAt isDeleted',
+        populate: {
+          path: 'employer',
+          select: 'companyName logoUrl'
+        }
+      })
+      .sort({ appliedAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean(),
+    JobApplication.countDocuments(filter),
+    buildCandidateApplicationStatusCounts(candidateId)
+  ]);
 
   // Map employer.companyName to company for frontend compatibility
   applications.forEach(app => {
@@ -1566,23 +1601,22 @@ const getCandidateApplications = async (candidateId, filters = {}) => {
     }
   });
 
-  applications = applications
+  const normalizedApplications = applications
     .map(normalizeStatusForDeletedJob)
     .map(normalizeLegacyPipelineStatus);
 
-  applications.forEach((application) => {
+  normalizedApplications.forEach((application) => {
     if (shouldRecoverInterviewEnrollment(application)) {
       queueInterviewEnrollmentRecovery(application._id);
     }
   });
 
-  const enrichedApplications = await enrichApplicationsWithInterviewState(applications);
-
-  const totalApplications = await JobApplication.countDocuments(filter);
+  const enrichedApplications = await enrichApplicationsWithInterviewState(normalizedApplications);
   const totalPages = Math.ceil(totalApplications / parseInt(limit));
 
   return {
     applications: enrichedApplications,
+    statusCounts,
     pagination: {
       currentPage: parseInt(page),
       totalPages,

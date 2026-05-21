@@ -40,6 +40,7 @@ const MyApplications = () => {
   const {
     myApplications,
     applicationsPagination,
+    applicationStatusCounts,
     loading,
     error,
     successMessage
@@ -65,7 +66,9 @@ const MyApplications = () => {
     { value: 'Interviewed', label: 'Interviewed', count: 0 },
     { value: 'Finalist', label: 'Finalist', count: 0 },
     { value: 'Hired', label: 'Hired', count: 0 },
-    { value: 'Rejected', label: 'Rejected', count: 0 }
+    { value: 'Rejected', label: 'Rejected', count: 0 },
+    { value: 'Withdrawn', label: 'Withdrawn', count: 0 },
+    { value: 'Job Deleted', label: 'Job Deleted', count: 0 }
   ];
 
   // Load applications on component mount
@@ -102,6 +105,12 @@ const MyApplications = () => {
   const handleStatusFilter = (status) => {
     setFilters(prev => ({ ...prev, status }));
     setCurrentPage(1);
+  };
+
+  const getStatusCount = (status) => {
+    if (!applicationStatusCounts) return 0;
+    if (status === 'all') return applicationStatusCounts.all ?? 0;
+    return applicationStatusCounts[status] ?? 0;
   };
 
   const handleWithdrawApplication = async (applicationId) => {
@@ -304,11 +313,9 @@ const MyApplications = () => {
                 } ${loading.fetchingApplications ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
                 {option.label}
-                {option.value === 'all' && applicationsPagination.totalApplications > 0 && (
-                  <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[10px] ${filters.status === option.value ? 'bg-zinc-800/80 text-zinc-300' : 'bg-zinc-100 text-zinc-500'}`}>
-                    {applicationsPagination.totalApplications}
-                  </span>
-                )}
+                <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[10px] ${filters.status === option.value ? 'bg-zinc-800/80 text-zinc-300' : 'bg-zinc-100 text-zinc-500'}`}>
+                  {getStatusCount(option.value)}
+                </span>
               </button>
             ))}
           </div>
