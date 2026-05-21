@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { useAuth } from '@clerk/clerk-react';
-import { createJob, clearJobData, setValidationErrors } from '../store/slices/jobSlice';
+import { createJob, clearJobData, clearJobError, setValidationErrors } from '../store/slices/jobSlice';
 import { fetchEmployerProfile } from '../store/slices/employerSlice';
 import { Input, Select, Textarea, TagsInput } from '../components/forms';
 import EmployerHeader from '../components/layout/EmployerHeader';
@@ -36,6 +36,7 @@ const CreateJobPage = () => {
   const { getToken } = useAuth();
   const { loading, error, validationErrors } = useAppSelector((state) => state.jobs);
   const { profile: employerProfile } = useAppSelector((state) => state.employer);
+  const lastErrorRef = useRef(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -65,10 +66,26 @@ const CreateJobPage = () => {
   }, [dispatch, getToken]);
 
   useEffect(() => {
-    if (error) {
-      toast.error(getErrorMessage(error));
+    if (!error) {
+      lastErrorRef.current = null;
+      return;
     }
-  }, [error]);
+
+    const message = getErrorMessage(error);
+    if (lastErrorRef.current === message) {
+      return;
+    }
+
+    lastErrorRef.current = message;
+    toast.error(message);
+
+    if (/already have a job with the title/i.test(message)) {
+      const nextErrors = { ...validationErrors, title: message };
+      dispatch(setValidationErrors(nextErrors));
+      setTouched((prev) => ({ ...prev, title: true }));
+      scrollToFirstError(nextErrors);
+    }
+  }, [error, dispatch, validationErrors]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -86,6 +103,10 @@ const CreateJobPage = () => {
         [name]: value,
       };
     });
+
+    if (error) {
+      dispatch(clearJobError());
+    }
     
     // Clear error for this field when user starts typing
     if (validationErrors[name]) {
@@ -102,6 +123,10 @@ const CreateJobPage = () => {
       ...prev,
       [name]: value,
     }));
+
+    if (error) {
+      dispatch(clearJobError());
+    }
     
     if (validationErrors[name]) {
       dispatch(setValidationErrors({
@@ -252,6 +277,10 @@ const CreateJobPage = () => {
   };
 
   const validateForm = (forPublish = false) => {
+    if (error) {
+      dispatch(clearJobError());
+    }
+
     const requiredFields = [
       'title',
       'description',

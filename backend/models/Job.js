@@ -28,6 +28,7 @@ const JobSchema = new Schema(
   {
     employer: { type: Schema.Types.ObjectId, ref: 'EmployerProfile', required: true },
     title: { type: String, required: requiredWhenActive, trim: true },
+    titleKey: { type: String, index: true },
     department: { type: String, trim: true },
     description: { type: String, required: requiredWhenActive },
     requiredSkills: { type: [String], required: requiredWhenActive },
@@ -63,6 +64,7 @@ const JobSchema = new Schema(
 
 // Compound indexes for common queries
 JobSchema.index({ employer: 1, status: 1 });
+JobSchema.index({ employer: 1, titleKey: 1, isDeleted: 1 });
 JobSchema.index({ isDeleted: 1, status: 1, createdAt: -1 });
 JobSchema.index({ status: 1, createdAt: -1 }); // For listing active/published jobs
 JobSchema.index({ status: 1, publishedAt: -1 }); // For sorting by publish date

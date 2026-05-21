@@ -163,6 +163,9 @@ const jobSlice = createSlice({
       state.error = null;
       state.validationErrors = {};
     },
+    clearJobError: (state) => {
+      state.error = null;
+    },
     setValidationErrors: (state, action) => {
       state.validationErrors = action.payload;
     },
@@ -333,6 +336,7 @@ const jobSlice = createSlice({
 export const {
   setJobData,
   clearJobData,
+  clearJobError,
   setValidationErrors,
   clearValidationErrors,
   setFilters,

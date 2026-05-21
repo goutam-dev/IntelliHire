@@ -51,7 +51,7 @@ const EmployerHeader = ({ userName = 'John Doe', companyName = 'Acme Inc.', user
 
   const navLinks = [
     { label: 'Dashboard', href: '/employer/dashboard', icon: LayoutDashboard },
-    { label: 'My Jobs', href: '/employer/jobs', icon: Briefcase },
+    { label: 'My Job Postings', href: '/employer/jobs', icon: Briefcase },
     { label: 'Profile', href: '/employer/profile', icon: User },
   ];
 

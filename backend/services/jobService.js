@@ -10,6 +10,34 @@ const DELETE_IMMUTABLE_APPLICATION_STATUSES = ['Rejected', 'Hired', 'Withdrawn',
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const normalizeJobTitle = (value = '') => String(value).trim().replace(/\s+/g, ' ').toLowerCase();
+
+const buildTitleMatchRegex = (normalizedTitle = '') => {
+  if (!normalizedTitle) return null;
+  const tokens = normalizedTitle.split(' ').map(escapeRegex);
+  const pattern = `^${tokens.join('\\s+')}$`;
+  return new RegExp(pattern, 'i');
+};
+
+const findDuplicateJobTitle = async (employerId, normalizedTitle, excludeJobId = null) => {
+  if (!normalizedTitle) return null;
+  const titleRegex = buildTitleMatchRegex(normalizedTitle);
+  const query = {
+    employer: employerId,
+    isDeleted: { $ne: true },
+    $or: [
+      { titleKey: normalizedTitle },
+      ...(titleRegex ? [{ title: { $regex: titleRegex } }] : []),
+    ],
+  };
+
+  if (excludeJobId) {
+    query._id = { $ne: excludeJobId };
+  }
+
+  return Job.findOne(query).select('_id title status').lean();
+};
+
 /**
  * Build an array of regexes – one per keyword in the search query.
  * Each keyword is matched independently so "mern developer" will find jobs
@@ -499,9 +527,18 @@ const createJob = async (clerkUserId, jobData) => {
     ? requiredSkills.map(skill => sanitizeString(skill, 50)).filter(s => s.length > 0)
     : undefined;
 
+  const normalizedTitleKey = sanitizedTitle ? normalizeJobTitle(sanitizedTitle) : undefined;
+  if (normalizedTitleKey) {
+    const duplicate = await findDuplicateJobTitle(employerProfile._id, normalizedTitleKey);
+    if (duplicate) {
+      throw new ValidationError(`You already have a job with the title "${sanitizedTitle}". Please use a different title.`);
+    }
+  }
+
   const job = await Job.create({
     employer: employerProfile._id,
     title: sanitizedTitle,
+    titleKey: normalizedTitleKey || undefined,
     department: sanitizedDepartment,
     description: sanitizedDescription,
     requiredSkills: sanitizedSkills,
@@ -523,7 +560,25 @@ const createJob = async (clerkUserId, jobData) => {
  * Update a job
  */
 const updateJob = async (jobId, updates, clerkUserId) => {
-  const { job } = await getOwnedJobOrThrow(jobId, clerkUserId);
+  const { job, employerProfile } = await getOwnedJobOrThrow(jobId, clerkUserId);
+  const { sanitizeString } = require('../utils/validators');
+
+  if (updates.title !== undefined) {
+    const sanitizedTitle = sanitizeString(updates.title, 200);
+    const normalizedTitleKey = sanitizedTitle ? normalizeJobTitle(sanitizedTitle) : undefined;
+
+    if (normalizedTitleKey) {
+      const duplicate = await findDuplicateJobTitle(employerProfile._id, normalizedTitleKey, job._id);
+      if (duplicate) {
+        throw new ValidationError(`You already have a job with the title "${sanitizedTitle}". Please use a different title.`);
+      }
+    }
+
+    updates.title = sanitizedTitle;
+    updates.titleKey = normalizedTitleKey || undefined;
+  } else if (updates.titleKey !== undefined) {
+    delete updates.titleKey;
+  }
 
   Object.assign(job, updates);
   await job.save();

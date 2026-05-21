@@ -385,7 +385,7 @@ const Dashboard = () => {
               {/* Recent Applications Section */}
               <section>
                 <div className="mb-6 flex justify-between items-end">
-                  <h2 className="text-xl font-extrabold text-zinc-900 tracking-tight">Recent Applications</h2>
+                  <h2 className="text-xl font-extrabold text-zinc-900 tracking-tight">Recent Candidate Applications</h2>
                   {recentApplications.length > 5 && (
                     <button
                       onClick={() => navigate('/employer/jobs')}
