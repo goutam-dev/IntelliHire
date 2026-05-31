@@ -1,138 +1,134 @@
 # IntelliHire
 
-IntelliHire is a full-stack recruitment platform that combines candidate and employer workflows with AI-driven resume analysis and interview proctoring. The system is split into a React frontend, an Express/MongoDB backend, and two Python microservices for voice and face proctoring.
+IntelliHire is an AI-powered recruitment and interview automation system that unifies job posting, application screening, adaptive interviews, and multi-modal integrity checks in a single workflow. The system consists of a React frontend, an Express and MongoDB backend, and two Python microservices for voice and face proctoring.
 
-## System Overview
+## Problem it solves
+- Hiring pipelines are fragmented across separate tools, which creates duplicated data and no end-to-end evidence trail.
+- AI screening can be unreliable or biased when model output is treated as a final decision instead of advisory input.
+- Remote interviews are vulnerable to impersonation and off-screen assistance without strong identity and integrity checks.
 
-### Frontend (React + Vite)
-- React app with routing for candidate and employer flows
-- Clerk-based authentication with protected routes
-- Redux Toolkit store slices for auth, jobs, candidates, employers, applications, notifications
-- Candidate UI includes job browsing, applications, profile management, and interview proctoring
-- Employer UI includes job management, application review, and dashboards
+IntelliHire consolidates these stages into one system where AI outputs are evidence for humans to review, not final decisions.
 
-### Backend (Node.js + Express + MongoDB)
-- Express API with Clerk webhooks, CORS, and security middleware
-- MongoDB persistence via Mongoose models
-- REST endpoints for auth, candidates, employers, jobs, applications, interviews, resume ranking, notifications
-- Interview orchestration (LLM-driven Q and A, Whisper STT, and proctoring integration)
+## Core capabilities
+Candidate experience
+- Profile management (education, experience, skills, resume, intro video)
+- Job discovery, application submission, and status tracking
+- Adaptive AI interviews with real-time proctoring
+- Interview reports and re-interview requests
+- Real-time notifications
 
-### Resume Module (Multi-Agent LLM Council)
-The resume module runs a four-agent council that produces structured analysis and a final verdict for a job application.
+Employer experience
+- Job creation, publishing, updates, and closure
+- Application review with AI resume ranking and interview reports
+- Interview scheduling and candidate status management
+- Dashboard metrics and company branding
 
-Pipeline (LLM Council path):
-1. Parse resume file into text and sections
-2. Build a normalized job description text
-3. Agent 1 and Agent 2 run in parallel
-4. Agent 3 scores the match and explains reasoning
-5. Agent 4 validates the outputs and produces the final verdict
+AI and integrity modules
+- Resume ranking: multi-agent LLM council
+- Interview engine: adaptive questions, answer evaluation, and speech-to-text transcription
+- Proctoring: voice verification, face verification, liveness detection, and object detection
+- Browser integrity monitoring via focus and visibility events
 
-Agents and outputs:
-- Agent 1: JD Information Extractor
-  - Extracts job_title, required_skills, preferred_skills, minimum_experience_years, education_requirements, job_responsibilities, keywords
-- Agent 2: Resume Technical Analyzer
-  - Extracts skills, years_of_experience, projects, education, certifications, tools_and_technologies
-- Agent 3: Semantic Matching and Scoring
-  - Produces skill_match_score, experience_match_score, project_relevance_score, education_score, overall_score
-  - Returns matched_skills, missing_skills, and reasoning
-- Agent 4: Supervisor and Quality Controller
-  - Validates agent outputs and returns final_resume_score, verdict, strengths, weaknesses, confidence_level, explanation
+## Architecture overview
+```mermaid
+graph TD
+  FE[React Frontend] -->|REST + WebSocket| API[Express API]
+  API -->|MongoDB| DB[(MongoDB)]
+  API -->|REST + WebSocket| Voice[Voice Verification Service]
+  API -->|REST + WebSocket| Face[Face and Object Proctoring Service]
+  FE -->|Media capture| API
+```
 
-Resume analysis data is stored in the ResumeAnalysis model:
-- resumeText, jobDescriptionText
-- jdExtraction, resumeTechnicalAnalysis, matchingScore, supervisorVerdict
-- aiModelMetadata, performanceMetrics, processingStatus, processingError
+## Workflow (from thesis)
+1. Employer creates a job posting.
+2. Candidate submits an application with resume and intro video.
+3. The system parses and scores resumes (AI advisory results).
+4. Shortlisted candidates receive interview invitations.
+5. The AI interview runs with live proctoring enabled.
+6. Responses, transcripts, and integrity logs are stored with the session.
+7. Employer reviews evidence and makes the final decision.
 
-API endpoints (backend):
-- POST /api/resume-ranking/analyze/:applicationId
-- GET  /api/resume-ranking/results/:applicationId
-- GET  /api/resume-ranking/detailed/:applicationId
-- GET  /api/resume-ranking/status/:applicationId
-- GET  /api/resume-ranking/top-candidates/:jobId
-- GET  /api/resume-ranking/statistics/:jobId
-- POST /api/resume-ranking/reanalyze/:applicationId
-- POST /api/resume-ranking/batch-analyze/:jobId
+## Major modules
+Resume ranking
+- LLM council : job description extractor, resume analyzer, semantic matcher, supervisor verdict.
+- Results stored in ResumeAnalysis and linked to the application.
 
-Frontend integration:
-- resumeRankingApi service wraps the endpoints
-- ResumeUpload and ResumeSection components handle PDF resume upload (max 5MB) in candidate profile
+Interview engine
+- Groq Llama 3.3 70B for question generation and answer evaluation.
+- Groq Whisper for speech-to-text transcription.
+- Adaptive questioning with controlled topic coverage and depth.
+- Re-ask handling for silence and low-confidence responses.
 
-Local test script:
-- backend/test-resume-ranking.js executes the LLM Council pipeline end-to-end with sample data
+Voice proctoring
+- FastAPI service using pyannote.audio (ResNet34 embeddings) with Silero VAD.
+- Streams 16 kHz mono float32 PCM via WebSocket.
+- Mismatch audio clips stored in uploads/voice-mismatches.
 
-### Interview Orchestration and Proctoring
-- Interview sessions are created and managed in the backend
-- Groq LLM is used for question generation and evaluation
-- Whisper STT (Groq) transcribes audio answers
-- Voice and face proctoring are started and streamed during interviews
-- Application submissions can include video; backend extracts audio for voice enrollment and frames for face enrollment
+Face and object proctoring
+- FastAPI service with InsightFace ArcFace (buffalo_l) for identity verification.
+- Liveness detection via MiniFASNetV2 and MediaPipe landmarks.
+- YOLO object detection for prohibited items and multi-person checks.
 
-## Proctoring Services
-
-### Voice Verification Service (Python FastAPI)
-- Entry point: voice_verification_only/server.py
-- Endpoints:
-  - GET  /api/health
-  - POST /api/enroll (multipart audio)
-  - WS   /ws/verify/{session_id}?speaker_id=...
-- Pipeline:
-  - Silero VAD segments speech
-  - ResNet34 (pyannote.audio) extracts embeddings
-  - Cosine similarity with smoothing determines MATCH / MISMATCH / UNSURE
-
-Backend integration:
-- VOICE_SERVICE_URL controls the service base URL (default http://localhost:8000)
-- Voice enrollment runs during application processing
-- Real-time verification runs over WebSocket during interviews
-
-### Face and Object Proctoring Service (Python FastAPI)
-- Entry point: Face proctoring/app/main.py
-- Endpoints:
-  - POST /api/register (video frame batch for canonical embedding)
-  - WS   /ws/analyze (streamed frames for verification + object detection)
-- Pipeline:
-  - InsightFace ArcFace embeddings for face verification
-  - MiniFASNetV2 anti-spoofing plus MediaPipe blink/pose checks
-  - YOLOv8 object detection with alert logic for suspicious objects
-
-Backend integration:
-- FACE_SERVICE_URL controls the service base URL (default http://localhost:8001)
-- Face enrollment runs during application processing
-- Real-time verification runs over WebSocket during interviews
-
-## Project Structure
-
-- backend: Express API, Mongoose models, resume ranking, interview orchestration
-- frontend: React app, routes for candidate and employer experiences
-- Face proctoring: unified face verification + object detection service
-- voice_verification_only: speaker enrollment and verification service
-
-## Local Development (Code-Defined Entrypoints)
+## Tech stack (code-defined)
+Frontend
+- React 19, Vite 7, Tailwind CSS 4
+- Redux Toolkit, React Router, React Hook Form, Zod
+- Clerk authentication, Axios API client
 
 Backend
-- npm run dev (nodemon) or npm start
+- Node.js, Express 5, Mongoose 8, MongoDB
+- Clerk auth and webhooks (Svix)
+- Groq LLM and Whisper APIs
+- WebSocket server (ws)
+- File handling with Multer and FFmpeg
 
-Frontend
-- npm run dev (Vite)
+Voice service
+- FastAPI, Uvicorn
+- pyannote.audio, torch, torchaudio
+- Silero VAD, numpy, scipy
 
-Voice verification service
-- python server.py (FastAPI app defined in voice_verification_only/server.py)
+Face service
+- FastAPI, Uvicorn
+- InsightFace, OpenCV, MediaPipe
+- ONNX Runtime (anti-spoofing)
 
-Face proctoring service
-- FastAPI app defined in Face proctoring/app/main.py
+## Data model overview
+- User, CandidateProfile, EmployerProfile
+- Job, JobApplication
+- InterviewSession
+- ResumeAnalysis
+- Notification
 
 ## Configuration (from code)
+Frontend
+- VITE_API_BASE_URL
+- VITE_CLERK_PUBLISHABLE_KEY
 
 Backend
-- PORT, MONGODB_URI, CORS_ORIGIN
+- PORT, NODE_ENV, MONGODB_URI, CORS_ORIGIN, APP_URL
 - CLERK_SECRET_KEY, CLERK_PUBLISHABLE_KEY, CLERK_WEBHOOK_SECRET
-
-Resume module
-- AI_API_PROVIDER, GROQ_API_KEY, GROQ_MODEL
-- OPENROUTER_API_KEY, OPENROUTER_MODEL
+- GROQ_API_KEY, GROQ_MODEL, INTERVIEW_MAX_REASK_ATTEMPTS
+- VOICE_SERVICE_URL, FACE_SERVICE_URL
+- AI_API_PROVIDER, OPENROUTER_API_KEY, OPENROUTER_MODEL
 - HUGGINGFACE_API_KEY, OPENAI_API_KEY, LOCAL_LLM_URL
-- FORCE_DETERMINISTIC_SCORING
+- USE_HYBRID_RANKING, FORCE_DETERMINISTIC_SCORING
+- EMAIL_ENABLED, SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, EMAIL_FROM
+- CLERK_USER_CACHE_TTL_MS, AUTH_DEBUG_CACHE
+- ENROLLMENT_RECOVERY_COOLDOWN_MS, INTERVIEW_START_GRACE_MS
 
-Proctoring services
-- VOICE_SERVICE_URL
-- FACE_SERVICE_URL
+Voice service
+- Service defaults are defined in voice_verification_only/config.py (port 8000).
+
+Face service
+- OBJECT_MODEL_PATH (optional override for YOLO model path).
+
+## Local entry points
+- Backend: npm run dev (or npm start) in backend
+- Frontend: npm run dev in frontend
+- Voice service: python server.py in voice_verification_only
+- Face service: uvicorn app.main:app --host 0.0.0.0 --port 8001 in Face proctoring
+
+## Closing note
+IntelliHire is designed as a unified, evidence-driven recruitment workflow: AI augments screening and interviewing, while final hiring decisions remain human. The architecture is modular, the proctoring signals are auditable, and the platform is built to scale from a prototype into a production-grade system.
+
+

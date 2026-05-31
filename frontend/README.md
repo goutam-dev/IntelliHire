@@ -1,16 +1,33 @@
-# React + Vite
+# IntelliHire Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React application for IntelliHire. This UI covers candidate and employer experiences, interview proctoring, and real-time notifications.
 
-Currently, two official plugins are available:
+## Responsibilities
+- Candidate portal: profile completion, job browsing, application submission, interview participation
+- Employer portal: job management, application review, interview scheduling, analytics
+- Proctoring interface: camera and microphone capture, integrity alerts, interview progress
+- Real-time notifications via WebSocket
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Tech stack
+- React 19, Vite 7
+- Tailwind CSS 4, Radix UI primitives
+- Redux Toolkit, React Router
+- Clerk authentication
+- React Hook Form and Zod for validation
+- Axios API client with Clerk token interceptors
 
-## React Compiler
+## Structure
+- src/pages: candidate and employer routes
+- src/components: shared UI, forms, dashboards, proctoring widgets
+- src/hooks: interview engine, audio recorder, VAD, notifications
+- src/services/api: REST clients for backend endpoints
+- src/store: Redux slices for auth, jobs, applications, profiles, notifications
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Configuration (from code)
+- VITE_API_BASE_URL (defaults to http://localhost:4000/api)
+- VITE_CLERK_PUBLISHABLE_KEY
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Local entry points
+- npm run dev
+- npm run build
+- npm run preview
